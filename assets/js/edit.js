@@ -139,7 +139,7 @@ export function editEvent(ev, { person_id = null, family_id = null, mode = null 
 export function uploadPhotos(target = {}, onDone) {
   const list = h('div', { class: 'upl-list' });
   const inp = h('input', { type: 'file', accept: 'image/*', multiple: true });
-  const zone = h('label', { class: 'dropzone' }, inp, icon('photo'), h('div', null, h('b', null, T('Húzd ide a fotókat')), T(' vagy kattints a kiválasztáshoz')),
+  const zone = h('label', { class: 'dropzone' }, inp, icon('photo'), (matchMedia('(pointer: coarse)').matches ? h('div', null, h('b', null, T('Koppints ide')), T(' a fotók kiválasztásához a galériából')) : h('div', null, h('b', null, T('Húzd ide a fotókat')), T(' vagy kattints a kiválasztáshoz'))),
     h('div', { class: 'hint' }, T("JPEG, PNG, WebP · legfeljebb {0} MB fájlonként", S.settings.upload_max_mb)));
   const title = h('input', { type: 'text', placeholder: T('Pl. Nagyszülők esküvője') });
   const date = dateInput('date', '');
@@ -147,11 +147,15 @@ export function uploadPhotos(target = {}, onDone) {
   let files = [];
   const add = fl => { for (const f of fl) if (f.type.startsWith('image/')) { files.push(f); const it = h('div', { class: 'it' }, h('img', { src: URL.createObjectURL(f), alt: '' }), h('div', { class: 'st' }, T('várakozik'))); f._el = it; list.append(it); } };
   inp.addEventListener('change', () => add(inp.files));
+  // phones: take a picture right away (opens the camera instead of the gallery)
+  const cam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+  cam.addEventListener('change', () => { add(cam.files); cam.value = ''; });
+  const camBtn = matchMedia('(pointer: coarse)').matches ? h('button', { type: 'button', class: 'btn', style: 'width:100%;margin-top:10px', onclick: () => cam.click() }, icon('photo'), T('Fénykép készítése')) : null;
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('over'));
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('over'); add(e.dataTransfer.files); });
   const tl = target.person_id ? personName(P(target.person_id)) : target.family_id ? familyLabel(F(target.family_id)) : target.story_id ? T('a sztorihoz') : T('az albumba');
-  const body = h('div', null, h('p', { class: 'muted' }, T('Feltöltés: '), h('b', null, tl)), zone, list,
+  const body = h('div', null, h('p', { class: 'muted' }, T('Feltöltés: '), h('b', null, tl)), zone, cam, camBtn, list,
     h('div', { class: 'grid2', style: 'margin-top:14px' }, field(T('Cím (nem kötelező)'), title), field(T('Dátum (nem kötelező)'), date)), primary);
   modal({ title: T('Fotók feltöltése'), body, actions: [{ label: T('Mégse') }, { label: T('Feltöltés'), cls: 'btn-primary', onClick: async () => {
     if (!files.length) throw new Error(T('Válassz legalább egy képet.'));

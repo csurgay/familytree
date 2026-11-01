@@ -777,5 +777,8 @@
 "{0} gyermeke": "child of {0}",
 "{0} szülője": "parent of {0}",
 "{0} házastársa": "spouse of {0}",
-"Munkamenet (belépés)": "Session (login)"
+"Munkamenet (belépés)": "Session (login)",
+"Fénykép készítése": "Take a photo",
+"Koppints ide": "Tap here",
+" a fotók kiválasztásához a galériából": " to pick photos from the gallery"
 }

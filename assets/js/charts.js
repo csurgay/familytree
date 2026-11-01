@@ -502,9 +502,9 @@ function renderFan(rootId, o, pal, svgRoot, defs, uid) {
     const cid = `fanc${uid}`;
     defs.append(sv('clipPath', { id: cid }, sv('circle', { r: r0 - 8 })));
     cg.append(sv('image', { href: rp.ph, x: -(r0 - 8), y: -(r0 - 8), width: (r0 - 8) * 2, height: (r0 - 8) * 2, preserveAspectRatio: 'xMidYMid slice', 'clip-path': `url(#${cid})` }));
-    cg.append(sv('rect', { x: -(r0 - 8), y: 18, width: (r0 - 8) * 2, height: 34, fill: pal.surface, opacity: .82 }));
-    cg.append(sv('text', { y: 33, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: pal.ink, 'font-family': font }, clip(personName(rp, { short: true, withTitle: false }), 18)));
-    cg.append(sv('text', { y: 47, 'text-anchor': 'middle', 'font-size': 11.5, fill: pal.muted, 'font-family': sans }, years(rp)));
+    // name below the portrait (the fan leaves room under the centre), so the face stays uncovered
+    cg.append(sv('text', { y: r0 + 18, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: pal.ink, 'font-family': font, 'paint-order': 'stroke', stroke: pal.paper, 'stroke-width': 4 }, clip(personName(rp, { short: true, withTitle: false }), 28)));
+    cg.append(sv('text', { y: r0 + 35, 'text-anchor': 'middle', 'font-size': 12.5, fill: pal.muted, 'font-family': sans, 'paint-order': 'stroke', stroke: pal.paper, 'stroke-width': 4 }, years(rp)));
   } else {
     cg.append(sv('text', { y: -4, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 700, fill: pal.ink, 'font-family': font }, clip((S.settings.name_order === 'west' ? rp?.g : rp?.s) || '', 16)));
     cg.append(sv('text', { y: 14, 'text-anchor': 'middle', 'font-size': 14, fill: pal.ink, 'font-family': font }, clip((S.settings.name_order === 'west' ? rp?.s : rp?.g) || '', 16)));
@@ -513,7 +513,7 @@ function renderFan(rootId, o, pal, svgRoot, defs, uid) {
   g.append(cg);
   svgRoot.append(g);
   const R = r0 + G * ring;
-  const lowY = Math.max(R * Math.sin(start + span), r0); // span ends 30° below the horizon
+  const lowY = Math.max(R * Math.sin(start + span), r0 + (o.photos && rp?.ph ? 44 : 0)); // span ends 30° below the horizon
   return { x: -R, y: -R, w: 2 * R, h: R + lowY };
 }
 
