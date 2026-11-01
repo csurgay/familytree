@@ -1,0 +1,391 @@
+<?php
+/**
+ * Server self-tests. Each test gets a fresh in-memory SQLite database, so the live data is never touched.
+ * Run from the admin gear (Autotesztek) or from the command line:  php tests/run.php
+ */
+
+class FtAssert extends Exception {}
+function t_eq($a, $b, string $m = ''): void { if ($a !== $b) throw new FtAssert(trim($m . ' várt: ' . var_export($b, true) . ', kapott: ' . var_export($a, true))); }
+function t_ok($c, string $m = 'feltétel nem teljesült'): void { if (!$c) throw new FtAssert($m); }
+function t_throws(callable $f, string $m = 'kivételt vártam'): void { try { $f(); } catch (Throwable $e) { return; } throw new FtAssert($m); }
+
+function t_fresh_db(): DB
+{
+    $db = new DB(new PDO('sqlite::memory:'), 't_');
+    $db->migrate(ft_schema());
+    App::useDb($db, ft_settings_defaults());
+    App::$user = null;
+    return $db;
+}
+function t_user(DB $db, string $role, string $email = null): array
+{
+    $id = $db->insert('users', ['email' => $email ?: $role . rand(1000, 9999) . '@x.hu', 'name' => ucfirst($role), 'pass_hash' => password_hash('x', PASSWORD_DEFAULT), 'role' => $role, 'active' => 1, 'failed' => 0, 'created' => ft_now()]);
+    return $db->row('SELECT * FROM {users} WHERE id = ?', [$id]);
+}
+function t_as(?array $u): void { App::$user = $u; App::flush(); }
+
+const T_GED = <<<GED
+0 HEAD
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME János /Nagy/ Dr.
+1 SEX M
+1 BIRT
+2 DATE Mar 05 1900
+2 PLAC Budapest
+1 DEAT
+2 DATE 1970
+1 NOTE Első sor &#337;s
+2 CONC  folytatás
+2 CONT második sor
+1 FAMS @F1@
+0 @I2@ INDI
+1 NAME Mária /Kiss/
+1 SEX F
+1 BIRT
+2 DATE 12 JUN 1905
+1 DEAT
+1 FAMS @F1@
+0 @I3@ INDI
+1 NAME Péter /Nagy/ b.1930
+1 SEX M
+1 BIRT
+2 DATE 1930
+1 FAMC @F1@
+1 FAMS @F2@
+0 @I4@ INDI
+1 NAME Éva /Tóth/
+1 SEX F
+1 FAMS @F2@
+0 @I5@ INDI
+1 NAME Anna /Nagy/
+1 SEX F
+1 BIRT
+2 DATE 2001
+1 FAMC @F2@
+0 @I6@ INDI
+1 NAME Gábor /Nagy/
+1 SEX M
+1 FAMC @F1@
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 CHIL @I3@
+1 CHIL @I6@
+1 MARR
+2 DATE 1928
+2 PLAC Szeged
+0 @F2@ FAM
+1 HUSB @I3@
+1 WIFE @I4@
+1 CHIL @I5@
+1 DIV
+0 @S1@ SOUR
+1 TITL Családi krónika
+0 TRLR
+GED;
+
+function t_import(DB $db): array
+{
+    $st = ft_gedcom_import($db, ft_gedcom_parse(T_GED), 'replace');
+    App::flush();
+    $ids = [];
+    foreach ($db->all('SELECT id, xref FROM {persons}') as $r) $ids[$r['xref']] = (int)$r['id'];
+    foreach ($db->all('SELECT id, xref FROM {families}') as $r) $ids[$r['xref']] = (int)$r['id'];
+    return $ids + ['_stats' => $st];
+}
+
+function ft_server_tests(): array
+{
+    return [
+        'Config: konstansos config.php felismerése' => function () {
+            $dir = sys_get_temp_dir() . '/ftcfg' . bin2hex(random_bytes(4)); @mkdir($dir);
+            file_put_contents("$dir/config.php", "<?php\ndefine('DB_HOST_T','x');\n\$servername='db.host';\$username='u1';\$password='';\$dbname='csurgay_ft';");
+            $c = ft_load_config($dir);
+            t_eq($c['driver'], 'mysql'); t_eq($c['host'], 'db.host'); t_eq($c['name'], 'csurgay_ft'); t_eq($c['user'], 'u1'); t_eq($c['pass'], '');
+            file_put_contents("$dir/config.php", "<?php\nreturn ['db'=>['host'=>'h','dbname'=>'d','user'=>'us','password'=>'pw','prefix'=>'fa_']];");
+            $c = ft_load_config($dir);
+            t_eq([$c['host'], $c['name'], $c['user'], $c['pass'], $c['prefix']], ['h', 'd', 'us', 'pw', 'fa_']);
+            file_put_contents("$dir/config.php", "<?php\n\$foo = 1;");
+            t_eq(ft_load_config($dir)['driver'], 'error');
+            // config one level up (outside the repo), in "return ['db' => [host,name,user,pass]]" form
+            @unlink("$dir/config.php"); @mkdir("$dir/app");
+            file_put_contents("$dir/config.php", "<?php\nreturn ['db'=>['host'=>'localhost','name'=>'n1','user'=>'u1','pass'=>'p1'],'admin_password'=>'x','allowed_hosts'=>['a.hu']];");
+            $c = ft_load_config("$dir/app");
+            t_eq([$c['driver'], $c['host'], $c['name'], $c['user'], $c['pass'], $c['source']], ['mysql', 'localhost', 'n1', 'u1', 'p1', '../config.php']);
+            @unlink("$dir/config.php");
+            t_eq(ft_load_config("$dir/app")['driver'], 'sqlite', 'config.php nélkül SQLite');
+            @rmdir("$dir/app"); @rmdir($dir);
+        },
+        'Dátum: GEDCOM, TribalPages és magyar formák' => function () {
+            t_eq(ft_parse_date('Sep 16 1953')['raw'], '16 SEP 1953');
+            t_eq(ft_parse_date('1953. 09. 16.')['sort'], 19530916);
+            t_eq(ft_parse_date('1953-09-16')['raw'], '16 SEP 1953');
+            t_eq(ft_parse_date('16.09.1953')['raw'], '16 SEP 1953');
+            t_eq(ft_parse_date('1953. szeptember 16.')['raw'], '16 SEP 1953');
+            t_eq(ft_parse_date('kb. 1950')['raw'], 'ABT 1950');
+            t_eq(ft_parse_date('1950 előtt')['raw'], 'BEF 1950');
+            t_eq(ft_parse_date('BET 1900 AND 1910')['qual'], 'BET');
+            t_eq(ft_parse_date('Dec 1902')['m'], 12);
+            t_eq(ft_parse_date('furcsa szöveg')['qual'], 'TXT');
+            t_eq(ft_parse_date(''), null);
+            t_eq(ft_format_date('16 SEP 1953'), '1953. szeptember 16.');
+            t_eq(ft_format_date('ABT 1950'), 'kb. 1950');
+            t_eq(ft_format_date('1944'), '1944');
+        },
+        'GEDCOM: névbontás (előtag, TribalPages-utótag)' => function () {
+            t_eq(ft_parse_name('Erzsébet /Kováts-Szabó/ Dr.'), ['given' => 'Erzsébet', 'surname' => 'Kováts-Szabó', 'title' => 'Dr.', 'suffix' => '']);
+            t_eq(ft_parse_name('László /Csáki/ b.1928')['suffix'], '');
+            t_eq(ft_parse_name('??? /Simon/')['given'], '');
+            t_eq(ft_parse_name('Kálmán /Vashegyi/ Id.')['title'], 'Id.');
+        },
+        'GEDCOM: CONC/CONT összefűzés és HTML-entitások' => function () {
+            $r = ft_gedcom_parse(T_GED);
+            $i1 = array_values(array_filter($r, fn($x) => $x['xref'] === 'I1'))[0];
+            t_eq(ft_subval($i1, 'NOTE'), "Első sor ős folytatás\nmásodik sor");
+            t_eq(count(array_filter($r, fn($x) => $x['tag'] === 'INDI')), 6);
+        },
+        'GEDCOM: import – személyek, családok, események, források' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            t_eq($ids['_stats']['persons'], 6); t_eq($ids['_stats']['families'], 2); t_eq($ids['_stats']['sources'], 1);
+            $g = ft_graph();
+            t_eq($g['P'][$ids['I1']]['by'], 1900);
+            t_eq($g['P'][$ids['I1']]['bp'], 'Budapest');
+            t_eq($g['P'][$ids['I2']]['deceased'], 1, 'üres DEAT is elhunytat jelent');
+            t_eq($g['F'][$ids['F1']]['children'], [$ids['I3'], $ids['I6']]);
+            t_eq($g['F'][$ids['F1']]['my'], 1928);
+            t_eq($g['F'][$ids['F2']]['div'], 1, 'üres DIV is válást jelent');
+            t_eq($db->val('SELECT title FROM {persons} WHERE id = ?', [$ids['I1']]), 'Dr.');
+        },
+        'GEDCOM: export → újraimport ugyanazt adja' => function () {
+            $db = t_fresh_db(); t_import($db);
+            $ged = ft_gedcom_export($db, 'https://example.hu/fa');
+            t_ok(str_contains($ged, '0 TRLR'));
+            $db2 = new DB(new PDO('sqlite::memory:'), 't_'); $db2->migrate(ft_schema());
+            $st = ft_gedcom_import($db2, ft_gedcom_parse($ged), 'replace');
+            t_eq([$st['persons'], $st['families']], [6, 2]);
+            t_eq($db2->val("SELECT notes FROM {persons} WHERE surname = 'Nagy' AND given = 'János'"), "Első sor ős folytatás\nmásodik sor");
+            t_eq((int)$db2->val("SELECT COUNT(*) FROM {children}"), 3);
+            App::useDb($db, ft_settings_defaults());
+        },
+        'GEDCOM: hosszú sorok CONC-darabolása ékezetekkel' => function () {
+            $long = str_repeat('árvíztűrő tükörfúrógép ', 30);
+            $out = ft_ged_line(1, 'NOTE', $long);
+            t_ok(substr_count($out, 'CONC') >= 2);
+            $back = ft_subval(ft_gedcom_parse("0 @I1@ INDI\n" . $out)[0], 'NOTE');
+            t_eq($back, trim($long));
+        },
+        'GEDCOM: csurgay.ged teljes import (ha van a repóban)' => function () {
+            $f = ft_find_ged(App::$root);
+            if (!$f) return 'skip';
+            $text = file_get_contents($f);
+            $db = t_fresh_db();
+            $st = ft_gedcom_import($db, ft_gedcom_parse($text), 'replace');
+            t_eq($st['persons'], preg_match_all('/^0 @[^@]+@ INDI/m', $text));
+            t_eq($st['families'], preg_match_all('/^0 @[^@]+@ FAM/m', $text));
+            t_ok(!$db->val("SELECT COUNT(*) FROM {persons} WHERE notes LIKE '%&#%'"), 'HTML-entitás maradt a jegyzetekben');
+            App::flush();
+            t_ok(ft_pick_home_person(ft_graph()) > 0);
+        },
+        'Ág: leszármazottak és házastársaik' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $set = ft_branch_set(ft_graph(), $ids['I3'], true);
+            t_ok(isset($set[$ids['I3']], $set[$ids['I4']], $set[$ids['I5']]));
+            t_ok(!isset($set[$ids['I1']]), 'a szülő nem tartozik az ághoz');
+            t_ok(!isset($set[$ids['I6']]), 'a testvér nem tartozik az ághoz');
+            t_eq($set[$ids['I4']], 'spouse');
+            t_ok(!isset(ft_branch_set(ft_graph(), $ids['I3'], false)[$ids['I4']]));
+        },
+        'Jogosultság: admin, családfő (ágon belül/kívül), családtag, vendég' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $admin = t_user($db, 'admin'); $head = t_user($db, 'head'); $mem = t_user($db, 'member');
+            $db->insert('branches', ['user_id' => $head['id'], 'person_id' => $ids['I3'], 'created' => ft_now()]);
+            t_as(null); t_eq(ft_mode('create', [$ids['I3']]), 'deny');
+            t_as($admin); t_eq(ft_mode('delete', [$ids['I1']]), 'direct');
+            t_as($head);
+            t_eq(ft_mode('create', [$ids['I5']]), 'direct');
+            t_eq(ft_mode('update', [$ids['I5']]), 'queue');
+            t_eq(ft_mode('delete', [$ids['I5']]), 'queue');
+            t_eq(ft_mode('create', [], [$ids['F2']]), 'direct', 'saját család');
+            t_eq(ft_mode('create', [$ids['I1']]), 'queue', 'ágon kívül csak javaslat');
+            App::$s['member_suggest'] = false;
+            t_eq(ft_mode('create', [$ids['I1']]), 'deny');
+            App::$s['member_suggest'] = true;
+            App::$s['head_update_approval'] = false;
+            t_eq(ft_mode('update', [$ids['I5']]), 'direct');
+            t_as($mem); t_eq(ft_mode('create', [$ids['I5']]), 'queue');
+        },
+        'Műveletek: új gyermek a családba, szülő és házastárs felvétele' => function () {
+            $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));
+            $r = ft_run_op('person.create', ['given' => 'Bence', 'surname' => 'Nagy', 'sex' => 'M', 'birth_date' => '2004. 05. 06.', 'rel' => ['type' => 'child', 'family_id' => $ids['F2']]]);
+            t_eq($r['queued'], false);
+            $g = ft_graph();
+            t_ok(in_array($r['id'], $g['F'][$ids['F2']]['children'], true));
+            t_eq($g['P'][$r['id']]['bdate'], '6 MAY 2004');
+            $sp = ft_run_op('person.create', ['given' => 'Zsófi', 'surname' => 'Kis', 'sex' => 'F', 'rel' => ['type' => 'spouse', 'of' => $r['id'], 'marriage_date' => '2030']]);
+            $g = ft_graph();
+            t_eq(count($g['P'][$r['id']]['fams']), 1);
+            t_eq($g['F'][$g['P'][$r['id']]['fams'][0]]['wife_id'], $sp['id']);
+            $par = ft_run_op('person.create', ['given' => 'Ilona', 'surname' => 'Régi', 'sex' => 'F', 'rel' => ['type' => 'parent', 'of' => $ids['I4']]]);
+            t_eq(ft_parents(ft_graph(), $ids['I4']), [$par['id']]);
+            t_throws(fn() => ft_run_op('person.create', ['given' => 'Másik', 'sex' => 'F', 'rel' => ['type' => 'parent', 'of' => $ids['I4']]]), 'második anya nem lehet');
+            t_throws(fn() => ft_run_op('person.create', ['sex' => 'M']), 'név nélkül nem lehet');
+        },
+        'Jóváhagyás: a családfő módosítása csak elfogadás után érvényes' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $admin = t_user($db, 'admin'); $head = t_user($db, 'head');
+            $db->insert('branches', ['user_id' => $head['id'], 'person_id' => $ids['I3'], 'created' => ft_now()]);
+            t_as($head);
+            $r = ft_run_op('person.update', ['id' => $ids['I5'], 'given' => 'Anna Mária', 'birth_date' => '2001. 03. 04.']);
+            t_eq($r['queued'], true);
+            t_eq($db->val('SELECT given FROM {persons} WHERE id = ?', [$ids['I5']]), 'Anna', 'még nem változhat');
+            t_ok($db->val('SELECT before_json FROM {changes} WHERE id = ?', [$r['change_id']]) !== null, 'előtte-állapot mentve');
+            t_throws(fn() => ft_change_review($r['change_id'], true), 'családfő nem hagyhat jóvá');
+            t_as($admin);
+            ft_change_review($r['change_id'], true, 'ok');
+            t_eq($db->val('SELECT given FROM {persons} WHERE id = ?', [$ids['I5']]), 'Anna Mária');
+            t_eq(ft_graph()['P'][$ids['I5']]['bdate'], '4 MAR 2001');
+            t_throws(fn() => ft_change_review($r['change_id'], true), 'kétszer nem bírálható el');
+            t_as($head);
+            $d = ft_run_op('person.delete', ['id' => $ids['I5']]);
+            t_as($admin);
+            ft_change_review($d['change_id'], false, 'nem');
+            t_ok($db->val('SELECT id FROM {persons} WHERE id = ?', [$ids['I5']]), 'elutasított törlés után megmarad');
+        },
+        'Műveletek: törlés minden kapcsolatot takarít' => function () {
+            $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));
+            ft_run_op('person.delete', ['id' => $ids['I4']]);
+            t_eq($db->val('SELECT wife_id FROM {families} WHERE id = ?', [$ids['F2']]), null);
+            t_eq((int)$db->val('SELECT COUNT(*) FROM {events} WHERE person_id = ?', [$ids['I4']]), 0);
+            ft_run_op('family.delete', ['id' => $ids['F2']]);
+            t_eq((int)$db->val('SELECT COUNT(*) FROM {children} WHERE family_id = ?', [$ids['F2']]), 0);
+            t_ok($db->val('SELECT id FROM {persons} WHERE id = ?', [$ids['I5']]), 'a gyermek megmarad');
+        },
+        'Események: létrehozás, módosítás, halál jelölése' => function () {
+            $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));
+            $e = ft_run_op('event.create', ['person_id' => $ids['I5'], 'type' => 'CHR', 'date' => '2001. 06. 10.', 'place' => 'Szeged']);
+            t_eq($db->val('SELECT date_raw FROM {events} WHERE id = ?', [$e['id']]), '10 JUN 2001');
+            ft_run_op('event.update', ['id' => $e['id'], 'type' => 'CHR', 'date' => 'kb. 2001', 'place' => 'Pécs']);
+            t_eq($db->row('SELECT date_raw, place FROM {events} WHERE id = ?', [$e['id']]), ['date_raw' => 'ABT 2001', 'place' => 'Pécs']);
+            ft_run_op('event.create', ['person_id' => $ids['I5'], 'type' => 'DEAT', 'date' => '2090']);
+            t_eq((int)$db->val('SELECT deceased FROM {persons} WHERE id = ?', [$ids['I5']]), 1);
+            t_throws(fn() => ft_run_op('event.create', ['person_id' => $ids['I5'], 'type' => 'XXXX']));
+        },
+        'Fotó: GD-vel újrakódolva, bélyegkép, nem-kép elutasítva' => function () {
+            if (!function_exists('imagecreatetruecolor')) return 'skip';
+            $db = t_fresh_db(); $ids = t_import($db); $admin = t_user($db, 'admin'); t_as($admin);
+            $oldRoot = App::$root;
+            App::$root = sys_get_temp_dir() . '/ftimg' . bin2hex(random_bytes(4)); @mkdir(App::$root);
+            try {
+                $im = imagecreatetruecolor(3000, 1500); imagefill($im, 0, 0, imagecolorallocate($im, 200, 100, 50));
+                $tmp = App::$root . '/in.png'; imagepng($im, $tmp);
+                $res = ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp, 'name' => 'x.png'], ['person_id' => $ids['I5'], 'title' => 'Teszt']);
+                t_eq($res['queued'], false);
+                $ph = $db->row('SELECT * FROM {photos} WHERE id = ?', [$res['id']]);
+                t_ok(is_file(App::$root . '/' . $ph['file']) && is_file(App::$root . '/' . $ph['thumb']));
+                t_eq((int)$ph['w'], 2000, 'max 2000 px'); t_eq(getimagesize(App::$root . '/' . $ph['file'])[2], IMAGETYPE_JPEG);
+                t_eq((int)$db->val('SELECT photo_id FROM {persons} WHERE id = ?', [$ids['I5']]), $res['id'], 'automatikusan fő portré');
+                file_put_contents($tmp, "<?php echo 'x'; ?>");
+                t_throws(fn() => ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp, 'name' => 'x.php'], ['person_id' => $ids['I5']]), 'PHP fájl nem mehet át');
+                ft_run_op('photo.delete', ['id' => $res['id']]);
+                t_ok(!is_file(App::$root . '/' . $ph['file']), 'törléskor a fájl is törlődik');
+                t_eq($db->val('SELECT photo_id FROM {persons} WHERE id = ?', [$ids['I5']]), null);
+            } finally {
+                foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(App::$root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $f) $f->isDir() ? @rmdir($f) : @unlink($f);
+                @rmdir(App::$root);
+                App::$root = $oldRoot;
+            }
+        },
+        'Adatvédelem: élők becslése és elrejtése vendégnek' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $g = ft_graph();
+            t_ok(ft_is_living($g, $ids['I5']), '2001-es születésű él');
+            t_ok(!ft_is_living($g, $ids['I1']), 'elhunyt');
+            t_ok(isset($g['est'][$ids['I4']]), 'születési év becslés a házastársból');
+            t_as(null);
+            App::$s['privacy_living'] = 'names';
+            $tree = ft_handlers()['tree']([]);
+            $anna = array_values(array_filter($tree['persons'], fn($p) => $p['id'] === $ids['I5']))[0];
+            t_eq($anna['g'], 'Élő személy'); t_eq($anna['b'], null);
+            $janos = array_values(array_filter($tree['persons'], fn($p) => $p['id'] === $ids['I1']))[0];
+            t_eq($janos['b'], 1900);
+            t_as(t_user($db, 'member'));
+            $tree = ft_handlers()['tree']([]);
+            t_eq(array_values(array_filter($tree['persons'], fn($p) => $p['id'] === $ids['I5']))[0]['g'], 'Anna', 'bejelentkezve minden látszik');
+        },
+        'Beállítások: típusellenőrzés és határértékek' => function () {
+            $defs = []; foreach (ft_settings_def() as $d) $defs[$d[1]] = $d;
+            t_eq(ft_setting_coerce($defs['quiz_count'], '12'), 12);
+            t_throws(fn() => ft_setting_coerce($defs['quiz_count'], '500'));
+            t_throws(fn() => ft_setting_coerce($defs['name_order'], 'xx'));
+            t_throws(fn() => ft_setting_coerce($defs['accent'], 'red'));
+            t_eq(ft_setting_coerce($defs['recent_types'], ['BIRT', 'HACK']), ['BIRT']);
+            foreach (ft_settings_def() as $d) ft_setting_coerce($d, $d[3]); // every default must be valid
+        },
+        'API: főoldal, személy, család, keresések hibátlanul futnak' => function () {
+            $db = t_fresh_db(); $ids = t_import($db); $u = t_user($db, 'admin'); t_as($u);
+            $_SESSION['csrf'] = $_SESSION['csrf'] ?? 'x';
+            $H = ft_handlers();
+            $home = $H['home']([]);
+            t_ok(isset($home['recent'], $home['anniversaries'], $home['pins'], $home['stats']));
+            t_eq($home['stats']['persons'], 6);
+            t_eq($home['stats']['generations'], 3);
+            $p = $H['person'](['id' => $ids['I3']]);
+            t_eq($p['person']['s'], 'Nagy'); t_eq($p['modes']['update'], 'direct');
+            $H['family'](['id' => $ids['F1']]);
+            $H['pin'](['kind' => 'tree', 'ref_id' => $ids['I3'], 'params' => ['kind' => 'fan']]);
+            t_eq(count($H['home']([])['pins']), 1);
+            $s = ft_run_op('story.create', ['title' => 'A nagy utazás', 'body' => "Egyszer volt…\n\nVége.", 'person_ids' => [$ids['I1']]]);
+            t_eq($H['story'](['id' => $s['id']])['person_ids'], [$ids['I1']]);
+            t_eq(count($H['events']([])) > 0, true);
+            t_ok(strlen($H['quiz.save'](['score' => 9, 'total' => 10, 'mode' => 'choice'])['id'] . '') > 0);
+            t_eq($H['quiz.top']([])[0]['score'], 9);
+        },
+        'Séma: a migráció ismételhető és pótolja a hiányzó oszlopot' => function () {
+            $db = t_fresh_db();
+            t_eq($db->migrate(ft_schema()), [], 'második futás nem változtat');
+            $db->pdo->exec('CREATE TABLE t_extra_test (id INTEGER PRIMARY KEY)');
+            $log = $db->migrate(['extra_test' => ['cols' => ['id' => 'id', 'name' => 'str20']]]);
+            t_eq($log, ['ALTER t_extra_test ADD name']);
+        },
+        'Bejelentkezés: hibás jelszó után zárolás' => function () {
+            $db = t_fresh_db();
+            $db->insert('users', ['email' => 'a@b.hu', 'name' => 'A', 'pass_hash' => password_hash('jo-jelszo-1', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 0, 'created' => ft_now()]);
+            App::$s['login_max_attempts'] = 2;
+            $H = ft_handlers();
+            $sess = $_SESSION ?? [];
+            for ($i = 0; $i < 2; $i++) t_throws(fn() => $H['login'](['email' => 'a@b.hu', 'password' => 'rossz']));
+            t_ok($db->val('SELECT locked_until FROM {users} WHERE email = ?', ['a@b.hu']) > ft_now(), 'zárolva');
+            t_throws(fn() => $H['login'](['email' => 'a@b.hu', 'password' => 'jo-jelszo-1']), 'zárolás alatt jó jelszóval sem');
+            $_SESSION = $sess;
+        },
+    ];
+}
+
+function ft_run_server_tests(string $only = ''): array
+{
+    $saved = ['db' => App::$db ?? null, 's' => App::$s, 'u' => App::$user, 'root' => App::$root];
+    $sess = $_SESSION ?? [];
+    $out = [];
+    $note = null;
+    if (!extension_loaded('pdo_sqlite')) {
+        return ['results' => [['name' => 'pdo_sqlite', 'status' => 'skip', 'ms' => 0, 'msg' => 'A szerveren nincs pdo_sqlite, ezért az izolált adatbázis-tesztek nem futtathatók.']], 'note' => null];
+    }
+    // session_regenerate_id() in login tests must not touch the real session
+    foreach (ft_server_tests() as $name => $fn) {
+        if ($only && stripos($name, $only) === false) continue;
+        $t0 = microtime(true);
+        try {
+            $r = $fn();
+            $out[] = ['name' => $name, 'status' => $r === 'skip' ? 'skip' : 'pass', 'ms' => (microtime(true) - $t0) * 1000];
+        } catch (Throwable $e) {
+            $out[] = ['name' => $name, 'status' => 'fail', 'ms' => (microtime(true) - $t0) * 1000, 'msg' => $e->getMessage() . ($e instanceof FtAssert ? '' : ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')')];
+        } finally {
+            if ($saved['db']) App::useDb($saved['db'], $saved['s']);
+            App::$s = $saved['s']; App::$user = $saved['u']; App::$root = $saved['root'];
+            App::flush();
+        }
+    }
+    $_SESSION = $sess;
+    return ['results' => $out, 'note' => $note];
+}

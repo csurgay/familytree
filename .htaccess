@@ -1,0 +1,22 @@
+# Családfa webapp – Apache beállítások
+Options -Indexes
+DirectoryIndex index.php
+
+# Belső fájlok ne legyenek elérhetők a webről
+<FilesMatch "^(config\.php|config\.sample\.php|README\.md|\.gitignore)$|\.(ged|sqlite|sqlite-wal|sqlite-shm|log|md)$">
+  Require all denied
+</FilesMatch>
+RedirectMatch 403 ^/?(.*/)?(lib|tests|data)/
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  <FilesMatch "\.(js|css)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+
+# Fotófeltöltéshez (a tárhely engedheti felülírni)
+<IfModule mod_php.c>
+  php_value upload_max_filesize 20M
+  php_value post_max_size 64M
+</IfModule>
