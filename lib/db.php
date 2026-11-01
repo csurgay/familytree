@@ -18,6 +18,9 @@ class DB
             $pdo->exec('PRAGMA journal_mode = WAL');
         } else {
             $pdo->exec("SET NAMES utf8mb4");
+            // real prepares → numbers come back as int (on PHP < 8.1 the default would be strings)
+            $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+            $pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, false);
         }
     }
 

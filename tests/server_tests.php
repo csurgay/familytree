@@ -12,6 +12,7 @@ function t_throws(callable $f, string $m = 'kivételt vártam'): void { try { $f
 function t_fresh_db(): DB
 {
     $db = new DB(new PDO('sqlite::memory:'), 't_');
+    if (getenv('FT_STRINGIFY')) $db->pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true); // behave like PHP < 8.1
     $db->migrate(ft_schema());
     App::useDb($db, ft_settings_defaults());
     App::$user = null;

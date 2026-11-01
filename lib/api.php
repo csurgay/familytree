@@ -465,7 +465,8 @@ function ft_handlers(): array
         'quiz.top' => function () {
             $n = (int)App::$s['quiz_toplist'];
             if ($n <= 0) return [];
-            $rows = App::$db->all('SELECT id, name, score, total, mode, ms, created FROM {quiz_scores} ORDER BY id DESC LIMIT 2000');
+            $rows = array_map(fn($r) => ['id' => (int)$r['id'], 'name' => $r['name'], 'score' => (int)$r['score'], 'total' => (int)$r['total'], 'mode' => $r['mode'], 'ms' => (int)$r['ms'], 'created' => $r['created']],
+                App::$db->all('SELECT id, name, score, total, mode, ms, created FROM {quiz_scores} ORDER BY id DESC LIMIT 2000'));
             usort($rows, fn($a, $b) => [$b['score'] / max(1, $b['total']), $b['total'], -$a['ms']] <=> [$a['score'] / max(1, $a['total']), $a['total'], -$b['ms']]);
             return array_slice($rows, 0, $n);
         },

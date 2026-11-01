@@ -17,7 +17,7 @@ arcképcsarnokkal és „Ki kicsoda?” kvízzel. Build-lépés nincs: a mappa e
 4. Nyisd meg az oldalt: az első indításkor létrehozod az admin fiókot, és egy pipával betöltöd a
    `.ged` fájlt (`csurgay.ged` – az app mappájában vagy eggyel feljebb keresi). A táblák maguktól létrejönnek.
 
-Követelmény: PHP 8.0+, PDO MySQL, GD (fotókhoz), mbstring. A `pdo_sqlite` csak az autotesztekhez kell.
+Követelmény: PHP 7.4+, PDO MySQL, GD (fotókhoz), mbstring. A `pdo_sqlite` csak az autotesztekhez kell.
 Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`) – ez fejlesztéshez jó.
 
 ## Szerepek és elosztott szerkesztés
