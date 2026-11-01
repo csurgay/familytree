@@ -348,6 +348,14 @@ function ft_server_tests(): array
             $log = $db->migrate(['extra_test' => ['cols' => ['id' => 'id', 'name' => 'str20']]]);
             t_eq($log, ['ALTER t_extra_test ADD name']);
         },
+        'Séma: egy nem létrehozható index nem akasztja meg a telepítést' => function () {
+            $db = new DB(new PDO('sqlite::memory:'), 't_');
+            $db->pdo->exec('CREATE TABLE t_settings_u_k (x INTEGER)'); // name clash → that one CREATE INDEX must fail
+            $log = $db->migrate(ft_schema());
+            t_eq(count($log), count(ft_schema()), 'minden tábla egy menetben létrejön');
+            t_eq(count($db->warnings), 1);
+            t_eq($db->migrate(ft_schema()), [], 'ismételt / párhuzamos futás nem hibázik');
+        },
         'Bejelentkezés: hibás jelszó után zárolás' => function () {
             $db = t_fresh_db();
             $db->insert('users', ['email' => 'a@b.hu', 'name' => 'A', 'pass_hash' => password_hash('jo-jelszo-1', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 0, 'created' => ft_now()]);

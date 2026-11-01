@@ -12,6 +12,12 @@ if ($err) {
     ?><!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Családfa – beállítás</title><link rel="stylesheet" href="assets/css/app.css"></head>
 <body class="setup"><main class="setup-card">
+<?php if (!empty($err['migrate'])): ?>
+<h1>Nem sikerült létrehozni a táblákat</h1>
+<p>A kapcsolat rendben van, de a MySQL ezt válaszolta:</p>
+<pre><?= $e($err['error']) ?></pre>
+<p>Ellenőrizd, hogy az adatbázis-felhasználónak van-e <b>CREATE</b> és <b>ALTER</b> joga ehhez az adatbázishoz (cPanelben: MySQL adatbázisok → felhasználó hozzáadása → „Minden jogosultság”). Utána frissítsd az oldalt: a már elkészült táblákat nem hozza létre újra.</p>
+</main></body></html><?php exit; endif; ?>
 <h1>Az adatbázis még nem érhető el</h1>
 <p><?= $e($err['error']) ?></p>
 <?php if (!empty($err['seen'])): ?><p>A config.php-ben ezeket a neveket láttam: <code><?= $e(implode(', ', $err['seen'])) ?></code></p><?php endif; ?>

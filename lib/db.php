@@ -89,7 +89,7 @@ class DB
     {
         $name = $this->p . $t;
         if ($this->driver === 'sqlite') return (bool)$this->val("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [$name]);
-        return (bool)$this->pdo->query("SHOW TABLES LIKE " . $this->pdo->quote($name))->fetchColumn();
+        return (bool)$this->pdo->query("SHOW TABLES LIKE " . $this->pdo->quote(addcslashes($name, '_%')))->fetchColumn();
     }
 
     public function columns(string $t): array
@@ -112,30 +112,56 @@ class DB
         throw new RuntimeException("unknown column type $type");
     }
 
-    /** Create missing tables / columns / indexes. Safe to call on every request (cheap check by version). */
+    /** Non-fatal problems of the last migrate() run (e.g. an index the DB user may not create). */
+    public array $warnings = [];
+
+    private function indexNames(string $name): array
+    {
+        if ($this->driver === 'sqlite') return array_column($this->pdo->query("PRAGMA index_list($name)")->fetchAll(), 'name');
+        return array_unique(array_column($this->pdo->query("SHOW INDEX FROM `$name`")->fetchAll(), 'Key_name'));
+    }
+
+    /**
+     * Create missing tables / columns / indexes. Idempotent and safe if two requests run it at once.
+     * On MySQL the indexes are part of CREATE TABLE (needs only the CREATE privilege, one statement per table);
+     * a missing index on an existing table is added best-effort and never blocks the app.
+     */
     public function migrate(array $schema): array
     {
         $log = [];
+        $this->warnings = [];
+        $my = $this->driver === 'mysql';
+        $q = fn($c) => $my ? "`$c`" : $c;
         foreach ($schema as $t => $def) {
             $name = $this->p . $t;
+            $idx = $def['idx'] ?? [];
             if (!$this->tableExists($t)) {
                 $cols = [];
-                foreach ($def['cols'] as $c => $type) $cols[] = ($this->driver === 'mysql' ? "`$c`" : $c) . ' ' . $this->colType($type);
-                $sql = "CREATE TABLE $name (" . implode(', ', $cols) . ")";
-                if ($this->driver === 'mysql') $sql .= ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+                foreach ($def['cols'] as $c => $type) $cols[] = $q($c) . ' ' . $this->colType($type);
+                if ($my) foreach ($idx as $i => $icols) $cols[] = (str_starts_with($i, 'u_') ? 'UNIQUE KEY ' : 'KEY ') . "`{$name}_$i` (" . implode(',', array_map($q, $icols)) . ')';
+                $sql = "CREATE TABLE IF NOT EXISTS " . $q($name) . " (" . implode(', ', $cols) . ")";
+                if ($my) $sql .= ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
                 $this->pdo->exec($sql);
                 $log[] = "CREATE $name";
-                foreach ($def['idx'] ?? [] as $i => $icols) {
-                    $uniq = str_starts_with($i, 'u_') ? 'UNIQUE ' : '';
-                    $this->pdo->exec("CREATE {$uniq}INDEX {$name}_$i ON $name (" . implode(',', $icols) . ")");
-                }
             } else {
                 $have = $this->columns($t);
                 foreach ($def['cols'] as $c => $type) {
                     if (!in_array($c, $have, true)) {
-                        $this->pdo->exec("ALTER TABLE $name ADD COLUMN $c " . $this->colType($type));
+                        $this->pdo->exec("ALTER TABLE " . $q($name) . " ADD COLUMN " . $q($c) . ' ' . $this->colType($type));
                         $log[] = "ALTER $name ADD $c";
                     }
+                }
+            }
+            if (!$idx) continue;
+            $haveIdx = $this->indexNames($name);
+            foreach ($idx as $i => $icols) {
+                $iname = "{$name}_$i";
+                if (in_array($iname, $haveIdx, true)) continue;
+                $uniq = str_starts_with($i, 'u_') ? 'UNIQUE ' : '';
+                try {
+                    $this->pdo->exec("CREATE {$uniq}INDEX " . $q($iname) . " ON " . $q($name) . " (" . implode(',', array_map($q, $icols)) . ")");
+                } catch (Throwable $e) {
+                    $this->warnings[] = "$iname: " . $e->getMessage();
                 }
             }
         }

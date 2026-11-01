@@ -42,11 +42,16 @@ final class App
         } catch (Throwable $e) {
             return ['error' => 'Nem sikerült csatlakozni az adatbázishoz: ' . $e->getMessage(), 'source' => self::$cfg['source']];
         }
-        self::$s = ft_settings_load(self::$db);
-        if ((int)(self::$s['_schema'] ?? 0) < FT_SCHEMA_VERSION) {
-            self::$db->migrate(ft_schema());
-            ft_setting_set(self::$db, '_schema', FT_SCHEMA_VERSION);
+        try {
             self::$s = ft_settings_load(self::$db);
+            if ((int)(self::$s['_schema'] ?? 0) < FT_SCHEMA_VERSION) {
+                self::$db->migrate(ft_schema());
+                if (self::$db->warnings) error_log('[familytree] index warnings: ' . implode(' | ', self::$db->warnings));
+                ft_setting_set(self::$db, '_schema', FT_SCHEMA_VERSION);
+                self::$s = ft_settings_load(self::$db);
+            }
+        } catch (Throwable $e) {
+            return ['error' => 'Az adatbázis-táblák létrehozása nem sikerült: ' . $e->getMessage(), 'source' => self::$cfg['source'], 'migrate' => true];
         }
         return null;
     }
