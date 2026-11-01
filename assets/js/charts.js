@@ -32,6 +32,28 @@ function boxSize(o) { return { w: o.photos ? 224 : 196, h: o.places ? 90 : 76 };
 // spouse cards slide in behind their partner: shifted right/down, only the bottom strip (with the name) shows
 export const SDX = 30, SDY = 30;
 
+/**
+ * Where the line to the children of a person's k-th relationship (1-based, of n shown spouses) leaves the
+ * stacked spouse cards: with several spouses the 1st exits to the left, the last to the right, the ones in
+ * between straight down from their visible strip. Returns the path head and the x of the vertical drop.
+ * lvl: side exits use a lower bus than the ones going straight down, so the lines never cross.
+ * (ux, top) is the main card's corner; spouse k sits at (ux + k*SDX, top + k*SDY).
+ */
+export function famExit(ux, top, w, hh, k, n) {
+  if (!k) {                                       // relationship without a known spouse: from the person card itself
+    if (!n) return { head: `M${ux + w / 2},${top + hh}`, x: ux + w / 2 };
+    const x = ux - (n === 1 ? 14 : 28);           // out on the left, outside the spouse-1 line; its children come first
+    return { head: `M${ux},${top + hh / 2}H${x}`, x, lvl: n === 1 ? -1 : 0 }; // outer line, higher bus: no crossing
+  }
+  const sx = ux + k * SDX, cy = top + hh + (k - 0.5) * SDY, bottom = top + hh + k * SDY;
+  if (n === 1) return { head: `M${sx + w / 2},${bottom}`, x: sx + w / 2 };
+  if (k === 1) { const x = ux - 14; return { head: `M${sx},${cy}H${x}`, x, lvl: 1 }; }
+  if (k === n && n >= 3) { const x = sx + w + 14; return { head: `M${sx + w},${cy}H${x}`, x, lvl: 1 }; }
+  if (k === n) return { head: `M${sx + w / 2},${bottom}`, x: sx + w / 2, lvl: -1 }; // 2 spouses: 2nd goes down
+  const x = sx + SDX / 2;                                                       // middle ones: down beside the next card
+  return { head: `M${x},${bottom}`, x, lvl: -1 };
+}
+
 export function layoutAncestors(rootId, o, vertical = false) {
   const { w, hh } = { w: boxSize(o).w, hh: boxSize(o).h };
   const G = o.up; const nodes = []; const links = [];
@@ -69,9 +91,11 @@ export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
   const measure = (id, d) => {
     const p = P(id);
     const showSp = o.spouses !== false && (d > 0 || withRootSpouses);
-    const fams = (p?.fs || []).map(F).filter(Boolean);
-    const sps = showSp ? fams.filter(f => spouseIn(f, id)) : [];
-    maxSp = Math.max(maxSp, Math.min(sps.length, 3));
+    const fams0 = (p?.fs || []).map(F).filter(Boolean);
+    const sps = showSp ? fams0.filter(f => spouseIn(f, id)) : [];
+    // children of a relationship with no spouse card go first (leftmost): their line leaves on the far left
+    const fams = sps.length ? [...fams0.filter(f => !sps.includes(f)), ...sps] : fams0;
+    maxSp = Math.max(maxSp, sps.length);
     const unitW = w + sps.length * SDX;
     const kids = [];
     if (d < G && !guard.has(id)) {
@@ -91,9 +115,9 @@ export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
     m.sps.forEach((f, i) => {
       const k = i + 1;
       nodes.push({ id: spouseIn(f, m.id), x: ux + k * SDX, y: top + k * SDY, w, h: hh, spouse: true, layer: k, of: m.id, div: f.dv });
-      famPt[f.id] = [ux + k * SDX + w / 2, top + hh + k * SDY];
+      famPt[f.id] = famExit(ux, top, w, hh, k, m.sps.length);
     });
-    for (const f of m.fams) if (!famPt[f.id]) famPt[f.id] = [ux + w / 2, top + hh];
+    for (const f of m.fams) if (!famPt[f.id]) famPt[f.id] = famExit(ux, top, w, hh, 0, m.sps.length);
     let kx = left + (m.width - m.kidsW) / 2;
     const ky = top + rowStep;
     const byFam = {};
@@ -105,11 +129,11 @@ export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
     const famIds = Object.keys(byFam);
     famIds.forEach((fid, fi) => {
       const xs = byFam[fid];
-      const [fx, fy] = famPt[fid] || [ux + w / 2, top + hh];
+      const ex = famPt[fid] || famExit(ux, top, w, hh, 0, 0);
       // separate bus heights when a person has children with several spouses
-      const bus = ky - vgap / 2 + (famIds.length > 1 ? (fi - (famIds.length - 1) / 2) * 8 : 0);
-      const lo = Math.min(fx, ...xs), hi = Math.max(fx, ...xs);
-      let d = `M${fx},${fy}V${bus}M${lo},${bus}H${hi}`;
+      const bus = ky - vgap / 2 + (famIds.length > 1 ? (ex.lvl || 0) * 8 : 0);
+      const lo = Math.min(ex.x, ...xs), hi = Math.max(ex.x, ...xs);
+      let d = `${ex.head}V${bus}M${lo},${bus}H${hi}`;
       for (const x of xs) d += `M${x},${bus}V${ky}`;
       links.push({ d });
     });
@@ -136,8 +160,9 @@ export function layoutFamily(rootId, o) {
   const bf = P(rootId)?.fc?.length ? F(P(rootId).fc[0]) : null;
   const sibs = bf ? bf.c.slice() : [rootId];
   if (!sibs.includes(rootId)) sibs.push(rootId);
-  const fams = (P(rootId)?.fs || []).map(F).filter(Boolean);
-  const sps = o.spouses === false ? [] : fams.filter(f => spouseIn(f, rootId));
+  const fams0 = (P(rootId)?.fs || []).map(F).filter(Boolean);
+  const sps = o.spouses === false ? [] : fams0.filter(f => spouseIn(f, rootId));
+  const fams = sps.length ? [...fams0.filter(f => !sps.includes(f)), ...sps] : fams0;
   // middle row: siblings in birth order; the root's spouses slide in behind the root card
   const y1 = hh + vgap;
   let x = 0;
@@ -172,12 +197,11 @@ export function layoutFamily(rootId, o) {
   kidsAll.forEach((k, i) => nodes.push({ id: k.c, x: kx0 + i * (w + gap), y: y2, w, h: hh, main: true }));
   fams.forEach((f, fi) => {
     const si = sps.indexOf(f);
-    const fx = si >= 0 ? rx + (si + 1) * SDX + w / 2 : rx + w / 2;
-    const fy = si >= 0 ? y1 + hh + (si + 1) * SDY : y1 + hh;
+    const ex = famExit(rx, y1, w, hh, si + 1, sps.length);
     const xs = kidsAll.map((k, i) => k.f === f ? kx0 + i * (w + gap) + w / 2 : null).filter(v => v !== null);
     if (!xs.length) return;
-    const bus = y2 - vgap / 2 + (fams.length > 1 ? (fi - (fams.length - 1) / 2) * 8 : 0);
-    let d = `M${fx},${fy}V${bus}M${Math.min(fx, ...xs)},${bus}H${Math.max(fx, ...xs)}`;
+    const bus = y2 - vgap / 2 + (fams.length > 1 ? (ex.lvl || 0) * 8 : 0);
+    let d = `${ex.head}V${bus}M${Math.min(ex.x, ...xs)},${bus}H${Math.max(ex.x, ...xs)}`;
     for (const xx of xs) d += `M${xx},${bus}V${y2}`;
     links.push({ d });
   });
