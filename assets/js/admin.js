@@ -9,7 +9,8 @@ export async function viewAdmin(tab = 'settings', qs) {
   await loadTree();
   setTitle('Admin');
   const nav = h('nav', { class: 'admin-nav', 'aria-label': 'Admin' }, TABS.map(([k, l]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'active' : '' }, l,
-    k === 'changes' && S.boot.pending ? h('span', { class: 'badge pend' }, S.boot.pending) : null)));
+    k === 'changes' && S.boot.pendingChanges ? h('span', { class: 'badge pend' }, S.boot.pendingChanges) : null,
+    k === 'users' && S.boot.pendingUsers ? h('span', { class: 'badge pend' }, S.boot.pendingUsers) : null)));
   const body = h('div');
   const fn = { settings: settingsTab, users: usersTab, branches: branchesTab, changes: changesTab, import: importTab, log: logTab, tests: testsTab, system: systemTab }[tab] || settingsTab;
   body.append(await fn(qs));
@@ -51,28 +52,71 @@ async function settingsTab() {
 }
 
 // ------------------------------------------------------------------ users
+/** Editable list of branch roots (persons) – the subtrees a family head may edit. */
+function branchEditor(initial = []) {
+  let ids = initial.slice();
+  const list = h('div', { class: 'tags' });
+  const draw = () => list.replaceChildren(...ids.map(id => h('span', { class: 'tag' }, personName(P(id)), P(id)?.b ? h('small', { class: 'muted' }, ' ' + P(id).b) : null,
+    h('button', { type: 'button', 'aria-label': 'Eltávolítás', onclick: () => { ids = ids.filter(x => x !== id); draw(); } }, '×'))));
+  const pk = personPicker({ placeholder: 'Ág kezdő személye (pl. a nagypapa)…', onPick: id => { if (id && !ids.includes(id)) { ids.push(id); draw(); } pk.set(null); } });
+  draw();
+  return { el: h('div', null, pk.el, list), get: () => ids };
+}
+
 async function usersTab() {
   const users = await api('admin.users');
   const roleL = { admin: 'Admin', head: 'Családfő', member: 'Családtag' };
+  const pending = users.filter(u => u.status === 'pending');
+  const others = users.filter(u => u.status !== 'pending');
   const edit = u => {
     const pk = personPicker({ value: u?.person_id || null, placeholder: 'Melyik személy ő a fában? (nem kötelező)' });
+    const br = branchEditor(u?.branches || []);
     const form = h('form', { onsubmit: e => e.preventDefault() },
       h('div', { class: 'grid2' }, field('Név', h('input', { type: 'text', name: 'name', value: u?.name || '' })), field('E-mail', h('input', { type: 'email', name: 'email', value: u?.email || '' }))),
       field('Szerep', h('select', { name: 'role' }, Object.entries(roleL).map(([k, l]) => h('option', { value: k, selected: (u?.role || 'member') === k }, l))),
         'Családfő: a hozzárendelt ágán új adatot azonnal felvehet, módosítás/törlés jóváhagyással. Családtag: csak javasolhat.'),
-      field('A fában', pk.el),
+      field('Ő a fában', pk.el),
+      field('Szerkeszthető ágak', br.el, 'A kezdő személy leszármazottai és házastársaik. Ha adsz meg ágat, a családtagból családfő lesz.'),
       field(u ? 'Új jelszó (üresen hagyva marad a régi)' : 'Kezdő jelszó', h('input', { type: 'text', name: 'password', autocomplete: 'new-password', placeholder: 'legalább 8 karakter' })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'active', checked: u ? !!+u.active : true }), h('span', null, 'Aktív (beléphet)')));
-    const actions = [{ label: 'Mégse' }, { label: 'Mentés', cls: 'btn-primary', onClick: async () => { await api('admin.user.save', { id: u?.id, ...formData(form), person_id: pk.get() }); toast('Felhasználó mentve.'); render(); } }];
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'active', checked: u ? !!+u.active : true }), h('span', null, 'Aktív (beléphet)')),
+      u?.intro ? h('div', { class: 'hint' }, 'Bemutatkozás a regisztrációnál: ', u.intro) : null);
+    const actions = [{ label: 'Mégse' }, { label: 'Mentés', cls: 'btn-primary', onClick: async () => {
+      const r = await api('admin.user.save', { id: u?.id, ...formData(form), person_id: pk.get() });
+      await api('admin.user.branches', { user_id: r.id, person_ids: br.get() });
+      toast('Felhasználó mentve.'); render();
+    } }];
     if (u && u.id !== S.user.id) actions.unshift({ label: 'Törlés', cls: 'btn-danger left', onClick: async () => { if (!await confirmBox('Felhasználó törlése', `Törlöd: ${u.name}?`, 'Törlés')) return false; await api('admin.user.delete', { id: u.id }); render(); } });
     modal({ title: u ? 'Felhasználó szerkesztése' : 'Új felhasználó', body: form, actions });
   };
+  const approve = u => {
+    const pk = personPicker({ placeholder: 'Ki ő a fában? (nem kötelező)' });
+    const br = branchEditor([]);
+    const role = h('select', null, h('option', { value: 'member' }, 'Családtag – nézhet, javasolhat'), h('option', { value: 'head' }, 'Családfő – a megadott ágakat szerkesztheti'), h('option', { value: 'admin' }, 'Admin – mindent'));
+    modal({ title: 'Regisztráció jóváhagyása', body: h('div', null,
+      h('p', null, h('b', null, u.name), ' · ', u.email), u.intro ? h('blockquote', { class: 'intro' }, u.intro) : h('p', { class: 'hint' }, 'Nem írt bemutatkozást.'),
+      field('Hozzáférés', role), field('Ő a fában', pk.el),
+      field('Szerkeszthető ágak (nem kötelező)', br.el, 'Ha megadsz ágat, családfő lesz: azon az ágon új adatot azonnal felvehet, a módosításait te hagyod jóvá.')),
+      actions: [{ label: 'Mégse' }, { label: 'Jóváhagyás', cls: 'btn-primary', onClick: async () => {
+        const r = await api('admin.user.approve', { id: u.id, role: role.value, person_id: pk.get(), branch_ids: br.get() });
+        toast(`${u.name} jóváhagyva (${roleL[r.role]}).`); S.boot.pending = Math.max(0, S.boot.pending - 1); S.boot.pendingUsers = Math.max(0, (S.boot.pendingUsers || 1) - 1); render();
+      } }] });
+  };
+  const reject = async u => {
+    if (!await confirmBox('Regisztráció elutasítása', `Elutasítod és törlöd ${u.name} (${u.email}) regisztrációját?`, 'Elutasítás')) return;
+    try { await api('admin.user.delete', { id: u.id }); toast('Elutasítva.'); S.boot.pending = Math.max(0, S.boot.pending - 1); S.boot.pendingUsers = Math.max(0, (S.boot.pendingUsers || 1) - 1); render(); } catch (e) { fail(e); }
+  };
   return h('div', null,
-    h('div', { class: 'page-head' }, h('div', null, h('h1', null, 'Felhasználók'), h('p', null, 'Az új családtagnak add meg az e-mail címét és egy kezdő jelszót, amit ő a Fiókom oldalon lecserélhet.')),
+    h('div', { class: 'page-head' }, h('div', null, h('h1', null, 'Felhasználók'), h('p', null, S.settings.allow_register ? 'Bárki regisztrálhat; az új fiókok itt várnak a jóváhagyásodra. Családfő úgy lesz valakiből, hogy szerkeszthető ágat rendelsz hozzá.' : 'A regisztráció ki van kapcsolva (Beállítások → Hozzáférés); új családtagot itt vehetsz fel kezdő jelszóval.')),
       h('button', { class: 'btn btn-primary', onclick: () => edit(null) }, icon('plus'), 'Új felhasználó')),
-    h('table', { class: 'tbl' }, h('tr', null, ['Név', 'E-mail', 'Szerep', 'A fában', 'Utolsó belépés', ''].map(t => h('th', null, t))),
-      users.map(u => h('tr', null, h('td', null, u.name, +u.active ? null : h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'tiltva')), h('td', null, u.email), h('td', null, roleL[u.role] || u.role),
+    pending.length ? h('section', { class: 'section' }, h('h2', null, 'Jóváhagyásra vár (' + pending.length + ')'),
+      pending.map(u => h('div', { class: 'change' },
+        h('div', { class: 'hd' }, h('b', null, u.name), h('span', null, u.email), h('span', { class: 'hint' }, 'regisztrált: ' + (u.created || '').slice(0, 16))),
+        u.intro ? h('p', { style: 'margin:8px 0 0;white-space:pre-wrap' }, u.intro) : null,
+        h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn btn-danger', onclick: () => reject(u) }, 'Elutasítás'), h('button', { class: 'btn btn-primary', onclick: () => approve(u) }, icon('check'), 'Jóváhagyás…'))))) : null,
+    h('table', { class: 'tbl' }, h('tr', null, ['Név', 'E-mail', 'Szerep', 'Ő a fában', 'Ágak', 'Utolsó belépés', ''].map(t => h('th', null, t))),
+      others.map(u => h('tr', null, h('td', null, u.name, +u.active ? null : h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'tiltva')), h('td', null, u.email), h('td', null, roleL[u.role] || u.role),
         h('td', null, u.person_id && P(u.person_id) ? h('a', { href: '#/person/' + u.person_id }, personName(P(u.person_id))) : '—'),
+        h('td', null, u.branches?.length ? u.branches.map(id => personName(P(id), { short: true })).join(', ') : '—'),
         h('td', null, u.last_login?.slice(0, 16) || '—'), h('td', null, h('button', { class: 'btn btn-sm', onclick: () => edit(u) }, 'Szerkesztés'))))));
 }
 
@@ -139,6 +183,8 @@ async function importTab() {
   const file = h('input', { type: 'file', accept: '.ged,text/plain' });
   const zipIn = h('input', { type: 'file', accept: '.zip,application/zip' });
   const zipOut = h('div', { style: 'margin-top:10px' });
+  const minIn = h('input', { type: 'number', min: 1, max: 5000, value: S.settings.notes_story_min || 80, style: 'width:90px;display:inline-block' });
+  const forceIn = h('input', { type: 'checkbox' });
   const mode = h('select', null, h('option', { value: 'add' }, 'Hozzáadás – a már meglévő GEDCOM-azonosítókat kihagyja'), h('option', { value: 'replace' }, 'Csere – a teljes családfát lecseréli'));
   const run = async source => {
     if (mode.value === 'replace' && !await confirmBox('A családfa lecserélése', 'Minden személy, család és esemény törlődik, és a fájl tartalma kerül a helyükre. A fotók megmaradnak, de a jelölések elvesznek. Folytatod?', 'Csere')) return;
@@ -155,6 +201,28 @@ async function importTab() {
       h('div', { class: 'row' }, file, h('button', { class: 'btn', onclick: () => run('upload') }, 'Feltöltött fájl importálása')),
       h('p', { class: 'hint', style: 'margin-top:12px' }, 'Vagy a repo gyökerében lévő .ged fájl (pl. csurgay.ged):'),
       h('button', { class: 'btn', onclick: () => run('repo') }, 'Repo-beli GEDCOM importálása')),
+    h('section', { class: 'section panel' }, h('h2', null, 'Életrajzok átvétele sztorinak'),
+      h('p', null, 'A személyekhez írt hosszabb életrajzi jegyzetekből (GEDCOM NOTE) külön sztori lesz a személy nevével és életéveivel, hozzá kötve. Az életrajz a személy lapján is megmarad; ami már átkerült, azt nem hozza létre újra.'),
+      h('div', { class: 'row' }, h('label', null, 'Legalább ', minIn, ' karakteres jegyzetekből '), h('button', { class: 'btn btn-primary', onclick: async e => {
+        const b = e.currentTarget; b.disabled = true;
+        try { const r = await api('admin.notes2stories', { min: +minIn.value }); toast(`${r.created} új sztori, ${r.skipped} már megvolt, ${r.short} jegyzet rövidebb a határnál.`); } catch (er) { fail(er); }
+        b.disabled = false;
+      } }, 'Sztorik létrehozása'))),
+    h('section', { class: 'section panel' }, h('h2', null, 'Sztorik fordítása'),
+      h('p', null, S.boot.translator ? `Minden sztorit lefordít a bekapcsolt nyelvekre (${(S.boot.langs || []).map(l => l.name).join(', ')}) a DeepL-lel. A már lefordított és azóta nem változott szövegeket nem küldi el újra.` : 'A fordításhoz DeepL kulcs kell a config.php-be: \'deepl_key\' => \'…\'. Most nincs beállítva.'),
+      h('div', { class: 'row' }, h('label', { class: 'check', style: 'margin:0' }, forceIn, h('span', null, 'Mindent újrafordít')), h('button', { class: 'btn btn-primary', disabled: !S.boot.translator, onclick: async e => {
+        const b = e.currentTarget; b.disabled = true; let tot = 0;
+        try {
+          for (let i = 0; i < 50; i++) {
+            b.textContent = 'Fordítás… ' + (tot ? `(${tot} kész)` : '');
+            const r = await api('admin.translate', { force: forceIn.checked && i === 0 });
+            tot += r.translations;
+            if (!r.left) break;
+          }
+          toast(tot ? `${tot} fordítás elkészült.` : 'Minden sztori le van fordítva.');
+        } catch (er) { fail(er); }
+        b.disabled = false; b.textContent = 'Fordítás indítása';
+      } }, 'Fordítás indítása'))),
     h('section', { class: 'section panel' }, h('h2', null, 'Fotócsomag importálása'),
       h('p', null, 'ZIP fájl képekkel és manifest.json leírással (pl. a TribalPages-ről mentett fotók). A képek a GEDCOM-azonosító alapján a megfelelő személyhez kerülnek; ami már bent van, azt kihagyja, így többször is futtatható.'),
       h('div', { class: 'row' }, zipIn, h('button', { class: 'btn btn-primary', onclick: async e => {
@@ -209,6 +277,8 @@ async function systemTab() {
       h('dt', null, 'GD képkezelés'), h('dd', null, yes(s.gd)),
       h('dt', null, 'SQLite (a tesztekhez)'), h('dd', null, yes(s.sqlite)),
       h('dt', null, 'uploads írható'), h('dd', null, yes(s.uploads_writable)),
+      h('dt', null, 'DeepL kulcs (fordítás)'), h('dd', null, yes(s.deepl), s.deepl && !s.curl ? h('span', { class: 'hint' }, ' (cURL nincs, fopen-nel próbálja)') : null),
+      h('dt', null, 'E-mail küldés (mail)'), h('dd', null, yes(s.mail)),
       h('dt', null, 'Feltöltési korlát'), h('dd', null, `upload_max_filesize ${s.upload_max}, post_max_size ${s.post_max}`)),
     h('h2', { style: 'margin-top:26px' }, 'Rekordok'),
     h('table', { class: 'tbl', style: 'max-width:420px' }, Object.entries(s.counts).map(([k, v]) => h('tr', null, h('td', null, k), h('td', { style: 'text-align:right' }, v)))));

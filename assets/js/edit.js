@@ -252,6 +252,7 @@ function editPhoto(ph, after) {
 
 // ------------------------------------------------------------------ stories
 export function editStory(st = null, preset = {}) {
+  if (st && st.raw_body !== undefined) st = { ...st, title: st.raw_title, body: st.raw_body };
   let persons = st?.person_ids?.slice() || preset.person_ids || [];
   let families = st?.family_ids?.slice() || preset.family_ids || [];
   const tagsEl = h('div', { class: 'tags' });
@@ -263,7 +264,9 @@ export function editStory(st = null, preset = {}) {
   const form = h('form', { onsubmit: e => e.preventDefault() },
     modeNote(st ? st.modes?.update : null),
     field('Cím', h('input', { type: 'text', name: 'title', value: st?.title || '' })),
-    field('Mikor történt?', dateInput('date', st?.raw || ''), 'Nem kötelező. Pl. 1944, kb. 1920, 1956. 10.'),
+    h('div', { class: 'grid2' },
+      field('Mikor történt?', dateInput('date', st?.raw || ''), 'Nem kötelező. Pl. 1944, kb. 1920, 1956. 10.'),
+      (S.boot.langs || []).length > 1 ? field('A sztori nyelve', h('select', { name: 'lang' }, S.boot.langs.map(l => h('option', { value: l.code, selected: (st?.lang || 'hu') === l.code }, l.name))), 'A többi nyelvre automatikusan lefordítjuk.') : null),
     field('A történet', h('textarea', { name: 'body', class: 'tall', placeholder: 'Írd le a saját szavaiddal. Új bekezdéshez hagyj üres sort.' }, st?.body || ''),
       'Formázás: **félkövér**, *dőlt*, ## alcím, > idézet, [link szövege](#/person/12)'),
     field('Kikről szól?', h('div', null, pk.el, tagsEl)),

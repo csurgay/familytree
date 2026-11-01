@@ -1,4 +1,4 @@
-import { S, P, F, h, api, op, icon, personName, years, avatar, chip, personLink, parentsOf, siblingsOf, spouseIn, familyLabel,
+import { S, P, F, h, api, op, icon, LANG_NAMES, personName, years, avatar, chip, personLink, parentsOf, siblingsOf, spouseIn, familyLabel,
   loadTree, setTitle, md, fmtDate, toast, fail, opDone, personPicker, field, go, norm, huCmp, photoStyle, modal, formData, render, confirmBox } from './core.js';
 import { renderChart, exportChart, CHART_KINDS } from './charts.js';
 import { editPerson, addRelative, linkExisting, editFamily, editEvent, uploadPhotos, photoViewer, editStory, refresh } from './edit.js';
@@ -39,7 +39,7 @@ function timeline(events, { withSubject = true, editable = null } = {}) {
 // ======================================================================= HOME
 export async function viewHome() {
   setTitle('');
-  const [home] = await Promise.all([api('home'), loadTree()]);
+  const [home] = await Promise.all([api('home', null, { query: { lang: S.lang } }), loadTree()]);
   const s = S.settings, st = home.stats;
   const treePin = home.pins.find(p => p.kind === 'tree');
   const evPin = home.pins.find(p => p.kind === 'event');
@@ -301,26 +301,33 @@ export async function viewPeople(qs) {
 export async function viewStories() {
   setTitle('Történetek');
   await loadTree();
-  const list = await api('stories');
+  const list = await api('stories', null, { query: { lang: S.lang } });
   return h('div', null,
     h('div', { class: 'page-head' }, h('div', null, h('h1', null, 'Családi történetek'), h('p', null, 'Anekdoták, emlékek, levelek – amit a dátumok nem mesélnek el.')),
       S.user ? h('button', { class: 'btn btn-primary', onclick: () => editStory() }, icon('plus'), 'Új sztori') : null),
     list.length ? h('div', { class: 'story-list' }, list.map(s => h('a', { class: 'story-card', href: '#/story/' + s.id },
-      h('div', { class: 'cover' }, s.cover ? h('img', { src: s.cover.thumb, alt: '' }) : h('span', { class: 'q' }, '„')),
+      h('div', { class: 'cover' + (s.cover?.portrait ? ' portrait-cover' : '') }, s.cover ? h('img', { src: s.cover.thumb, alt: '' }) : h('span', { class: 'q' }, '„')),
       h('h3', null, s.title), h('div', { class: 'meta' }, [s.date, s.person_ids.slice(0, 3).map(id => personName(P(id), { short: true })).join(', ')].filter(Boolean).join(' · ')),
       h('p', null, s.excerpt))))
       : h('div', { class: 'empty' }, h('p', null, 'Még egy sztori sincs. Az első lehet egy nagymama-recept, egy háborús levél vagy egy nyaralás.'), S.user ? h('button', { class: 'btn btn-primary', onclick: () => editStory() }, 'Az első sztori megírása') : null));
 }
 export async function viewStory(id) {
   await loadTree();
-  const s = await api('story', null, { query: { id } });
+  const s = await api('story', null, { query: { id, lang: S.lang } });
   setTitle(s.title);
+  let showOrig = false;
+  const titleEl = h('h1', null, s.title);
   const body = h('div', { class: 'prose', html: md(s.body) });
+  const trNote = s.shown_lang ? h('p', { class: 'tr-note' }, `Gépi fordítás (DeepL) ${LANG_NAMES[s.lang] || s.lang} eredetiből. `,
+    h('button', { class: 'linkbtn', onclick: e => { showOrig = !showOrig; titleEl.textContent = showOrig ? s.orig_title : s.title; body.innerHTML = md(showOrig ? s.orig_body : s.body); e.target.textContent = showOrig ? 'Fordítás mutatása' : 'Eredeti mutatása'; } }, 'Eredeti mutatása'))
+    : (S.lang !== s.lang && (S.boot.langs || []).length > 1 ? h('p', { class: 'tr-note' }, `Ennek a sztorinak még nincs ${LANG_NAMES[S.lang] || S.lang} fordítása, ezért az eredeti (${LANG_NAMES[s.lang] || s.lang}) szöveg látszik.`) : null);
   return h('article', { class: 'story-page' },
     h('p', null, h('a', { href: '#/stories' }, '← Minden történet')),
-    h('h1', null, s.title),
-    h('div', { class: 'meta' }, [s.date, s.author ? 'Lejegyezte: ' + s.author : null].filter(Boolean).join(' · ')),
-    s.cover ? h('div', { class: 'cover-big' }, h('img', { src: s.cover.file, alt: '' })) : null,
+    titleEl,
+    h('div', { class: 'meta' }, [s.date, s.imported ? 'A családfa életrajzi jegyzetéből' : (s.author ? 'Lejegyezte: ' + s.author : null)].filter(Boolean).join(' · ')),
+    trNote,
+    s.cover && !s.cover.portrait ? h('div', { class: 'cover-big' }, h('img', { src: s.cover.file, alt: '' })) : null,
+    s.cover?.portrait ? h('img', { class: 'story-portrait', src: s.cover.file, alt: '' }) : null,
     body,
     s.photos.length ? h('section', { class: 'section', style: 'margin-top:30px' }, h('h2', null, 'Fotók'), photoGrid(s.photos)) : null,
     s.person_ids.length || s.family_ids.length ? h('section', { class: 'section' }, h('h2', null, 'Szereplők'), h('div', { class: 'plist' }, s.person_ids.map(x => chip(x)), s.family_ids.map(fid => h('a', { class: 'pchip', href: '#/family/' + fid }, familyLabel(F(fid)))))) : null,
@@ -344,7 +351,7 @@ export async function viewTree(id, qs) {
   const host = h('div', { class: 'chart-host' });
   const titleBar = h('div', { class: 'chart-title-bar' });
   const stage = h('div', { class: 'chart-stage' }, titleBar, host,
-    h('div', { class: 'chart-zoom' }, h('button', { 'aria-label': 'Nagyítás', onclick: () => ctrl?.zoom(.8) }, '+'), h('button', { 'aria-label': 'Kicsinyítés', onclick: () => ctrl?.zoom(1.25) }, '−'), h('button', { 'aria-label': 'Teljes nézet', title: 'Teljes nézet', onclick: () => ctrl?.fit(3) }, '⤢')));
+  );
   const rootPk = personPicker({ value: st.root, onPick: v => { if (v) { st.root = v; draw(); } } });
   const otherPk = personPicker({ value: st.other, placeholder: 'Másik személy…', onPick: v => { st.other = v; draw(); } });
   const types = h('div', { class: 'ctype' }, Object.entries(CHART_KINDS).map(([k, v]) => h('button', { type: 'button', class: st.kind === k ? 'on' : '', 'data-k': k, onclick: () => { st.kind = k; draw(); } }, icon(v.icon), v.label)));
@@ -371,7 +378,7 @@ export async function viewTree(id, qs) {
     S.user ? h('div', { class: 'row', style: 'margin-top:8px' },
       h('button', { class: 'btn btn-sm btn-primary', onclick: e => busy(e.currentTarget, async () => { const r = await exportChart(ctrl, { title: autoTitle(), save: true, kind: st.kind, person_id: st.root, config: st }); toast('Elmentve a diagramok közé.'); }) }, icon('save'), 'Mentés a diagramok közé'),
       isAdmin() && st.kind !== 'relation' ? h('button', { class: 'btn btn-sm', onclick: async () => { await api('pin', { kind: 'tree', ref_id: st.root, replace: true, caption: title.value, params: { kind: st.kind, up: Math.min(st.up, 4), down: Math.min(st.down, 4) } }); toast('Kitűzve a kezdőlapra.'); } }, icon('pin'), 'Kitűzés') : null) : null,
-    h('p', { class: 'hint', style: 'margin-top:14px' }, 'Kattintás egy dobozra: középre veszi. Dupla kattintás: megnyitja az adatlapot. Görgetés: nagyítás, húzás: mozgatás.'));
+    h('p', { class: 'hint', style: 'margin-top:14px' }, 'Kattintás egy dobozra: középre veszi. Dupla kattintás: megnyitja az adatlapot. Nagyítás: görgő, két ujjal csípés vagy a +/− gomb; mozgatás: húzás.'));
 
   const draw = () => {
     const k = CHART_KINDS[st.kind];
@@ -420,12 +427,39 @@ export function viewLogin(qs) {
     h('p', { class: 'muted' }, S.settings.public_access === 'login' ? 'A családfa csak a család tagjainak látható. Hozzáférést az admintól kérhetsz.' : 'Szerkesztéshez jelentkezz be.'),
     field('E-mail cím', h('input', { type: 'email', name: 'email', autocomplete: 'username', required: true })),
     field('Jelszó', h('input', { type: 'password', name: 'password', autocomplete: 'current-password', required: true })),
-    h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%;margin-top:6px' }, 'Belépés'));
+    h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%;margin-top:6px' }, 'Belépés'),
+    S.boot.allowRegister ? h('p', { style: 'margin:16px 0 0;text-align:center' }, 'Még nincs fiókod? ', h('a', { href: '#/register' }, 'Regisztrálj')) : null);
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const b = form.querySelector('button'); b.disabled = true;
     try { await api('login', formData(form)); location.hash = qs.get('next') || '#/'; location.reload(); }
     catch (er) { fail(er); b.disabled = false; }
+  });
+  return h('div', { class: 'auth-wrap' }, form);
+}
+export function viewRegister() {
+  setTitle('Regisztráció');
+  if (!S.boot.allowRegister) return h('div', { class: 'auth-wrap' }, h('div', { class: 'auth-card' }, h('h1', null, 'Regisztráció'), h('p', null, 'A regisztráció jelenleg nincs engedélyezve. Hozzáférést az admintól kérhetsz.')));
+  const form = h('form', { class: 'auth-card' },
+    h('h1', null, 'Regisztráció'),
+    h('p', { class: 'muted' }, 'Add meg az adataidat. Az admin jóváhagyása után tudsz belépni; ha a családfa egy ágát te gondozod, ő rendeli hozzád szerkesztésre.'),
+    field('A neved', h('input', { type: 'text', name: 'name', required: true, autocomplete: 'name' })),
+    field('E-mail cím', h('input', { type: 'email', name: 'email', required: true, autocomplete: 'email' })),
+    field('Jelszó', h('input', { type: 'password', name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), 'Legalább 8 karakter.'),
+    field('Jelszó még egyszer', h('input', { type: 'password', name: 'password2', required: true, minlength: 8, autocomplete: 'new-password' })),
+    field('Ki vagy a családban?', h('textarea', { name: 'intro', rows: 3, placeholder: 'Pl. Csurgay Péter fia, Bence (2006). Anyám Cholnoky Viktória.' }), 'Ebből tudja az admin, ki vagy a fában.'),
+    h('div', { class: 'hp', 'aria-hidden': 'true' }, h('label', null, 'Weboldal', h('input', { type: 'text', name: 'website', tabindex: -1, autocomplete: 'off' }))),
+    h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%' }, 'Regisztráció elküldése'),
+    h('p', { style: 'margin:16px 0 0;text-align:center' }, 'Van már fiókod? ', h('a', { href: '#/login' }, 'Belépés')));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const v = formData(form);
+    if (v.password !== v.password2) return toast('A két jelszó nem egyezik.', 'bad');
+    const b = form.querySelector('button[type=submit]'); b.disabled = true;
+    try {
+      await api('register', { ...v, lang: S.lang });
+      form.replaceChildren(h('h1', null, 'Köszönjük!'), h('p', null, 'A regisztrációdat megkaptuk. Amint az admin jóváhagyja, ezzel az e-mail címmel és jelszóval be tudsz lépni.'), h('a', { class: 'btn', href: '#/' }, 'Vissza a kezdőlapra'));
+    } catch (er) { fail(er); b.disabled = false; }
   });
   return h('div', { class: 'auth-wrap' }, form);
 }

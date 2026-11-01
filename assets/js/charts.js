@@ -457,35 +457,76 @@ export function renderChart(host, opts) {
     apply();
   };
   requestAnimationFrame(() => (o.focus || host.clientWidth < 640 ? focusRoot() : fit()));
-  if (o.wheel === false) host.style.touchAction = 'pan-y'; // let the page scroll over embedded charts on phones
+  // embedded charts: one finger scrolls the page, two fingers pinch-zoom the chart; full-screen explorer: all gestures go to the chart
+  host.style.touchAction = o.wheel === false ? 'pan-y' : 'none';
 
   const cleanups = [];
+  let touched = false; // once the user zoomed/panned, resizes no longer reset the view
   if (o.interactive) {
-    let drag = null, moved = false;
-    const down = e => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y }; moved = false; host.setPointerCapture(e.pointerId); };
-    const move = e => {
-      if (!drag) return;
-      const r = host.getBoundingClientRect(); const s = vb.w / r.width;
-      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) moved = true;
-      vb.x = drag.vx - (e.clientX - drag.x) * s; vb.y = drag.vy - (e.clientY - drag.y) * s; apply();
+    // pointers: 1 finger/mouse = pan, 2 fingers = pinch-zoom around their midpoint
+    const pts = new Map();
+    let drag = null, pinch = null, moved = false;
+    const startDrag = (x, y) => { drag = { x, y, vx: vb.x, vy: vb.y }; };
+    const down = e => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      if (e.target.closest('.chart-ctl')) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { host.setPointerCapture(e.pointerId); } catch (_) { }
+      if (pts.size === 1) { startDrag(e.clientX, e.clientY); moved = false; }
+      if (pts.size === 2) {
+        const [p1, p2] = [...pts.values()];
+        pinch = { d: Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1, w: vb.w };
+        drag = null; moved = true;
+      }
     };
-    const up = e => { drag = null; try { host.releasePointerCapture(e.pointerId); } catch (_) { } };
-    const wheel = e => { if (o.wheel === false && !e.ctrlKey) return; e.preventDefault(); zoom(Math.exp(e.deltaY * 0.0015), e.clientX, e.clientY); };
+    const move = e => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pts.size >= 2) {
+        e.preventDefault();
+        const [p1, p2] = [...pts.values()];
+        const d = Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1;
+        const target = pinch.w * pinch.d / d;
+        zoom(target / vb.w, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+        touched = true;
+        return;
+      }
+      if (!drag) return;
+      const r = host.getBoundingClientRect(); const sc = vb.w / r.width;
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) { moved = true; touched = true; }
+      vb.x = drag.vx - (e.clientX - drag.x) * sc; vb.y = drag.vy - (e.clientY - drag.y) * sc; apply();
+    };
+    const up = e => {
+      pts.delete(e.pointerId);
+      try { host.releasePointerCapture(e.pointerId); } catch (_) { }
+      if (pts.size < 2) pinch = null;
+      if (pts.size === 1) { const p = [...pts.values()][0]; startDrag(p.x, p.y); } else drag = null;
+    };
+    const wheel = e => { if (o.wheel === false && !e.ctrlKey && !e.metaKey) return; e.preventDefault(); touched = true; zoom(Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX, e.clientY); };
     const click = e => {
-      if (moved) return;
+      if (moved || e.target.closest('.chart-ctl')) return;
       const n = e.target.closest('.node'); if (!n) return;
       const id = +n.dataset.id;
       if (e.detail >= 2 || !o.onNode) { o.onOpen ? o.onOpen(id) : (location.hash = '#/person/' + id); return; }
       o.onNode(id);
     };
     const key = e => { const n = e.target.closest?.('.node'); if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); (o.onNode || (id => location.hash = '#/person/' + id))(+n.dataset.id); } };
-    host.addEventListener('pointerdown', down); host.addEventListener('pointermove', move); host.addEventListener('pointerup', up);
+    host.addEventListener('pointerdown', down); host.addEventListener('pointermove', move, { passive: false }); host.addEventListener('pointerup', up); host.addEventListener('pointercancel', up);
     host.addEventListener('wheel', wheel, { passive: false }); host.addEventListener('click', click); host.addEventListener('keydown', key);
-    cleanups.push(() => { host.removeEventListener('pointerdown', down); host.removeEventListener('pointermove', move); host.removeEventListener('pointerup', up); host.removeEventListener('wheel', wheel); host.removeEventListener('click', click); host.removeEventListener('keydown', key); });
+    cleanups.push(() => { host.removeEventListener('pointerdown', down); host.removeEventListener('pointermove', move); host.removeEventListener('pointerup', up); host.removeEventListener('pointercancel', up); host.removeEventListener('wheel', wheel); host.removeEventListener('click', click); host.removeEventListener('keydown', key); });
+    // on-screen zoom buttons (always available: touch screens, trackpads, embedded charts without wheel zoom)
+    if (o.controls !== false) {
+      const btn = (label, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = title; b.setAttribute('aria-label', title); b.addEventListener('click', ev => { ev.stopPropagation(); touched = true; fn(); }); return b; };
+      const ctl = document.createElement('div');
+      ctl.className = 'chart-ctl';
+      ctl.append(btn('+', 'Nagyítás', () => zoom(0.75)), btn('−', 'Kicsinyítés', () => zoom(1.33)), btn('⤢', 'Teljes nézet', () => fit(3)));
+      host.append(ctl);
+    }
   } else {
     host.addEventListener('click', e => { const n = e.target.closest('.node'); if (n) (o.onOpen || (id => location.hash = '#/person/' + id))(+n.dataset.id); });
   }
-  const ro = new ResizeObserver(() => fit()); if (!o.focus) ro.observe(host);
+  const ro = new ResizeObserver(() => { if (!touched) (o.focus || host.clientWidth < 640 ? focusRoot() : fit()); });
+  ro.observe(host);
   cleanups.push(() => ro.disconnect());
 
   return {

@@ -68,11 +68,16 @@ function ft_load_config(string $root): array
         foreach ($sources as $s) foreach ($passK as $k) if (array_key_exists($k, $s) && $s[$k] === '') { $found['pass'] = ''; break 2; }
     }
 
+    // translation key (top level of the returned array, a constant or a variable)
+    $deepl = null;
+    foreach (array_merge(is_array($ret) ? [$ret] : [], [$consts, $scalars]) as $s) { $deepl = $deepl ?? $pick($s, ['deepl_key', 'DEEPL_KEY', 'DEEPL_AUTH_KEY', 'deepl']); }
+    $extra = ['deepl' => $deepl];
+
     if (isset($vars['pdo']) && $vars['pdo'] instanceof PDO) {
-        return ['driver' => 'pdo', 'pdo' => $vars['pdo'], 'prefix' => $found['prefix'] ?? 'ft_', 'source' => $srcName . ' ($pdo)'];
+        return ['driver' => 'pdo', 'pdo' => $vars['pdo'], 'prefix' => $found['prefix'] ?? 'ft_', 'source' => $srcName . ' ($pdo)'] + $extra;
     }
     if ($found['driver'] && strtolower($found['driver']) === 'sqlite') {
-        return ['driver' => 'sqlite', 'path' => $found['name'] ?: $root . '/data/familytree.sqlite', 'prefix' => $found['prefix'] ?? 'ft_', 'source' => $srcName];
+        return ['driver' => 'sqlite', 'path' => $found['name'] ?: $root . '/data/familytree.sqlite', 'prefix' => $found['prefix'] ?? 'ft_', 'source' => $srcName] + $extra;
     }
     if (!$found['name'] || !$found['user']) {
         return ['driver' => 'error', 'source' => $srcName,
@@ -88,7 +93,7 @@ function ft_load_config(string $root): array
         'pass' => $found['pass'] ?? '',
         'prefix' => $found['prefix'] ?? 'ft_',
         'source' => $srcName,
-    ];
+    ] + $extra;
 }
 
 /** The starter GEDCOM: *.ged in the app folder, or one level up. */

@@ -392,6 +392,86 @@ function ft_server_tests(): array
             t_eq(count($db->warnings), 1);
             t_eq($db->migrate(ft_schema()), [], 'ismételt / párhuzamos futás nem hibázik');
         },
+        'Regisztráció: jóváhagyásig nem léphet be, utána ággal családfő lesz' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $H = ft_handlers(); $sess = $_SESSION ?? []; $_SESSION = [];
+            $H['register'](['name' => 'Új Rokon', 'email' => 'Uj@Rokon.hu', 'password' => 'titkos-123', 'intro' => 'Anna fia']);
+            $u = $db->row('SELECT * FROM {users} WHERE email = ?', ['uj@rokon.hu']);
+            t_eq([$u['status'], (int)$u['active'], $u['role']], ['pending', 0, 'member']);
+            try { $H['login'](['email' => 'uj@rokon.hu', 'password' => 'titkos-123']); throw new FtAssert('beléphetett jóváhagyás előtt'); }
+            catch (ApiError $e) { t_ok(str_contains($e->getMessage(), 'jóváhagyásra vár'), 'érthető üzenet: ' . $e->getMessage()); }
+            t_throws(fn() => $H['register'](['name' => 'X', 'email' => 'uj@rokon.hu', 'password' => 'titkos-123']), 'dupla e-mail');
+            t_eq($H['register'](['name' => 'Bot', 'email' => 'bot@x.hu', 'password' => 'titkos-123', 'website' => 'spam'])['ok'], true);
+            t_eq($db->val('SELECT id FROM {users} WHERE email = ?', ['bot@x.hu']), null, 'csapda mező: nem jön létre');
+            App::$s['allow_register'] = false;
+            t_throws(fn() => $H['register'](['name' => 'Y', 'email' => 'y@x.hu', 'password' => 'titkos-123']), 'kikapcsolt regisztráció');
+            App::$s['allow_register'] = true;
+            t_throws(fn() => $H['admin.user.approve'](['id' => (int)$u['id']]), 'nem-admin nem hagyhat jóvá');
+            t_as(t_user($db, 'admin'));
+            $r = $H['admin.user.approve'](['id' => (int)$u['id'], 'role' => 'member', 'person_id' => $ids['I5'], 'branch_ids' => [$ids['I3']]]);
+            t_eq($r['role'], 'head', 'ág megadásával családfő');
+            $u = $db->row('SELECT * FROM {users} WHERE id = ?', [(int)$u['id']]);
+            t_eq([$u['status'], (int)$u['active'], (int)$u['person_id']], ['active', 1, $ids['I5']]);
+            t_as($u);
+            t_eq(ft_mode('create', [$ids['I5']]), 'direct', 'saját ágán közvetlenül szerkeszt');
+            t_as(t_user($db, 'admin'));
+            $H['admin.user.branches'](['user_id' => (int)$u['id'], 'person_ids' => []]);
+            t_eq((int)$db->val('SELECT COUNT(*) FROM {branches} WHERE user_id = ?', [(int)$u['id']]), 0);
+            $_SESSION = $sess;
+        },
+        'Életrajzok → sztorik: névvel, évekkel, személyhez kötve, ismételhetően' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $db->update('persons', ['notes' => str_repeat('Hosszú életrajz. ', 10)], $ids['I3']);
+            $r = ft_notes_to_stories(80);
+            t_eq([$r['created'], $r['short']], [1, 1], 'a rövid jegyzet (I1) nem lesz sztori');
+            $st = $db->row("SELECT * FROM {stories} WHERE source = 'note:I3'");
+            t_eq($st['title'], 'Nagy Péter (sz. 1930)');
+            t_eq((int)$st['y'], 1930);
+            t_eq((int)$db->val('SELECT person_id FROM {story_links} WHERE story_id = ?', [(int)$st['id']]), $ids['I3']);
+            t_eq(ft_notes_to_stories(80)['created'], 0, 'második futás');
+            t_eq(ft_notes_to_stories(10)['created'], 1, 'alacsonyabb határral a rövidebb is');
+            t_eq($db->val("SELECT title FROM {stories} WHERE source = 'note:I1'"), 'Dr. Nagy János (1900–1970)');
+        },
+        'Fordítás: minden nyelvre, változatlan szöveget nem küld újra, nyelv szerint mutatja' => function () {
+            $db = t_fresh_db(); t_import($db); t_as(t_user($db, 'admin'));
+            $calls = [];
+            $GLOBALS['ft_translate_mock'] = function ($texts, $target, $src) use (&$calls) { $calls[] = "$src>$target"; return ['texts' => array_map(fn($t) => "[$target] $t", $texts), 'detected' => $src]; };
+            try {
+                $r = ft_run_op('story.create', ['title' => 'Nagyapa', 'body' => 'Egyszer volt.', 'lang' => 'hu']);
+                t_eq(ft_story_after_save($r['id']), null);
+                t_eq($calls, ['hu>en', 'hu>de']);
+                ft_story_translate($r['id']);
+                t_eq(count($calls), 2, 'változatlan szöveg: nincs új DeepL-hívás');
+                ft_run_op('story.update', ['id' => $r['id'], 'body' => 'Egyszer volt, hol nem volt.']);
+                ft_story_after_save($r['id']);
+                t_eq(count($calls), 4, 'módosítás után újrafordít');
+                $H = ft_handlers();
+                $de = $H['story'](['id' => $r['id'], 'lang' => 'de']);
+                t_eq([$de['title'], $de['orig_title'], $de['shown_lang']], ['[de] Nagyapa', 'Nagyapa', 'de']);
+                t_eq($de['raw_body'], 'Egyszer volt, hol nem volt.', 'szerkesztéshez az eredeti');
+                t_eq($H['story'](['id' => $r['id'], 'lang' => 'hu'])['title'], 'Nagyapa');
+                App::$s['languages'] = ['hu', 'en'];
+                $r2 = ft_run_op('story.create', ['title' => 'Grandpa', 'body' => 'Once.', 'lang' => 'en']);
+                ft_story_after_save($r2['id']);
+                t_eq(array_slice($calls, -1), ['en>hu'], 'csak a bekapcsolt nyelvekre');
+                ft_run_op('story.delete', ['id' => $r['id']]);
+                t_eq((int)$db->val('SELECT COUNT(*) FROM {story_tr} WHERE story_id = ?', [$r['id']]), 0);
+                $GLOBALS['ft_translate_mock'] = function () { throw ft_err('DeepL fordítás sikertelen: elfogyott a havi DeepL keret', 502); };
+                $w = ft_story_after_save($r2['id'] + 0) ?? '';
+                // unchanged text → nothing to translate → no error; a changed one reports a warning but the save stands
+                ft_run_op('story.update', ['id' => $r2['id'], 'body' => 'Once upon a time.']);
+                t_ok(str_contains((string)ft_story_after_save($r2['id']), 'keret'), 'hiba esetén figyelmeztetés');
+                t_eq($db->val('SELECT body FROM {stories} WHERE id = ?', [$r2['id']]), 'Once upon a time.', 'a mentés megmaradt');
+            } finally { unset($GLOBALS['ft_translate_mock']); }
+        },
+        'Config: DeepL kulcs kiolvasása a config.php-ből' => function () {
+            $dir = sys_get_temp_dir() . '/ftcfgd' . bin2hex(random_bytes(4)); @mkdir($dir);
+            file_put_contents("$dir/config.php", "<?php\nreturn ['db'=>['host'=>'h','name'=>'n','user'=>'u','pass'=>'p'],'deepl_key'=>'abc:fx'];");
+            t_eq(ft_load_config($dir)['deepl'], 'abc:fx');
+            file_put_contents("$dir/config.php", "<?php\ndefine('DB_NAME_X','');\n\$dbname='n';\$username='u';\$password='p';");
+            t_eq(ft_load_config($dir)['deepl'], null);
+            @unlink("$dir/config.php"); @rmdir($dir);
+        },
         'Bejelentkezés: hibás jelszó után zárolás' => function () {
             $db = t_fresh_db();
             $db->insert('users', ['email' => 'a@b.hu', 'name' => 'A', 'pass_hash' => password_hash('jo-jelszo-1', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 0, 'created' => ft_now()]);

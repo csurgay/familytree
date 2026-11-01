@@ -1,5 +1,8 @@
 // Core: API client, shared state, DOM helpers, formatting, router, dialogs.
-export const S = { boot: null, user: null, settings: {}, tree: null, csrf: '' };
+export const S = { boot: null, user: null, settings: {}, tree: null, csrf: '', lang: 'hu' };
+try { S.lang = localStorage.getItem('ft_lang') || 'hu'; } catch (e) { /* storage blocked */ }
+export function setLang(l) { S.lang = l; try { localStorage.setItem('ft_lang', l); } catch (e) { } }
+export const LANG_NAMES = { hu: 'magyar', en: 'angol', de: 'német' };
 
 // ------------------------------------------------------------------ API
 export async function api(action, data = null, opts = {}) {
@@ -271,6 +274,7 @@ export function fail(e) { console.error(e); toast(e.message || String(e), 'bad')
 /** Feedback after an op: applied directly or waiting for approval. */
 export function opDone(res, okMsg) {
   if (res?.queued) { toast('Elküldve jóváhagyásra — az admin elfogadása után jelenik meg.', 'pend'); return false; }
+  if (res?.warning) { toast(res.warning, 'pend'); return true; }
   toast(okMsg || 'Mentve.');
   return true;
 }

@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 4;
+const FT_SCHEMA_VERSION = 5;
 
 function ft_schema(): array
 {
@@ -9,7 +9,8 @@ function ft_schema(): array
         'users' => ['cols' => [
             'id' => 'id', 'email' => 'str190', 'name' => 'str120', 'pass_hash' => 'str255', 'role' => 'str16',
             'person_id' => 'int', 'active' => 'bool', 'failed' => 'int', 'locked_until' => 'datetime',
-            'created' => 'datetime', 'last_login' => 'datetime'],
+            'created' => 'datetime', 'last_login' => 'datetime',
+            'status' => 'str16', 'intro' => 'text', 'lang' => 'str5'],
             'idx' => ['u_email' => ['email']]],
         'persons' => ['cols' => [
             'id' => 'id', 'xref' => 'str20', 'given' => 'str120', 'surname' => 'str120', 'title' => 'str40',
@@ -37,7 +38,10 @@ function ft_schema(): array
             'idx' => ['ph' => ['photo_id'], 'p' => ['person_id'], 'f' => ['family_id'], 's' => ['story_id']]],
         'stories' => ['cols' => [
             'id' => 'id', 'title' => 'str255', 'body' => 'text', 'date_raw' => 'str80', 'y' => 'int',
-            'cover_photo_id' => 'int', 'status' => 'str16'] + $stamp],
+            'cover_photo_id' => 'int', 'status' => 'str16', 'source' => 'str60', 'lang' => 'str5'] + $stamp,
+            'idx' => ['src' => ['source']]],
+        'story_tr' => ['cols' => ['id' => 'id', 'story_id' => 'int', 'lang' => 'str5', 'title' => 'str255', 'body' => 'text',
+            'src_hash' => 'str40', 'created' => 'datetime'], 'idx' => ['sl' => ['story_id', 'lang']]],
         'story_links' => ['cols' => ['id' => 'id', 'story_id' => 'int', 'person_id' => 'int', 'family_id' => 'int'],
             'idx' => ['s' => ['story_id'], 'p' => ['person_id']]],
         'sources' => ['cols' => ['id' => 'id', 'xref' => 'str20', 'title' => 'str255', 'author' => 'str255',

@@ -1,6 +1,21 @@
 <?php
 /** Read-side helpers and all API handlers. */
 
+/** Best-effort e-mail (hosting mail()); never throws. */
+function ft_mail(string $to, string $subject, string $body): bool
+{
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL) || !function_exists('mail')) return false;
+    $host = preg_replace('/[^a-z0-9.\-]/i', '', $_SERVER['HTTP_HOST'] ?? 'localhost');
+    $headers = "From: " . (App::$s['site_title'] ?? 'Családfa') . " <noreply@$host>\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit";
+    $subject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    return @mail($to, $subject, $body, $headers);
+}
+function ft_base_url(): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/\\');
+}
+
 function ft_light_person(array $g, array $p, array $photoMap): array
 {
     $id = $p['id'];
@@ -86,11 +101,17 @@ function ft_story_json(array $s, bool $full = false): array
     $o = ['id' => (int)$s['id'], 'title' => $s['title'], 'raw' => $s['date_raw'], 'date' => ft_format_date($s['date_raw']), 'y' => ft_int($s['y']),
         'excerpt' => mb_substr(trim(preg_replace('/\s+/u', ' ', preg_replace('/[#*_>\[\]]/u', '', $body))), 0, 260),
         'created' => $s['created'], 'updated' => $s['updated'], 'author_id' => ft_int($s['created_by']),
+        'imported' => str_starts_with((string)($s['source'] ?? ''), 'note:'),
         'author' => $s['created_by'] ? App::$db->val('SELECT name FROM {users} WHERE id = ?', [(int)$s['created_by']]) : null];
     $o['cover'] = null;
     if ($s['cover_photo_id'] && ($ph = App::$db->row("SELECT thumb, file FROM {photos} WHERE id = ? AND status = 'ok'", [(int)$s['cover_photo_id']]))) $o['cover'] = $ph;
     $links = App::$db->all('SELECT person_id, family_id FROM {story_links} WHERE story_id = ?', [(int)$s['id']]);
     $o['person_ids'] = array_values(array_filter(array_map('intval', array_column($links, 'person_id'))));
+    if (!$o['cover'] && $o['person_ids']) {
+        // no cover photo: use the portrait of the first person the story is about
+        $ph = App::$db->row("SELECT p.thumb, p.file FROM {persons} x JOIN {photos} p ON p.id = x.photo_id WHERE x.id = ? AND p.status = 'ok'", [$o['person_ids'][0]]);
+        if ($ph && !(ft_mask_living() && ft_is_living(ft_graph(), $o['person_ids'][0]))) $o['cover'] = $ph + ['portrait' => true];
+    }
     $o['family_ids'] = array_values(array_filter(array_map('intval', array_column($links, 'family_id'))));
     if ($full) $o['body'] = $body;
     return $o;
@@ -145,10 +166,14 @@ function ft_handlers(): array
                 'user' => $u ? ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'person_id' => ft_int($u['person_id'])] : null,
                 'settings' => array_filter(App::$s, fn($k) => $k[0] !== '_', ARRAY_FILTER_USE_KEY),
                 'canRead' => ft_can_read(), 'eventTypes' => FT_EVENT_TYPES, 'driver' => $db->driver,
+                'langs' => array_map(fn($l) => ['code' => $l, 'name' => FT_LANGS[$l]], ft_langs()), 'allowRegister' => (bool)App::$s['allow_register'],
                 'repoGedcom' => $installed ? null : (($gf = ft_find_ged(App::$root)) ? basename($gf) : null)];
             if (App::isAdmin()) {
                 $out['settingsDef'] = ft_settings_def();
-                $out['pending'] = (int)$db->val("SELECT COUNT(*) FROM {changes} WHERE status = 'pending'");
+                $out['pendingUsers'] = (int)$db->val("SELECT COUNT(*) FROM {users} WHERE status = 'pending'");
+                $out['pending'] = (int)$db->val("SELECT COUNT(*) FROM {changes} WHERE status = 'pending'") + $out['pendingUsers'];
+                $out['pendingChanges'] = $out['pending'] - $out['pendingUsers'];
+                $out['translator'] = ft_translator_ready();
             }
             if (App::loggedIn()) {
                 $out['branchRoots'] = array_map('intval', $db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [App::uid()]));
@@ -178,6 +203,7 @@ function ft_handlers(): array
                     App::flush();
                     $hp = ft_pick_home_person(ft_graph());
                     if ($hp) ft_setting_set($db, 'home_person', $hp);
+                    if (App::$s['notes_to_stories']) $stats['stories'] = ft_notes_to_stories((int)App::$s['notes_story_min'])['created'];
                 }
             }
             if (!empty($in['title'])) ft_setting_set($db, 'site_title', ft_str($in['title']));
@@ -190,6 +216,9 @@ function ft_handlers(): array
             $email = mb_strtolower(trim((string)($in['email'] ?? '')));
             $u = $db->row('SELECT * FROM {users} WHERE email = ?', [$email]);
             if ($u && $u['locked_until'] && $u['locked_until'] > ft_now()) throw ft_err('Túl sok sikertelen próbálkozás. Próbáld újra ' . substr($u['locked_until'], 11, 5) . ' után.', 429);
+            if ($u && !$u['active'] && password_verify((string)($in['password'] ?? ''), $u['pass_hash'])) {
+                throw ft_err(($u['status'] ?? '') === 'pending' ? 'A regisztrációd jóváhagyásra vár. Amint az admin elfogadja, be tudsz lépni.' : 'Ez a fiók le van tiltva. Keresd az admint.', 403);
+            }
             if (!$u || !$u['active'] || !password_verify((string)($in['password'] ?? ''), $u['pass_hash'])) {
                 if ($u) {
                     $f = (int)$u['failed'] + 1;
@@ -204,6 +233,32 @@ function ft_handlers(): array
             session_regenerate_id(true);
             $_SESSION['uid'] = (int)$u['id'];
             App::$user = $u;
+            return ['ok' => true];
+        },
+        'register' => function ($in) {
+            $db = App::$db;
+            if (!App::$s['allow_register']) throw ft_err('A regisztráció jelenleg nincs engedélyezve.', 403);
+            if (!empty($in['website'])) return ['ok' => true]; // honeypot: bots fill every field
+            $now = time();
+            $_SESSION['reg'] = array_values(array_filter($_SESSION['reg'] ?? [], fn($t) => $t > $now - 3600));
+            if (count($_SESSION['reg']) >= 3) throw ft_err('Túl sok regisztrációs próbálkozás. Próbáld újra egy óra múlva.', 429);
+            $email = mb_strtolower(trim((string)($in['email'] ?? '')));
+            $name = ft_str($in['name'] ?? '', 120);
+            $pass = (string)($in['password'] ?? '');
+            if (!$name) throw ft_err('Add meg a neved.');
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw ft_err('Érvényes e-mail címet adj meg.');
+            if (mb_strlen($pass) < 8) throw ft_err('A jelszó legalább 8 karakter legyen.');
+            if ($db->val('SELECT id FROM {users} WHERE email = ?', [$email])) throw ft_err('Ezzel az e-mail címmel már regisztráltak. Ha elfelejtetted a jelszavad, szólj az adminnak.');
+            $intro = ft_str($in['intro'] ?? '', 2000);
+            $id = $db->insert('users', ['email' => $email, 'name' => $name, 'pass_hash' => password_hash($pass, PASSWORD_DEFAULT), 'role' => 'member',
+                'active' => 0, 'status' => 'pending', 'intro' => $intro, 'lang' => ft_lang($in['lang'] ?? 'hu'), 'failed' => 0, 'created' => ft_now()]);
+            $_SESSION['reg'][] = $now;
+            App::audit('register', 'user', $id, "$name <$email>");
+            if (App::$s['register_notify']) {
+                foreach ($db->col("SELECT email FROM {users} WHERE role = 'admin' AND active = 1") as $to) {
+                    ft_mail($to, 'Új regisztráció: ' . $name, "$name ($email) regisztrált a családfa oldalra.\n\nBemutatkozás:\n" . ($intro ?: '—') . "\n\nJóváhagyás: " . ft_base_url() . '/#/admin/users');
+                }
+            }
             return ['ok' => true];
         },
         'logout' => function () { $_SESSION = []; session_regenerate_id(true); $_SESSION['csrf'] = bin2hex(random_bytes(16)); App::$user = null; return ['ok' => true]; },
@@ -334,7 +389,7 @@ function ft_handlers(): array
                 } elseif ($p['kind'] === 'story') {
                     $st = $db->row('SELECT * FROM {stories} WHERE id = ?', [(int)$p['ref_id']]);
                     if (!$st) continue;
-                    $o['story'] = ft_story_json($st);
+                    $o['story'] = ft_story_localize(ft_story_json($st), $st, ft_lang($_GET['lang'] ?? 'hu'));
                 } elseif ($p['kind'] === 'photo') {
                     $ph = $db->row("SELECT * FROM {photos} WHERE id = ? AND status = 'ok'", [(int)$p['ref_id']]);
                     if (!$ph) continue;
@@ -345,7 +400,8 @@ function ft_handlers(): array
                 }
                 $pins[] = $o;
             }
-            $stories = array_map(fn($x) => ft_story_json($x), $db->all('SELECT * FROM {stories} ORDER BY created DESC LIMIT ' . max(0, (int)$s['home_stories'])));
+            $lang = ft_lang($_GET['lang'] ?? 'hu');
+            $stories = array_map(fn($x) => ft_story_localize(ft_story_json($x), $x, $lang), $db->all('SELECT * FROM {stories} ORDER BY created DESC LIMIT ' . max(0, (int)$s['home_stories'])));
             $minY = $db->val('SELECT MIN(y) FROM {events} WHERE y IS NOT NULL AND y > 1000');
             $stats = ['persons' => count($g['P']), 'families' => count($g['F']), 'photos' => (int)$db->val("SELECT COUNT(*) FROM {photos} WHERE status = 'ok'"),
                 'stories' => (int)$db->val('SELECT COUNT(*) FROM {stories}'), 'since' => $minY ? (int)$minY : null,
@@ -388,12 +444,14 @@ function ft_handlers(): array
         },
 
         'stories' => function ($in) {
+            $lang = ft_lang($in['lang'] ?? 'hu');
             $rows = App::$db->all('SELECT * FROM {stories} ORDER BY y IS NULL, y DESC, created DESC');
-            return array_map(fn($s) => ft_story_json($s), $rows);
+            return array_map(fn($s) => ft_story_localize(ft_story_json($s), $s, $lang), $rows);
         },
         'story' => function ($in) {
             $s = ft_story_row((int)($in['id'] ?? 0));
-            $o = ft_story_json($s, true);
+            $o = ft_story_localize(ft_story_json($s, true), $s, ft_lang($in['lang'] ?? 'hu'));
+            $o['raw_body'] = $s['body']; $o['raw_title'] = $s['title'];
             $g = ft_graph();
             $o['photos'] = [];
             foreach (App::$db->all('SELECT p.* FROM {photos} p JOIN {photo_links} l ON l.photo_id = p.id WHERE l.story_id = ?', [(int)$s['id']]) as $ph) { $j = ft_photo_json($ph); if (ft_photo_visible($j, $g)) $o['photos'][] = $j; }
@@ -406,7 +464,13 @@ function ft_handlers(): array
 
         'op' => function ($in) {
             ft_require_login();
-            return ft_run_op((string)($in['name'] ?? ''), (array)($in['payload'] ?? []));
+            $name = (string)($in['name'] ?? '');
+            $r = ft_run_op($name, (array)($in['payload'] ?? []));
+            if (empty($r['queued']) && in_array($name, ['story.create', 'story.update'], true) && !empty($r['id'])) {
+                $w = ft_story_after_save((int)$r['id']);
+                if ($w) $r['warning'] = 'A sztori elmentve, de a fordítás nem sikerült: ' . $w;
+            }
+            return $r;
         },
 
         'pin' => function ($in) {
@@ -509,7 +573,9 @@ function ft_handlers(): array
         },
         'admin.users' => function () {
             ft_require_admin();
-            return App::$db->all('SELECT id, email, name, role, person_id, active, created, last_login FROM {users} ORDER BY name');
+            $rows = App::$db->all('SELECT id, email, name, role, person_id, active, status, intro, created, last_login FROM {users} ORDER BY name');
+            foreach ($rows as &$r) $r['branches'] = array_map('intval', App::$db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [(int)$r['id']]));
+            return $rows;
         },
         'admin.user.save' => function ($in) {
             ft_require_admin();
@@ -521,6 +587,7 @@ function ft_handlers(): array
             if ($dupe) throw ft_err('Ezzel az e-mail címmel már van felhasználó.');
             $role = in_array($in['role'] ?? '', ['admin', 'head', 'member'], true) ? $in['role'] : 'member';
             $d = ['email' => $email, 'name' => ft_str($in['name'] ?? '', 120) ?: $email, 'role' => $role, 'person_id' => ft_int($in['person_id'] ?? null), 'active' => !empty($in['active']) ? 1 : 0];
+            $d['status'] = $d['active'] ? 'active' : 'disabled';
             $pw = (string)($in['password'] ?? '');
             if ($pw !== '') { if (mb_strlen($pw) < 8) throw ft_err('A jelszó legalább 8 karakter legyen.'); $d['pass_hash'] = password_hash($pw, PASSWORD_DEFAULT); $d['failed'] = 0; $d['locked_until'] = null; }
             if ($id) {
@@ -532,6 +599,37 @@ function ft_handlers(): array
             }
             App::audit('user.save', 'user', $id, $email . ' (' . $role . ')');
             return ['id' => $id];
+        },
+        'admin.user.approve' => function ($in) {
+            ft_require_admin();
+            $db = App::$db;
+            $id = (int)($in['id'] ?? 0);
+            $u = $db->row('SELECT * FROM {users} WHERE id = ?', [$id]);
+            if (!$u) throw ft_err('Nincs ilyen felhasználó.', 404);
+            $roots = array_values(array_unique(array_filter(array_map('intval', (array)($in['branch_ids'] ?? [])))));
+            foreach ($roots as $r) ft_person_row($r);
+            $role = in_array($in['role'] ?? '', ['admin', 'head', 'member'], true) ? $in['role'] : 'member';
+            if ($roots && $role === 'member') $role = 'head';
+            $db->update('users', ['active' => 1, 'status' => 'active', 'role' => $role, 'person_id' => ft_int($in['person_id'] ?? null)], $id);
+            foreach ($roots as $r) if (!$db->val('SELECT id FROM {branches} WHERE user_id = ? AND person_id = ?', [$id, $r])) $db->insert('branches', ['user_id' => $id, 'person_id' => $r, 'created' => ft_now()]);
+            App::audit('user.approve', 'user', $id, $u['email'] . ' → ' . $role);
+            ft_mail($u['email'], 'Jóváhagyták a regisztrációdat', 'Szia ' . $u['name'] . "!\n\nAz admin jóváhagyta a hozzáférésedet, mostantól be tudsz lépni:\n" . ft_base_url() . "/#/login\n");
+            return ['ok' => true, 'role' => $role];
+        },
+        'admin.user.branches' => function ($in) {
+            ft_require_admin();
+            $db = App::$db;
+            $uid = (int)($in['user_id'] ?? 0);
+            $u = $db->row('SELECT * FROM {users} WHERE id = ?', [$uid]);
+            if (!$u) throw ft_err('Nincs ilyen felhasználó.', 404);
+            $want = array_values(array_unique(array_filter(array_map('intval', (array)($in['person_ids'] ?? [])))));
+            foreach ($want as $p) ft_person_row($p);
+            $have = array_map('intval', $db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [$uid]));
+            foreach (array_diff($have, $want) as $p) $db->q('DELETE FROM {branches} WHERE user_id = ? AND person_id = ?', [$uid, $p]);
+            foreach (array_diff($want, $have) as $p) $db->insert('branches', ['user_id' => $uid, 'person_id' => $p, 'created' => ft_now()]);
+            if ($want && $u['role'] === 'member') $db->update('users', ['role' => 'head'], $uid);
+            App::audit('user.branches', 'user', $uid, count($want) . ' ág');
+            return ['ok' => true];
         },
         'admin.user.delete' => function ($in) {
             ft_require_admin();
@@ -576,8 +674,25 @@ function ft_handlers(): array
             $stats = ft_gedcom_import(App::$db, $recs, $mode, App::uid());
             App::flush();
             if ($mode === 'replace' || !(int)App::$s['home_person']) { $hp = ft_pick_home_person(ft_graph()); if ($hp) ft_setting_set(App::$db, 'home_person', $hp); }
+            if (App::$s['notes_to_stories']) $stats['stories'] = ft_notes_to_stories((int)App::$s['notes_story_min'])['created'];
             App::audit('gedcom.import', 'app', null, $stats);
             return $stats;
+        },
+        'admin.notes2stories' => function ($in) {
+            ft_require_admin();
+            return ft_notes_to_stories(max(1, (int)($in['min'] ?? App::$s['notes_story_min'])));
+        },
+        'admin.translate' => function ($in) {
+            ft_require_admin();
+            if (!ft_translator_ready()) throw ft_err('A fordításhoz DeepL kulcs kell a config.php-ben (deepl_key), és a szervernek el kell érnie az internetet.');
+            @set_time_limit(120);
+            $t0 = microtime(true); $done = 0; $calls = 0; $left = 0;
+            foreach (App::$db->col('SELECT id FROM {stories} ORDER BY id') as $sid) {
+                if (microtime(true) - $t0 > 20) { $left++; continue; } // keep each request short; the page calls again
+                $r = ft_story_translate((int)$sid, !empty($in['force']));
+                $calls += count($r); if ($r) $done++;
+            }
+            return ['stories' => $done, 'translations' => $calls, 'left' => $left];
         },
         'admin.photoimport' => function () {
             ft_require_admin();
@@ -591,7 +706,8 @@ function ft_handlers(): array
             foreach (array_keys(ft_schema()) as $t) $o[$t] = (int)App::$db->val("SELECT COUNT(*) FROM {{$t}}");
             return ['counts' => $o, 'driver' => App::$db->driver, 'php' => PHP_VERSION, 'gd' => function_exists('imagecreatefromstring'),
                 'sqlite' => extension_loaded('pdo_sqlite'), 'upload_max' => ini_get('upload_max_filesize'), 'post_max' => ini_get('post_max_size'),
-                'uploads_writable' => is_writable(App::$root . '/uploads'), 'config' => App::$cfg['source'], 'prefix' => App::$db->p];
+                'uploads_writable' => is_writable(App::$root . '/uploads'), 'config' => App::$cfg['source'], 'prefix' => App::$db->p,
+                'deepl' => (bool)ft_deepl_key(), 'curl' => function_exists('curl_init'), 'zip' => true, 'mail' => function_exists('mail')];
         },
         'admin.tests' => function ($in) {
             ft_require_admin();

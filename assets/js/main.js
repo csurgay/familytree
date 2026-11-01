@@ -1,5 +1,5 @@
-import { S, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail } from './core.js';
-import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents } from './views.js';
+import { S, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail, setLang } from './core.js';
+import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents, viewRegister } from './views.js';
 import { viewQuiz } from './quiz.js';
 import { viewAdmin } from './admin.js';
 
@@ -8,6 +8,7 @@ async function boot() {
   try { b = await api('boot'); }
   catch (e) { $('#main').replaceChildren(h('div', { class: 'empty' }, h('h2', null, 'A szerver nem érhető el'), h('p', null, e.message))); return; }
   S.boot = b; S.user = b.user; S.settings = b.settings; S.csrf = b.csrf;
+  if (!(b.langs || []).some(l => l.code === S.lang)) S.lang = 'hu';
   if (S.settings.theme !== 'auto') document.documentElement.dataset.theme = S.settings.theme;
   drawUserbox();
   setupSearch();
@@ -27,6 +28,7 @@ async function boot() {
   route('/charts', gate(viewCharts), { nav: 'charts' });
   route('/quiz', gate(viewQuiz), { nav: 'quiz' });
   route('/login', qs => viewLogin(qs));
+  route('/register', () => viewRegister());
   route('/account', () => viewAccount());
   route('/admin', qs => viewAdmin('settings', qs));
   route('/admin/:tab', viewAdmin);
@@ -34,11 +36,18 @@ async function boot() {
   render();
 }
 
+function langSelect() {
+  const langs = S.boot.langs || [];
+  if (langs.length < 2) return null;
+  const sel = h('select', { class: 'langsel', 'aria-label': 'A sztorik nyelve', title: 'A sztorik nyelve' }, langs.map(l => h('option', { value: l.code, selected: l.code === S.lang }, l.code.toUpperCase())));
+  sel.addEventListener('change', () => { setLang(sel.value); render(); });
+  return sel;
+}
 function drawUserbox() {
   const box = $('#userbox');
-  if (!S.user) { box.replaceChildren(h('a', { class: 'btn btn-sm btn-ghost', href: '#/login' }, 'Belépés')); return; }
+  if (!S.user) { box.replaceChildren(langSelect(), h('a', { class: 'btn btn-sm btn-ghost', href: '#/login' }, 'Belépés')); return; }
   const gear = S.user.role === 'admin' ? h('a', { class: 'gear', href: '#/admin', title: 'Admin beállítások', 'aria-label': 'Admin beállítások' }, icon('gear'), S.boot.pending ? h('span', { class: 'dot' }, S.boot.pending) : null) : null;
-  box.replaceChildren(gear, h('a', { class: 'gear', href: '#/account', title: S.user.name + ' – fiókom', 'aria-label': 'Fiókom' }, icon('user'), S.boot.myPending ? h('span', { class: 'dot' }, S.boot.myPending) : null));
+  box.replaceChildren(langSelect(), gear, h('a', { class: 'gear', href: '#/account', title: S.user.name + ' – fiókom', 'aria-label': 'Fiókom' }, icon('user'), S.boot.myPending ? h('span', { class: 'dot' }, S.boot.myPending) : null));
 }
 
 function setupSearch() {

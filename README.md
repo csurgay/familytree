@@ -20,13 +20,27 @@ arcképcsarnokkal és „Ki kicsoda?” kvízzel. Build-lépés nincs: a mappa e
 Követelmény: PHP 7.4+, PDO MySQL, GD (fotókhoz), mbstring. A `pdo_sqlite` csak az autotesztekhez kell.
 Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`) – ez fejlesztéshez jó.
 
+## Regisztráció, nyelvek
+
+- **Regisztráció:** bárki regisztrálhat saját jelszóval (Belépés → Regisztrálj), és megírhatja, ki ő a családban.
+  A fiók az admin jóváhagyásáig nem aktív; a fogaskeréken szám jelzi a várakozókat (és ha a tárhely tud levelet
+  küldeni, e-mail is megy). Jóváhagyáskor az admin megadhatja, ki ő a fában, és szerkeszthető ágat rendelhet
+  hozzá – ezzel lesz valaki **családfő**. Később a Felhasználók lapon bármikor módosítható.
+- **Fordítás:** a sztorik a bekapcsolt nyelvekre (alapból magyar, angol, német) DeepL-lel fordulnak mentéskor.
+  A kulcs a `config.php`-ben van: `'deepl_key' => '…'` (a `:fx` végű ingyenes kulcs is működik); az
+  adatbázisba és a böngészőbe nem kerül. A fejlécben választható a nyelv; a fordított sztori alatt
+  egy kattintással látszik az eredeti. A már lefordított, változatlan szöveget nem küldi el újra.
+  A felület szövegei egyelőre magyarok.
+- **Életrajzok sztoriként:** a GEDCOM-ban a személyekhez írt hosszabb jegyzetekből (alapból 80 karakter
+  felett) sztori lesz a személy nevével és életéveivel; a személy lapján is megmaradnak.
+
 ## Szerepek és elosztott szerkesztés
 
 | Szerep | Mit tehet |
 |---|---|
 | **Admin** | Mindent azonnal. Felhasználókat vesz fel, ágakat rendel családfőkhöz, jóváhagy. |
 | **Családfő** | A hozzá rendelt ág(ak)on – a kezdő személy leszármazottai és házastársaik – új személyt, eseményt, fotót, sztorit azonnal felvehet. Módosítás és törlés admin jóváhagyással. |
-| **Családtag** | Megnézhet mindent, javaslatot tehet (jóváhagyási sorba kerül). |
+| **Családtag** | Megnézhet mindent, javaslatot tehet (jóváhagyási sorba kerül). Regisztráció után ez az alapszerep. |
 | **Vendég** | Csak ha a beállításokban nyilvános az oldal; az élő személyek adatai rejtve. |
 
 Minden módosítás egy „művelet” (`lib/ops.php`); a `lib/perms.php` dönti el, hogy azonnal érvényes,
@@ -59,7 +73,7 @@ A szabályok (pl. hogy a családfő módosítása is jóváhagyást kér-e) a fo
 
 ## Autotesztek
 
-Fogaskerék → Autotesztek. A szerver tesztek (20 db) minden futáskor egy friss, memóriabeli SQLite
+Fogaskerék → Autotesztek. A szerver tesztek (27 db) minden futáskor egy friss, memóriabeli SQLite
 adatbázison dolgoznak, így az éles adatot nem érintik. A böngésző tesztek (15 db) a betöltött fán,
 csak olvasva ellenőrzik a dátumkezelést, a diagramok átfedésmentességét, a rokonsági útvonalat,
 a kvíz válaszgenerálását és az SVG-exportot. Parancssorból: `php tests/run.php`.

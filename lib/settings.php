@@ -13,6 +13,8 @@ function ft_settings_def(): array
         ['Általános', 'accent', 'color', '#a7782f', 'Kiemelő szín', 'Kitűzött elemek, aktív menüpont.'],
 
         ['Hozzáférés', 'public_access', 'select', 'login', 'Ki láthatja az oldalt?', '', ['public' => 'Bárki, bejelentkezés nélkül', 'login' => 'Csak bejelentkezett családtagok']],
+        ['Hozzáférés', 'allow_register', 'bool', true, 'Bárki regisztrálhat saját jelszóval', 'A regisztráció az admin jóváhagyása után lesz aktív.'],
+        ['Hozzáférés', 'register_notify', 'bool', true, 'E-mail az adminoknak új regisztrációról', 'A szerver mail() funkciójával; ha a tárhely nem küld levelet, a gombnál akkor is látszik a szám.'],
         ['Hozzáférés', 'living_years', 'int', 100, 'Élőnek tekintjük, ha ennél kevesebb éve született', 'Halálozási adat nélkül. Nyilvános módban az élők adatai rejtve maradnak.', [20, 150]],
         ['Hozzáférés', 'privacy_living', 'select', 'details', 'Élő személyek nyilvános módban', '', ['none' => 'Minden látszik', 'details' => 'Név látszik, dátum, hely, fotó rejtve', 'names' => 'Csak „Élő személy” felirat']],
         ['Hozzáférés', 'show_contacts', 'select', 'heads', 'Telefon és egyéb GEDCOM-adatok láthatósága', '', ['admin' => 'Csak admin', 'heads' => 'Admin és családfők', 'members' => 'Minden bejelentkezett']],
@@ -26,6 +28,10 @@ function ft_settings_def(): array
         ['Szerkesztés', 'member_suggest', 'bool', true, 'Családtagok (és családfők a saját águkon kívül) javaslatot tehetnek', 'A javaslatok a jóváhagyási sorba kerülnek.'],
         ['Szerkesztés', 'story_author_edit', 'bool', true, 'A sztori szerzője jóváhagyás nélkül javíthatja a saját sztoriját', ''],
 
+        ['Nyelvek és szövegek', 'languages', 'multi', ['hu', 'en', 'de'], 'Nyelvek', 'Ezekre a nyelvekre fordítjuk a sztorikat. A DeepL kulcs a config.php-ben van (deepl_key).', ['hu' => 'Magyar', 'en' => 'English', 'de' => 'Deutsch']],
+        ['Nyelvek és szövegek', 'translate_auto', 'bool', true, 'Sztori mentésekor automatikus fordítás', 'Ha ki van kapcsolva, az Import / export lapon kézzel indítható.'],
+        ['Nyelvek és szövegek', 'notes_to_stories', 'bool', true, 'GEDCOM-importkor a hosszabb életrajzokból sztori is készül', 'Az életrajz a személy lapján is megmarad.'],
+        ['Nyelvek és szövegek', 'notes_story_min', 'int', 80, 'Ennél hosszabb életrajzból lesz sztori (karakter)', 'A rövid bejegyzések (pl. „orvos”) csak az életrajzban maradnak.', [1, 5000]],
         ['Főoldal', 'recent_days', 'int', 365, 'Friss események időablaka (nap)', 'Ennyi napnál nem régebbi születés, esküvő, haláleset, keresztelő kerül a főoldalra.', [7, 3650]],
         ['Főoldal', 'recent_types', 'multi', ['BIRT', 'MARR', 'DEAT', 'CHR', 'BAPM'], 'Friss eseménytípusok', '', ['BIRT' => 'Születés', 'MARR' => 'Esküvő', 'DEAT' => 'Haláleset', 'CHR' => 'Keresztelő', 'BAPM' => 'Keresztség', 'ENGA' => 'Eljegyzés', 'BURI' => 'Temetés', 'GRAD' => 'Diploma']],
         ['Főoldal', 'recent_count', 'int', 8, 'Friss események száma', '', [1, 50]],

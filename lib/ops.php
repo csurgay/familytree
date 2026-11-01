@@ -374,6 +374,7 @@ function ft_ops(): array
             'apply' => function ($p) {
                 $id = (int)$p['id']; ft_story_row($id);
                 App::$db->q('DELETE FROM {story_links} WHERE story_id = ?', [$id]);
+                App::$db->q('DELETE FROM {story_tr} WHERE story_id = ?', [$id]);
                 App::$db->q('DELETE FROM {photo_links} WHERE story_id = ?', [$id]);
                 App::$db->q("DELETE FROM {pins} WHERE kind = 'story' AND ref_id = ?", [$id]);
                 App::$db->delete('stories', $id);
@@ -427,6 +428,7 @@ function ft_story_data(array $p): array
     if (array_key_exists('body', $p)) $d['body'] = ft_str($p['body'], 500000);
     if (array_key_exists('date', $p)) { $dt = ft_parse_date($p['date']); $d['date_raw'] = $dt['raw'] ?? null; $d['y'] = $dt['y'] ?? null; }
     if (array_key_exists('cover_photo_id', $p)) $d['cover_photo_id'] = ft_int($p['cover_photo_id']);
+    if (array_key_exists('lang', $p)) $d['lang'] = ft_lang($p['lang']);
     return $d;
 }
 function ft_story_links(int $id, array $p): void
@@ -482,6 +484,7 @@ function ft_change_review(int $cid, bool $approve, string $note = ''): array
     } elseif (isset($ops[$c['action']]['reject'])) {
         ($ops[$c['action']]['reject'])($payload);
     }
+    if ($approve && in_array($c['action'], ['story.create', 'story.update'], true) && !empty($res['id'])) ft_story_after_save((int)$res['id']);
     App::$db->update('changes', ['status' => $approve ? 'approved' : 'rejected', 'reviewer_id' => App::uid(), 'review_note' => ft_str($note, 2000), 'reviewed' => ft_now()], $cid);
     App::flush();
     App::audit($approve ? 'approve' : 'reject', 'change', $cid, $c['summary']);
