@@ -137,6 +137,8 @@ async function changesTab(qs) {
 // ------------------------------------------------------------------ import / export
 async function importTab() {
   const file = h('input', { type: 'file', accept: '.ged,text/plain' });
+  const zipIn = h('input', { type: 'file', accept: '.zip,application/zip' });
+  const zipOut = h('div', { style: 'margin-top:10px' });
   const mode = h('select', null, h('option', { value: 'add' }, 'Hozzáadás – a már meglévő GEDCOM-azonosítókat kihagyja'), h('option', { value: 'replace' }, 'Csere – a teljes családfát lecseréli'));
   const run = async source => {
     if (mode.value === 'replace' && !await confirmBox('A családfa lecserélése', 'Minden személy, család és esemény törlődik, és a fájl tartalma kerül a helyükre. A fotók megmaradnak, de a jelölések elvesznek. Folytatod?', 'Csere')) return;
@@ -152,7 +154,23 @@ async function importTab() {
     h('section', { class: 'section panel' }, h('h2', null, 'Import'), field('Mód', mode),
       h('div', { class: 'row' }, file, h('button', { class: 'btn', onclick: () => run('upload') }, 'Feltöltött fájl importálása')),
       h('p', { class: 'hint', style: 'margin-top:12px' }, 'Vagy a repo gyökerében lévő .ged fájl (pl. csurgay.ged):'),
-      h('button', { class: 'btn', onclick: () => run('repo') }, 'Repo-beli GEDCOM importálása')));
+      h('button', { class: 'btn', onclick: () => run('repo') }, 'Repo-beli GEDCOM importálása')),
+    h('section', { class: 'section panel' }, h('h2', null, 'Fotócsomag importálása'),
+      h('p', null, 'ZIP fájl képekkel és manifest.json leírással (pl. a TribalPages-ről mentett fotók). A képek a GEDCOM-azonosító alapján a megfelelő személyhez kerülnek; ami már bent van, azt kihagyja, így többször is futtatható.'),
+      h('div', { class: 'row' }, zipIn, h('button', { class: 'btn btn-primary', onclick: async e => {
+        if (!zipIn.files[0]) return toast('Válassz ZIP fájlt.', 'bad');
+        const b = e.currentTarget; b.disabled = true; b.textContent = 'Importálás…';
+        const fd = new FormData(); fd.append('file', zipIn.files[0]);
+        try {
+          const r = await api('admin.photoimport', fd);
+          toast(`${r.imported} fotó importálva, ${r.linked} személyhez kötve${r.skipped ? `, ${r.skipped} már bent volt` : ''}.`);
+          zipOut.replaceChildren(h('p', null, `Importálva: ${r.imported} · személyhez kötve: ${r.linked} · kihagyva (már bent volt): ${r.skipped}`),
+            r.unmatched.length ? h('p', { class: 'hint' }, 'Nem talált személy ezekhez a GEDCOM-azonosítókhoz: ' + r.unmatched.join(', ')) : null,
+            r.errors.length ? h('pre', null, r.errors.join('\n')) : null);
+          await loadTree(true);
+        } catch (er) { fail(er); }
+        b.disabled = false; b.textContent = 'Fotók importálása';
+      } }, 'Fotók importálása')), zipOut));
 }
 
 // ------------------------------------------------------------------ log

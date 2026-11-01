@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 3;
+const FT_SCHEMA_VERSION = 4;
 
 function ft_schema(): array
 {
@@ -29,7 +29,8 @@ function ft_schema(): array
             'idx' => ['p' => ['person_id'], 'f' => ['family_id'], 'md' => ['m', 'd'], 's' => ['sort'], 'c' => ['created']]],
         'photos' => ['cols' => [
             'id' => 'id', 'file' => 'str190', 'thumb' => 'str190', 'w' => 'int', 'h' => 'int', 'title' => 'str255',
-            'descr' => 'text', 'date_raw' => 'str80', 'y' => 'int', 'status' => 'str16', 'uploaded_by' => 'int', 'created' => 'datetime']],
+            'descr' => 'text', 'date_raw' => 'str80', 'y' => 'int', 'status' => 'str16', 'uploaded_by' => 'int', 'created' => 'datetime',
+            'source' => 'str60'], 'idx' => ['src' => ['source']]],
         'photo_links' => ['cols' => [
             'id' => 'id', 'photo_id' => 'int', 'person_id' => 'int', 'family_id' => 'int', 'story_id' => 'int',
             'fx' => 'float', 'fy' => 'float'],

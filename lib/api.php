@@ -579,6 +579,12 @@ function ft_handlers(): array
             App::audit('gedcom.import', 'app', null, $stats);
             return $stats;
         },
+        'admin.photoimport' => function () {
+            ft_require_admin();
+            $f = $_FILES['file'] ?? null;
+            if (!$f || ($f['error'] ?? 4) !== UPLOAD_ERR_OK) throw ft_err(($f['error'] ?? 4) === UPLOAD_ERR_INI_SIZE ? 'A ZIP nagyobb, mint amit a szerver enged (upload_max_filesize).' : 'Válassz egy ZIP fájlt.');
+            return ft_photo_package_import($f['tmp_name']);
+        },
         'admin.stats' => function () {
             ft_require_admin();
             $o = [];

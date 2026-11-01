@@ -297,6 +297,41 @@ function ft_server_tests(): array
                 App::$root = $oldRoot;
             }
         },
+        'Fotócsomag: ZIP-import személyhez kötve, ismételve nem duplikál' => function () {
+            if (!function_exists('imagecreatetruecolor')) return 'skip';
+            $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));
+            $oldRoot = App::$root;
+            App::$root = sys_get_temp_dir() . '/ftzip' . bin2hex(random_bytes(4)); @mkdir(App::$root);
+            try {
+                $im = imagecreatetruecolor(200, 250); ob_start(); imagejpeg($im); $jpg = ob_get_clean();
+                $man = json_encode(['photos' => [
+                    ['file' => 'p/1.jpg', 'key' => 'tp:1', 'xref' => 'I5', 'title' => 'Anna', 'date' => '2005'],
+                    ['file' => 'p/2.jpg', 'key' => 'tp:2', 'xref' => 'I99', 'title' => 'Ismeretlen'],
+                ]]);
+                // hand-built ZIP: manifest deflated, images stored – exercises both code paths
+                $entries = ['manifest.json' => [$man, 8], 'p/1.jpg' => [$jpg, 0], 'p/2.jpg' => [$jpg, 0]];
+                $zip = ''; $cd = '';
+                foreach ($entries as $name => [$data, $m]) {
+                    $c = $m === 8 ? gzdeflate($data) : $data; $crc = crc32($data); $off = strlen($zip);
+                    $zip .= pack('VvvvvvVVVvv', 0x04034b50, 20, 0, $m, 0, 0, $crc, strlen($c), strlen($data), strlen($name), 0) . $name . $c;
+                    $cd .= pack('VvvvvvvVVVvvvvvVV', 0x02014b50, 20, 20, 0, $m, 0, 0, $crc, strlen($c), strlen($data), strlen($name), 0, 0, 0, 0, 0, $off) . $name;
+                }
+                $zip .= $cd . pack('VvvvvVVv', 0x06054b50, 0, 0, count($entries), count($entries), strlen($cd), strlen($zip), 0);
+                $zf = App::$root . '/pkg.zip'; file_put_contents($zf, $zip);
+                $r = ft_photo_package_import($zf);
+                t_eq([$r['imported'], $r['linked'], $r['unmatched']], [2, 1, ['I99']]);
+                t_eq((int)$db->val('SELECT photo_id IS NOT NULL FROM {persons} WHERE id = ?', [$ids['I5']]), 1, 'portré beállítva');
+                t_eq($db->val("SELECT date_raw FROM {photos} WHERE source = 'tp:1'"), '2005');
+                $r2 = ft_photo_package_import($zf);
+                t_eq([$r2['imported'], $r2['skipped']], [0, 2], 'második futás');
+                file_put_contents($zf, 'nem zip');
+                t_throws(fn() => ft_photo_package_import($zf));
+            } finally {
+                foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(App::$root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $f) $f->isDir() ? @rmdir($f) : @unlink($f);
+                @rmdir(App::$root);
+                App::$root = $oldRoot;
+            }
+        },
         'Adatvédelem: élők becslése és elrejtése vendégnek' => function () {
             $db = t_fresh_db(); $ids = t_import($db);
             $g = ft_graph();

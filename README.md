@@ -49,6 +49,9 @@ A szabályok (pl. hogy a családfő módosítása is jóváhagyást kér-e) a fo
 - **Arcképcsarnok:** portrék nemzedékenként, szűrés családnévre, teljes névsor, fotóalbum.
 - **Kvíz:** 5–20 arc (állítható), két mód: 4 hasonló korú (és azonos nemű) családtag közül, vagy
   névlistából; időkorlát, toplista.
+- **Fotócsomag-import** (fogaskerék → Import / export): ZIP képekkel és `manifest.json`-nal; a képek a
+  GEDCOM-azonosító alapján a megfelelő személyhez kerülnek, újrafuttatva nem duplikál. Így jöttek át a
+  TribalPages-fotók (a TribalPages fotó-`pid` megegyezik a GEDCOM `@I…@` azonosítóval).
 - **GEDCOM import/export** (5.5.1, UTF-8). A TribalPages-specialitásokat (HTML-entitások, `<br>`,
   `b.1928` utótagok, `Mon DD YYYY` dátumok, „õ/û” elírások) az import kezeli.
 - **Admin (fogaskerék):** minden paraméter, felhasználók, családfők és ágak, jóváhagyások,
