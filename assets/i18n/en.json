@@ -776,5 +776,6 @@
 "{0} fia": "son of {0}",
 "{0} gyermeke": "child of {0}",
 "{0} szülője": "parent of {0}",
-"{0} házastársa": "spouse of {0}"
+"{0} házastársa": "spouse of {0}",
+"Munkamenet (belépés)": "Session (login)"
 }

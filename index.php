@@ -32,7 +32,11 @@ define('DB_PREFIX', 'ft_');   // nem kötelező</pre>
     exit;
 }
 $s = App::$s;
-$v = FT_VERSION . '-' . substr(md5((string)@filemtime(__DIR__ . '/assets/js/main.js') . @filemtime(__DIR__ . '/assets/css/app.css')), 0, 6);
+// version tag from every script, style and dictionary: a phone never mixes old cached modules with new ones
+$assetFiles = array_merge(glob(__DIR__ . '/assets/js/*.js') ?: [], glob(__DIR__ . '/assets/i18n/*.json') ?: [], [__DIR__ . '/assets/css/app.css']);
+$v = FT_VERSION . '-' . substr(md5(implode('|', array_map(fn($f) => basename($f) . @filemtime($f), $assetFiles))), 0, 8);
+$importMap = [];
+foreach (glob(__DIR__ . '/assets/js/*.js') ?: [] as $f) $importMap['./assets/js/' . basename($f)] = './assets/js/' . basename($f) . '?v=' . $v;
 ?><!doctype html>
 <html lang="hu" data-theme="<?= $e($s['theme'] === 'auto' ? '' : $s['theme']) ?>">
 <head>
@@ -71,6 +75,7 @@ $v = FT_VERSION . '-' . substr(md5((string)@filemtime(__DIR__ . '/assets/js/main
 <main id="main" tabindex="-1"><div class="loading">Betöltés…</div></main>
 <div id="modal-root"></div>
 <div id="toasts" aria-live="polite"></div>
+<script type="importmap"><?= json_encode(['imports' => $importMap], JSON_UNESCAPED_SLASHES) ?></script>
 <script type="module" src="assets/js/main.js?v=<?= $e($v) ?>"></script>
 </body>
 </html>

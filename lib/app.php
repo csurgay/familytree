@@ -48,6 +48,7 @@ final class App
     public static array $s = [];          // settings
     public static ?array $user = null;    // logged-in user row
     public static string $root = '';
+    public static ?string $sessionDir = null;
     public static string $lang = 'hu';     // UI language of the current request (X-Lang header)
     private static array $cache = [];
 
@@ -89,14 +90,22 @@ final class App
         if (session_status() === PHP_SESSION_ACTIVE) return;
         $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
         session_name('ftsess');
-        // Shared hosts often purge sessions after ~24 minutes; keep ours in data/sessions for 30 days.
+        // Shared hosts often purge sessions after ~24 minutes; keep ours in data/sessions for 30 days –
+        // but only with the plain file handler (a redis/memcached save_path must not be replaced).
+        $defaultPath = session_save_path();
+        self::$sessionDir = null;
         $dir = self::$root . '/data/sessions';
-        if ((is_dir($dir) || @mkdir($dir, 0700, true)) && is_writable($dir)) {
+        if (ini_get('session.save_handler') === 'files' && (is_dir($dir) || @mkdir($dir, 0700, true)) && is_writable($dir)) {
             session_save_path($dir);
-            ini_set('session.gc_maxlifetime', (string)(60 * 60 * 24 * 30));
+            @ini_set('session.gc_maxlifetime', (string)(60 * 60 * 24 * 30));
+            @ini_set('session.gc_probability', '1');
+            @ini_set('session.gc_divisor', '1000');
+            self::$sessionDir = $dir;
         }
         session_set_cookie_params(['lifetime' => 60 * 60 * 24 * 30, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax', 'secure' => $secure]);
-        session_start();
+        if (!@session_start() && self::$sessionDir) {   // own folder failed: fall back to the host's default
+            session_save_path($defaultPath); self::$sessionDir = null; session_start();
+        }
         if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
         if (!empty($_SESSION['uid'])) {
             $u = self::$db->row('SELECT * FROM {users} WHERE id = ? AND active = 1', [(int)$_SESSION['uid']]);

@@ -707,7 +707,7 @@ function ft_handlers(): array
             return ['counts' => $o, 'driver' => App::$db->driver, 'php' => PHP_VERSION, 'gd' => function_exists('imagecreatefromstring'),
                 'sqlite' => extension_loaded('pdo_sqlite'), 'upload_max' => ini_get('upload_max_filesize'), 'post_max' => ini_get('post_max_size'),
                 'uploads_writable' => is_writable(App::$root . '/uploads'), 'config' => App::$cfg['source'], 'prefix' => App::$db->p,
-                'deepl' => (bool)ft_deepl_key(), 'curl' => function_exists('curl_init'), 'zip' => true, 'mail' => function_exists('mail')];
+                'session' => ini_get('session.save_handler') . ' · ' . (App::$sessionDir ? 'data/sessions' : (session_save_path() ?: '(alapértelmezett)')) . ' · ' . ini_get('session.gc_maxlifetime') . ' s', 'deepl' => (bool)ft_deepl_key(), 'curl' => function_exists('curl_init'), 'zip' => true, 'mail' => function_exists('mail')];
         },
         'admin.tests' => function ($in) {
             ft_require_admin();

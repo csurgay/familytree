@@ -278,6 +278,7 @@ async function systemTab() {
       h('dt', null, T('SQLite (a tesztekhez)')), h('dd', null, yes(s.sqlite)),
       h('dt', null, T('uploads írható')), h('dd', null, yes(s.uploads_writable)),
       h('dt', null, T('DeepL kulcs (fordítás)')), h('dd', null, yes(s.deepl), s.deepl && !s.curl ? h('span', { class: 'hint' }, T(' (cURL nincs, fopen-nel próbálja)')) : null),
+      h('dt', null, T('Munkamenet (belépés)')), h('dd', null, s.session || ''),
       h('dt', null, T('E-mail küldés (mail)')), h('dd', null, yes(s.mail)),
       h('dt', null, T('Feltöltési korlát')), h('dd', null, `upload_max_filesize ${s.upload_max}, post_max_size ${s.post_max}`)),
     h('h2', { style: 'margin-top:26px' }, T('Rekordok')),
