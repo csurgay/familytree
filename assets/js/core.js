@@ -1,13 +1,26 @@
 // Core: API client, shared state, DOM helpers, formatting, router, dialogs.
+import { DICT, loadDict } from './i18n.js';
 export const S = { boot: null, user: null, settings: {}, tree: null, csrf: '', lang: 'hu' };
 try { S.lang = localStorage.getItem('ft_lang') || 'hu'; } catch (e) { /* storage blocked */ }
-export function setLang(l) { S.lang = l; try { localStorage.setItem('ft_lang', l); } catch (e) { } }
+export async function setLang(l) { S.lang = l; try { localStorage.setItem('ft_lang', l); } catch (e) { } document.documentElement.lang = l; await loadDict(l); }
+
+/**
+ * Translate a UI string. Keys are the Hungarian texts; placeholders {0} {1} … are filled from args.
+ *   T('Mentés')                     T('{0} fotó feltöltve.', n)
+ * Missing translations fall back to Hungarian, so nothing ever shows up empty.
+ */
+export function T(key, ...args) {
+  const d = DICT[S.lang];
+  let s = (d && d[key]) || key;
+  if (args.length) s = s.replace(/\{(\d+)\}/g, (m, i) => (args[+i] ?? ''));
+  return s;
+}
 export const LANG_NAMES = { hu: 'magyar', en: 'angol', de: 'német' };
 
 // ------------------------------------------------------------------ API
 export async function api(action, data = null, opts = {}) {
   const url = 'api.php?a=' + encodeURIComponent(action) + (opts.query ? '&' + new URLSearchParams(opts.query) : '');
-  const init = { credentials: 'same-origin', headers: {} };
+  const init = { credentials: 'same-origin', headers: { 'X-Lang': S.lang } };
   if (data !== null || opts.post) {
     init.method = 'POST';
     init.headers['X-CSRF'] = S.csrf;
@@ -15,9 +28,9 @@ export async function api(action, data = null, opts = {}) {
     else { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(data || {}); }
   }
   let res, j;
-  try { res = await fetch(url, init); } catch (e) { throw new Error('Nincs kapcsolat a szerverrel.'); }
-  try { j = await res.json(); } catch (e) { throw new Error('A szerver nem JSON-t küldött (' + res.status + ').'); }
-  if (!j.ok) { const err = new Error(j.error || 'Hiba'); err.status = res.status; throw err; }
+  try { res = await fetch(url, init); } catch (e) { throw new Error(T('Nincs kapcsolat a szerverrel.')); }
+  try { j = await res.json(); } catch (e) { throw new Error(T('A szerver nem JSON-t küldött (') + res.status + ').'); }
+  if (!j.ok) { const err = new Error(j.error || T('Hiba')); err.status = res.status; throw err; }
   return j.data;
 }
 export const op = (name, payload) => api('op', { name, payload });
@@ -80,6 +93,7 @@ const ICONS = {
   fan: '<path d="M3 19a9 9 0 0118 0M7 19a5 5 0 0110 0M12 10v-6M5.6 12.6L2.4 9.4M18.4 12.6l3.2-3.2"/><circle cx="12" cy="19" r="1.5"/>',
   family: '<circle cx="7" cy="6" r="2.2"/><circle cx="17" cy="6" r="2.2"/><path d="M9.5 6h5M12 6v6M6 18h12M6 18v-4M12 12v6M18 18v-4"/><circle cx="6" cy="21" r="1.3"/><circle cx="12" cy="21" r="1.3"/><circle cx="18" cy="21" r="1.3"/>',
   relation: '<circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="M6.5 6.5l3 3M11 11h2M14.5 14.5l3 3"/><circle cx="12" cy="12" r="1.5"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>',
   quiz: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 2-2.5 2-2.5 4M12 17h0"/>',
   silhouette: '<circle cx="12" cy="8.5" r="4.2"/><path d="M3.5 22c.8-5 4.1-7.5 8.5-7.5s7.7 2.5 8.5 7.5z"/>',
 };
@@ -116,17 +130,38 @@ export function parseGed(raw) {
   if (!m) return { text: s };
   return { y: +m[3], m: m[2] ? GED_M.indexOf(m[2].toUpperCase()) + 1 : 0, d: m[1] ? +m[1] : 0, q };
 }
-export function fmtDate(raw) {
+const MONTHS = {
+  hu: HU_MONTHS,
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+  de: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
+};
+/** One date in the UI language: "1953. szeptember 16." / "16 September 1953" / "16. September 1953". */
+export function fmtDate(raw, lang = S.lang) {
   const p = typeof raw === 'object' ? raw : parseGed(raw);
   if (!p) return '';
   if (p.text) return p.text;
-  const one = x => !x.m ? String(x.y) : `${x.y}. ${HU_MONTHS[x.m - 1]}${x.d ? ' ' + x.d + '.' : ''}`;
+  const M = MONTHS[lang] || MONTHS.hu;
+  const one = x => {
+    if (!x.m) return String(x.y);
+    if (lang === 'en') return (x.d ? x.d + ' ' : '') + M[x.m - 1] + ' ' + x.y;
+    if (lang === 'de') return (x.d ? x.d + '. ' : '') + M[x.m - 1] + ' ' + x.y;
+    return `${x.y}. ${M[x.m - 1]}${x.d ? ' ' + x.d + '.' : ''}`;
+  };
   const main = one(p);
-  if (p.q === 'ABT' || p.q === 'EST' || p.q === 'CAL') return 'kb. ' + main;
-  if (p.q === 'BEF') return main + ' előtt';
-  if (p.q === 'AFT') return main + ' után';
-  if (p.q === 'BET') return main + '–' + one(p.to) + ' között';
+  const q = { hu: ['kb. {0}', '{0} előtt', '{0} után', '{0}–{1} között'], en: ['c. {0}', 'before {0}', 'after {0}', '{0}–{1}'], de: ['ca. {0}', 'vor {0}', 'nach {0}', 'zwischen {0} und {1}'] }[lang] || [];
+  const f = (t, a, b) => t.replace('{0}', a).replace('{1}', b ?? '');
+  if (p.q === 'ABT' || p.q === 'EST' || p.q === 'CAL') return f(q[0], main);
+  if (p.q === 'BEF') return f(q[1], main);
+  if (p.q === 'AFT') return f(q[2], main);
+  if (p.q === 'BET') return f(q[3], main, one(p.to));
   return main;
+}
+/** Split a formatted date into [year, rest] for the timeline's date column. */
+export function splitDate(text) {
+  const m = String(text || '').match(/\b(\d{3,4})\b/);
+  if (!m) return [text || '—', ''];
+  const rest = String(text).replace(m[0], '').replace(/^[\s.,]+|[\s.,]+$/g, '').replace(/\s{2,}/g, ' ');
+  return [m[1], rest];
 }
 /** Client-side preview of what the server will understand from free-text date input. */
 export function previewDate(input) {
@@ -141,7 +176,7 @@ export function previewDate(input) {
     if (a && b) return { ok: true, text: fmtDate({ ...a, q: 'BET', to: b }) };
   }
   const a = simple(t);
-  if (!a) return { ok: false, text: 'Szövegként tárolom (nem ismert dátumforma).' };
+  if (!a) return { ok: false, text: T('Szövegként tárolom (nem ismert dátumforma).') };
   return { ok: true, text: fmtDate({ ...a, q }) };
   function simple(x) {
     x = x.trim(); let r;
@@ -187,7 +222,7 @@ export const P = id => S.tree?.P.get(+id);
 export const F = id => S.tree?.F.get(+id);
 
 export function personName(p, { short = false, withTitle = true } = {}) {
-  if (!p) return 'Ismeretlen';
+  if (!p) return T('Ismeretlen');
   let suffix = p.x || '';
   if (S.settings.hide_suffix_numbers && /^\d+$|^[IVX]+\.?$/.test(suffix)) suffix = '';
   const parts = S.settings.name_order === 'west' ? [p.g, p.s] : [p.s, p.g];
@@ -195,15 +230,15 @@ export function personName(p, { short = false, withTitle = true } = {}) {
   if (short && p.g) n = S.settings.name_order === 'west' ? p.g.split(' ')[0] + ' ' + (p.s || '') : (p.s || '') + ' ' + p.g.split(' ')[0];
   if (withTitle && p.t) n = p.t + ' ' + n;
   if (suffix) n += ' ' + suffix;
-  return n.trim() || (p.masked ? 'Élő személy' : 'Névtelen');
+  return n.trim() || (p.masked ? T('Élő személy') : T('Névtelen'));
 }
 export function years(p) {
   if (!p) return '';
-  if (p.masked) return 'élő';
+  if (p.masked) return T('élő');
   const b = p.b ? String(p.b) : (p.dec || p.d ? '?' : '');
   if (p.d) return `${b}–${p.d}`;
   if (p.dec) return b ? `${b}–?` : '†';
-  return p.b ? `sz. ${p.b}` : '';
+  return p.b ? T('sz. {0}', p.b) : '';
 }
 export const initials = p => ((p?.s || '')[0] || '') + ((p?.g || '')[0] || '');
 export function parentsOf(id) {
@@ -230,18 +265,18 @@ export function avatar(p, size = 44) {
 }
 export function chip(id, extra = '') {
   const p = P(id);
-  if (!p) return h('span', { class: 'muted' }, 'ismeretlen');
+  if (!p) return h('span', { class: 'muted' }, T('ismeretlen'));
   return h('a', { class: 'pchip', href: '#/person/' + p.id }, avatar(p, 40),
     h('span', { style: 'min-width:0' }, extra ? h('div', { class: 'rl' }, extra) : null, h('div', { class: 'nm' }, personName(p)), h('div', { class: 'yr' }, years(p))));
 }
 export function personLink(id) {
   const p = P(id);
-  return p ? h('a', { href: '#/person/' + id }, personName(p)) : h('span', null, 'ismeretlen');
+  return p ? h('a', { href: '#/person/' + id }, personName(p)) : h('span', null, T('ismeretlen'));
 }
 export function familyLabel(f) {
   if (!f) return '';
   const a = f.h ? personName(P(f.h), { short: true }) : '?'; const b = f.w ? personName(P(f.w), { short: true }) : '?';
-  return `${a} és ${b}`;
+  return T("{0} és {1}", a, b);
 }
 
 // ------------------------------------------------------------------ markdown (tiny, escapes first)
@@ -273,9 +308,9 @@ export function toast(msg, kind = '') {
 export function fail(e) { console.error(e); toast(e.message || String(e), 'bad'); }
 /** Feedback after an op: applied directly or waiting for approval. */
 export function opDone(res, okMsg) {
-  if (res?.queued) { toast('Elküldve jóváhagyásra — az admin elfogadása után jelenik meg.', 'pend'); return false; }
+  if (res?.queued) { toast(T('Elküldve jóváhagyásra — az admin elfogadása után jelenik meg.'), 'pend'); return false; }
   if (res?.warning) { toast(res.warning, 'pend'); return true; }
-  toast(okMsg || 'Mentve.');
+  toast(okMsg || T('Mentve.'));
   return true;
 }
 
@@ -296,7 +331,7 @@ export function modal({ title, body, actions = [], wide = false, onClose }) {
     return b;
   })) : null;
   const m = h('div', { class: 'modal' + (wide ? ' wide' : '') },
-    h('div', { class: 'modal-h' }, h('h2', null, title), h('button', { class: 'icon-btn', 'aria-label': 'Bezárás', onclick: close }, icon('close'))),
+    h('div', { class: 'modal-h' }, h('h2', null, title), h('button', { class: 'icon-btn', 'aria-label': T('Bezárás'), onclick: close }, icon('close'))),
     h('div', { class: 'modal-b' }, body), foot);
   wrap.append(m);
   wrap.addEventListener('mousedown', e => { if (e.target === wrap) close(); });
@@ -305,15 +340,15 @@ export function modal({ title, body, actions = [], wide = false, onClose }) {
   setTimeout(() => { const f = m.querySelector('input:not([type=hidden]),select,textarea'); f && f.focus(); }, 30);
   return { close, el: m };
 }
-export function confirmBox(title, text, okLabel = 'Igen', cls = 'btn-danger') {
+export function confirmBox(title, text, okLabel = T('Igen'), cls = 'btn-danger') {
   return new Promise(res => {
     let done = false;
-    modal({ title, body: h('p', null, text), actions: [{ label: 'Mégse' }, { label: okLabel, cls, onClick: () => { done = true; res(true); } }], onClose: () => { if (!done) res(false); } });
+    modal({ title, body: h('p', null, text), actions: [{ label: T('Mégse') }, { label: okLabel, cls, onClick: () => { done = true; res(true); } }], onClose: () => { if (!done) res(false); } });
   });
 }
 /** Banner inside an edit dialog telling the user what will happen to the change. */
 export function modeNote(mode, kind) {
-  if (mode === 'queue') return h('div', { class: 'mode-note' }, kind === 'delete' ? 'A törlés admin jóváhagyás után történik meg.' : 'A módosítás admin jóváhagyás után jelenik meg.');
+  if (mode === 'queue') return h('div', { class: 'mode-note' }, kind === 'delete' ? T('A törlés admin jóváhagyás után történik meg.') : T('A módosítás admin jóváhagyás után jelenik meg.'));
   return null;
 }
 
@@ -336,7 +371,7 @@ export function formData(form) {
   return o;
 }
 /** Searchable person picker. Returns {el, get(), set(id)} */
-export function personPicker({ value = null, placeholder = 'Kezdd el gépelni a nevet…', filter = null, onPick = null } = {}) {
+export function personPicker({ value = null, placeholder = T('Kezdd el gépelni a nevet…'), filter = null, onPick = null } = {}) {
   let cur = value ? +value : null;
   const inp = h('input', { type: 'text', placeholder, autocomplete: 'off' });
   const opts = h('div', { class: 'opts', hidden: true });
@@ -378,13 +413,13 @@ export async function render() {
     } catch (e) {
       if (seq !== renderSeq) return;
       if (e.status === 401) { go('#/login?next=' + encodeURIComponent(location.hash)); return; }
-      main.replaceChildren(h('div', { class: 'empty', style: r.opts.full ? 'padding:40px max(16px, calc((100vw - 1180px) / 2))' : '' }, h('h2', null, 'Ez most nem sikerült'), h('p', null, e.message), h('a', { class: 'btn', href: '#/' }, 'Vissza a kezdőlapra')));
+      main.replaceChildren(h('div', { class: 'empty', style: r.opts.full ? 'padding:40px max(16px, calc((100vw - 1180px) / 2))' : '' }, h('h2', null, T('Ez most nem sikerült')), h('p', null, e.message), h('a', { class: 'btn', href: '#/' }, T('Vissza a kezdőlapra'))));
     }
     if (!qs.get('keep')) window.scrollTo(0, 0);
     return;
   }
-  main.replaceChildren(h('div', { class: 'empty' }, h('h2', null, 'Nincs ilyen oldal'), h('a', { class: 'btn', href: '#/' }, 'Kezdőlap')));
+  main.replaceChildren(h('div', { class: 'empty' }, h('h2', null, T('Nincs ilyen oldal')), h('a', { class: 'btn', href: '#/' }, T('Kezdőlap'))));
 }
-export function setTitle(t) { document.title = (t ? t + ' – ' : '') + (S.settings.site_title || 'Családfa'); }
+export function setTitle(t) { document.title = (t ? t + ' – ' : '') + (S.settings.site_title || T('Családfa')); }
 
 export const can = { edit: () => !!S.user, admin: () => S.user?.role === 'admin' };

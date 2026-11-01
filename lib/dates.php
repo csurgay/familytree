@@ -95,27 +95,34 @@ function ft_date_result(array $a, string $qual, ?array $b = null): array
     return ['raw' => $raw, 'y' => $y, 'm' => $m ?: null, 'd' => $d ?: null, 'qual' => $qual, 'sort' => $y * 10000 + $m * 100 + $d];
 }
 
-/** Hungarian display: "1953. szeptember 16.", "kb. 1950", "1950 előtt", "1900 és 1910 között". */
-function ft_format_date(?string $raw): string
+const FT_MONTH_NAMES = [
+    'en' => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+    'de' => ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
+];
+
+/** Display a date in the request language: "1953. szeptember 16." / "16 September 1953" / "16. September 1953". */
+function ft_format_date(?string $raw, ?string $lang = null): string
 {
+    $lang = $lang ?? (class_exists('App') ? App::$lang : 'hu');
     $p = ft_parse_date($raw);
     if (!$p) return '';
     if ($p['qual'] === 'TXT') return $p['raw'];
-    $one = function ($y, $m, $d) {
+    $one = function ($y, $m, $d) use ($lang) {
         if (!$m) return (string)$y;
-        $s = $y . '. ' . FT_HU_MONTHS[$m - 1];
-        if ($m && $d) $s .= ' ' . $d . '.';
-        return $s;
+        if ($lang === 'en') return ($d ? "$d " : '') . FT_MONTH_NAMES['en'][$m - 1] . " $y";
+        if ($lang === 'de') return ($d ? "$d. " : '') . FT_MONTH_NAMES['de'][$m - 1] . " $y";
+        return $y . '. ' . FT_HU_MONTHS[$m - 1] . ($d ? ' ' . $d . '.' : '');
     };
+    $fmt = ['hu' => ['kb. %s', '%s előtt', '%s után', '%s–%s között'], 'en' => ['c. %s', 'before %s', 'after %s', '%s–%s'], 'de' => ['ca. %s', 'vor %s', 'nach %s', 'zwischen %s und %s']][$lang] ?? ['kb. %s', '%s előtt', '%s után', '%s–%s között'];
     $main = $one($p['y'], $p['m'], $p['d']);
     switch ($p['qual']) {
-        case 'ABT': case 'EST': case 'CAL': return 'kb. ' . $main;
-        case 'BEF': return $main . ' előtt';
-        case 'AFT': return $main . ' után';
+        case 'ABT': case 'EST': case 'CAL': return sprintf($fmt[0], $main);
+        case 'BEF': return sprintf($fmt[1], $main);
+        case 'AFT': return sprintf($fmt[2], $main);
         case 'BET':
             preg_match('/AND\s+(.+)$/', $p['raw'], $m);
             $b = ft_parse_simple($m[1] ?? '');
-            return $main . '–' . ($b ? $one($b[0], $b[1], $b[2]) : '') . ' között';
+            return sprintf($fmt[3], $main, $b ? $one($b[0], $b[1], $b[2]) : '');
     }
     return $main;
 }

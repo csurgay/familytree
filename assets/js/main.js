@@ -1,4 +1,4 @@
-import { S, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail, setLang } from './core.js';
+import { S, T, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail, setLang } from './core.js';
 import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents, viewRegister } from './views.js';
 import { viewQuiz } from './quiz.js';
 import { viewAdmin } from './admin.js';
@@ -6,9 +6,11 @@ import { viewAdmin } from './admin.js';
 async function boot() {
   let b;
   try { b = await api('boot'); }
-  catch (e) { $('#main').replaceChildren(h('div', { class: 'empty' }, h('h2', null, 'A szerver nem érhető el'), h('p', null, e.message))); return; }
+  catch (e) { $('#main').replaceChildren(h('div', { class: 'empty' }, h('h2', null, T('A szerver nem érhető el')), h('p', null, e.message))); return; }
   S.boot = b; S.user = b.user; S.settings = b.settings; S.csrf = b.csrf;
   if (!(b.langs || []).some(l => l.code === S.lang)) S.lang = 'hu';
+  await setLang(S.lang);
+  translateStatic();
   if (S.settings.theme !== 'auto') document.documentElement.dataset.theme = S.settings.theme;
   drawUserbox();
   setupSearch();
@@ -36,18 +38,24 @@ async function boot() {
   render();
 }
 
+/** Texts that live in index.php (menu, search box): translated in place, the Hungarian original kept in data-t. */
+function translateStatic() {
+  for (const el of document.querySelectorAll('#mainnav a, .skip')) { el.dataset.t ||= el.textContent; el.textContent = T(el.dataset.t); }
+  const q = $('#q'); q.dataset.t ||= q.placeholder; q.placeholder = T(q.dataset.t); q.setAttribute('aria-label', T('Keresés névre…'));
+  $('#navtoggle').setAttribute('aria-label', T('Menü'));
+}
 function langSelect() {
   const langs = S.boot.langs || [];
   if (langs.length < 2) return null;
-  const sel = h('select', { class: 'langsel', 'aria-label': 'A sztorik nyelve', title: 'A sztorik nyelve' }, langs.map(l => h('option', { value: l.code, selected: l.code === S.lang }, l.code.toUpperCase())));
-  sel.addEventListener('change', () => { setLang(sel.value); render(); });
-  return sel;
+  const sel = h('select', { 'aria-label': T('Nyelv'), title: T('Nyelv') }, langs.map(l => h('option', { value: l.code, selected: l.code === S.lang, title: l.name }, l.code.toUpperCase())));
+  sel.addEventListener('change', async () => { await setLang(sel.value); translateStatic(); drawUserbox(); render(); });
+  return h('label', { class: 'langsel' }, icon('globe'), sel);
 }
 function drawUserbox() {
   const box = $('#userbox');
-  if (!S.user) { box.replaceChildren(langSelect(), h('a', { class: 'btn btn-sm btn-ghost', href: '#/login' }, 'Belépés')); return; }
-  const gear = S.user.role === 'admin' ? h('a', { class: 'gear', href: '#/admin', title: 'Admin beállítások', 'aria-label': 'Admin beállítások' }, icon('gear'), S.boot.pending ? h('span', { class: 'dot' }, S.boot.pending) : null) : null;
-  box.replaceChildren(langSelect(), gear, h('a', { class: 'gear', href: '#/account', title: S.user.name + ' – fiókom', 'aria-label': 'Fiókom' }, icon('user'), S.boot.myPending ? h('span', { class: 'dot' }, S.boot.myPending) : null));
+  if (!S.user) { box.replaceChildren(langSelect(), h('a', { class: 'btn btn-sm btn-ghost', href: '#/login' }, T('Belépés'))); return; }
+  const gear = S.user.role === 'admin' ? h('a', { class: 'gear', href: '#/admin', title: T('Admin beállítások'), 'aria-label': T('Admin beállítások') }, icon('gear'), S.boot.pending ? h('span', { class: 'dot' }, S.boot.pending) : null) : null;
+  box.replaceChildren(langSelect(), gear, h('a', { class: 'gear', href: '#/account', title: S.user.name + T(' – fiókom'), 'aria-label': T('Fiókom') }, icon('user'), S.boot.myPending ? h('span', { class: 'dot' }, S.boot.myPending) : null));
 }
 
 function setupSearch() {
@@ -62,7 +70,7 @@ function setupSearch() {
     items = [...S.tree.P.values()].filter(p => { const t = norm(personName(p) + ' ' + (p.n || '') + ' ' + (p.b || '')); return words.every(w => t.includes(w)); })
       .sort((a, b) => (b.ph ? 1 : 0) - (a.ph ? 1 : 0) || (a.b || 9999) - (b.b || 9999)).slice(0, 12);
     res.replaceChildren(...(items.length ? items.map((p, i) => h('a', { href: '#/person/' + p.id, role: 'option', onclick: () => { close(); q.value = ''; } }, avatar(p, 32), h('span', null, personName(p), h('div', { class: 'hint' }, years(p) || '—'))))
-      : [h('div', { class: 'hint', style: 'padding:8px' }, 'Nincs ilyen nevű családtag.')]));
+      : [h('div', { class: 'hint', style: 'padding:8px' }, T('Nincs ilyen nevű családtag.'))]));
     res.hidden = false; sel = -1;
   });
   q.addEventListener('keydown', e => {

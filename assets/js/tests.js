@@ -1,6 +1,6 @@
 // Browser-side self-tests, run from the admin gear. Read-only on the loaded tree.
-import { S, P, F, parseGed, fmtDate, previewDate, gedToInput, norm, md, personName, h } from './core.js';
-import { layoutAncestors, layoutDescendants, layoutHourglass, layoutFamily, findPath, kinTerm, relationLabel, renderChart, buildExportSVG } from './charts.js';
+import { S, P, F, spouseIn as spouseOf, parseGed, fmtDate, previewDate, gedToInput, norm, md, personName, h } from './core.js';
+import { layoutAncestors, layoutDescendants, layoutHourglass, layoutFamily, findPath, kinTerm, relationLabel, renderChart, buildExportSVG, fitGiven, SDX, SDY } from './charts.js';
 import { distractors, buildQuiz, shuffle } from './quiz.js';
 
 class AssertError extends Error { }
@@ -8,8 +8,15 @@ const eq = (a, b, m = '') => { if (JSON.stringify(a) !== JSON.stringify(b)) thro
 const ok = (c, m) => { if (!c) throw new AssertError(m || 'feltétel nem teljesült'); };
 
 function overlaps(nodes) {
+  // a person and the spouse cards tucked behind it form one unit; units must not overlap each other
+  const units = [];
+  for (const n of nodes) {
+    if (n.spouse) continue;
+    const sp = nodes.filter(s => s.spouse && s.of === n.id && Math.abs(s.x - n.x - s.layer * SDX) < 1 && Math.abs(s.y - n.y - s.layer * SDY) < 1);
+    units.push({ ...n, w: n.w + sp.length * SDX, h: n.h + sp.length * SDY });
+  }
   const uniq = [];
-  for (const n of nodes) if (!uniq.some(u => u.x === n.x && u.y === n.y && u.id === n.id)) uniq.push(n);
+  for (const n of units) if (!uniq.some(u => u.x === n.x && u.y === n.y && u.id === n.id)) uniq.push(n);
   for (let i = 0; i < uniq.length; i++) for (let j = i + 1; j < uniq.length; j++) {
     const a = uniq[i], b = uniq[j];
     if (a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5 && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5) return [a, b];
@@ -84,6 +91,43 @@ const T = {
     const f = F(P(id).fc[0]);
     for (const par of [f.h, f.w].filter(Boolean)) ok(L.nodes.some(n => n.id === par), 'hiányzó szülő #' + par);
   },
+  'Nyelvek: dátum angolul és németül': () => {
+    eq(fmtDate('16 SEP 1953', 'en'), '16 September 1953');
+    eq(fmtDate('16 SEP 1953', 'de'), '16. September 1953');
+    eq(fmtDate('ABT 1950', 'en'), 'c. 1950');
+    eq(fmtDate('BET 1900 AND 1910', 'de'), 'zwischen 1900 und 1910');
+    eq(fmtDate('BEF 1900', 'hu'), '1900 előtt');
+  },
+  'Nyelvek: rokonsági elnevezések angolul és németül': () => {
+    eq(kinTerm(2, 0, 'F', 'en'), 'grandmother'); eq(kinTerm(3, 0, 'M', 'en'), 'great-grandfather'); eq(kinTerm(0, 2, 'U', 'en'), 'grandchild');
+    eq(kinTerm(2, 2, 'M', 'en'), 'first cousin'); eq(kinTerm(2, 3, 'F', 'en'), 'first cousin once removed'); eq(kinTerm(2, 1, 'F', 'en'), 'aunt');
+    eq(kinTerm(2, 0, 'F', 'de'), 'Großmutter'); eq(kinTerm(3, 0, 'M', 'de'), 'Urgroßvater'); eq(kinTerm(4, 0, 'M', 'de'), 'Ururgroßvater');
+    eq(kinTerm(0, 3, 'M', 'de'), 'Urenkel'); eq(kinTerm(1, 2, 'F', 'de'), 'Nichte'); eq(kinTerm(2, 2, 'F', 'de'), 'Cousine 1. Grades');
+  },
+  'Nyelvek: a felület szótárában minden helykitöltő megvan': async () => {
+    const miss = [];
+    for (const lang of ['en', 'de']) {
+      let d; try { d = await (await fetch(`assets/i18n/${lang}.json`)).json(); } catch (e) { miss.push(lang + ': hiányzik a szótár'); continue; }
+      for (const [k, v] of Object.entries(d)) {
+        const ph = x => (x.match(/\{\d+\}/g) || []).sort().join();
+        if (!v) miss.push(`${lang}: üres – ${k}`); else if (ph(k) !== ph(v)) miss.push(`${lang}: helykitöltő – ${k}`);
+      }
+    }
+    ok(!miss.length, miss.slice(0, 5).join('\n'));
+  },
+  'Diagram: házastárs-kártya a partnere mögött, jobbra-lent': () => {
+    const id = [...S.tree.P.values()].find(p => p.fs.length && p.fs.some(f => spouseOf(F(f), p.id)))?.id;
+    if (!id) return 'skip';
+    const L = layoutDescendants(id, { up: 1, down: 1, photos: true, spouses: true });
+    const root = L.nodes.find(n => n.root), sp = L.nodes.filter(n => n.spouse && n.of === id);
+    ok(sp.length >= 1, 'nincs házastárs-kártya');
+    sp.forEach(s => { eq(s.x - root.x, s.layer * SDX); eq(s.y - root.y, s.layer * SDY); });
+  },
+  'Diagram: három keresztnévből kettő, ha nem fér ki': () => {
+    eq(fitGiven('Árpád István Ernő', 12), 'Árpád István');
+    eq(fitGiven('Árpád István Ernő', 40), 'Árpád István Ernő');
+    eq(fitGiven('Bence', 3), 'Be…');
+  },
   'Rokonság: útkeresés és magyar rokonsági elnevezés': () => {
     const child = [...S.tree.P.values()].find(p => p.fc.length && F(p.fc[0])?.h);
     if (!child) return 'skip';
@@ -137,10 +181,13 @@ const T = {
 
 export async function runClientTests() {
   const out = [];
+  const lang0 = S.lang; S.lang = 'hu'; // the expectations are written in Hungarian
+  try {
   for (const [name, fn] of Object.entries(T)) {
     const t0 = performance.now();
     try { const r = await fn(); out.push({ name, status: r === 'skip' ? 'skip' : 'pass', ms: performance.now() - t0 }); }
     catch (e) { out.push({ name, status: 'fail', ms: performance.now() - t0, msg: e.message }); }
   }
+  } finally { S.lang = lang0; }
   return out;
 }

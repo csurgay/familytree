@@ -18,6 +18,7 @@ function ft_json($data, int $code = 200): void
 $err = App::init(__DIR__);
 if ($err) ft_json(['ok' => false, 'error' => $err['error'], 'setup' => $err], 503);
 App::startSession();
+App::$lang = ft_lang($_SERVER['HTTP_X_LANG'] ?? $_GET['lang'] ?? 'hu');
 
 $action = (string)($_GET['a'] ?? '');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -65,9 +66,9 @@ try {
     if (!isset($h[$action])) throw new ApiError('Ismeretlen kérés: ' . $action, 404);
     ft_json(['ok' => true, 'data' => $h[$action]($in)]);
 } catch (ApiError $e) {
-    ft_json(['ok' => false, 'error' => $e->getMessage()], $e->status);
+    ft_json(['ok' => false, 'error' => ft_t($e->getMessage())], $e->status);
 } catch (Throwable $e) {
     error_log('[familytree] ' . $e);
-    $msg = App::isAdmin() ? $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')' : 'Váratlan szerverhiba. Az admin a naplóban látja a részleteket.';
+    $msg = App::isAdmin() ? $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')' : ft_t('Váratlan szerverhiba. Az admin a naplóban látja a részleteket.');
     ft_json(['ok' => false, 'error' => $msg], 500);
 }

@@ -40,7 +40,8 @@ function ft_settings_def(): array
         ['Főoldal', 'anniversary_days', 'int', 14, 'Évfordulók előretekintése (nap)', '', [1, 60]],
         ['Főoldal', 'round_only_deceased', 'bool', true, 'Elhunytaknál csak a kerek évfordulók', '50., 100., 150. … születésnap.'],
         ['Főoldal', 'home_tree_kind', 'select', 'hourglass', 'Alapértelmezett főoldali családfarészlet', 'Ha nincs kitűzött fa.', ['hourglass' => 'Homokóra', 'ancestors' => 'Felmenők', 'descendants' => 'Leszármazottak', 'fan' => 'Legyező']],
-        ['Főoldal', 'home_tree_gens', 'int', 2, 'Nemzedékek a főoldali fában', '', [1, 5]],
+        ['Főoldal', 'home_tree_gens', 'int', 2, 'Felmenő nemzedékek a főoldali fában', '', [1, 5]],
+        ['Főoldal', 'home_tree_down', 'int', 2, 'Leszármazott nemzedékek a főoldali fában', '2 = gyerekek és unokák. Ha kilóg, a fa húzható és nagyítható.', [1, 5]],
         ['Főoldal', 'home_stories', 'int', 3, 'Legújabb sztorik száma', '', [0, 12]],
 
         ['Diagramok', 'chart_gens_up', 'int', 4, 'Felmenő nemzedékek (alapérték)', '', [1, 10]],

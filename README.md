@@ -30,9 +30,19 @@ Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`
   A kulcs a `config.php`-ben van: `'deepl_key' => '…'` (a `:fx` végű ingyenes kulcs is működik); az
   adatbázisba és a böngészőbe nem kerül. A fejlécben választható a nyelv; a fordított sztori alatt
   egy kattintással látszik az eredeti. A már lefordított, változatlan szöveget nem küldi el újra.
-  A felület szövegei egyelőre magyarok.
+  A teljes felület (menük, gombok, beállítások, dátumok, rokonsági elnevezések) magyarul, angolul és
+  németül is elérhető; a nyelvválasztó a jobb felső sarokban van, a választás megmarad. A szótárak:
+  `assets/i18n/en.json`, `de.json` (kulcs = a magyar szöveg).
 - **Életrajzok sztoriként:** a GEDCOM-ban a személyekhez írt hosszabb jegyzetekből (alapból 80 karakter
   felett) sztori lesz a személy nevével és életéveivel; a személy lapján is megmaradnak.
+
+## Navigáció
+
+- **Fán (kezdőlap, fa-böngésző, személylap):** egy kattintás/koppintás → gyorskártya (fotó, évek,
+  „Megnyitás”, „Középre”); dupla kattintás/koppintás → az a személy lesz a kiinduló pont.
+- Húzás, csippentés, egérgörgő a nagyításhoz; +/− és „igazítás” gomb.
+- A fa-böngészőben a böngésző Vissza gombja az előző kiinduló pontra lép; billentyűk: ↑ apa, ↓ első gyerek,
+  ← → testvérek/házastárs, Home a saját személyed (vagy a kezdő személy).
 
 ## Szerepek és elosztott szerkesztés
 

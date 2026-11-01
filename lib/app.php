@@ -25,6 +25,22 @@ class ApiError extends RuntimeException
 
 function ft_now(): string { return date('Y-m-d H:i:s'); }
 
+/** Translate a server message into the request language (same dictionaries as the browser). */
+function ft_t(string $s, ...$args): string
+{
+    static $dicts = [];
+    $lang = App::$lang;
+    if ($lang !== 'hu') {
+        if (!isset($dicts[$lang])) {
+            $f = App::$root . "/assets/i18n/$lang.json";
+            $dicts[$lang] = is_file($f) ? (json_decode((string)file_get_contents($f), true) ?: []) : [];
+        }
+        $s = $dicts[$lang][$s] ?? $s;
+    }
+    foreach ($args as $i => $v) $s = str_replace('{' . $i . '}', (string)$v, $s);
+    return $s;
+}
+
 final class App
 {
     public static DB $db;
@@ -32,6 +48,7 @@ final class App
     public static array $s = [];          // settings
     public static ?array $user = null;    // logged-in user row
     public static string $root = '';
+    public static string $lang = 'hu';     // UI language of the current request (X-Lang header)
     private static array $cache = [];
 
     /** Connects and migrates. Returns null on success or an error array for the setup page. */

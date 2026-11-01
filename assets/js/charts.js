@@ -1,5 +1,5 @@
 // Family-tree diagrams rendered as SVG: layout → render → pan/zoom → export (SVG/PNG/server).
-import { S, P, F, h, api, personName, years, parentsOf, spouseIn, toast, fail } from './core.js';
+import { S, P, F, h, api, T, personName, years, parentsOf, spouseIn, toast, fail } from './core.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const sv = (tag, attrs = {}, ...kids) => {
@@ -28,7 +28,9 @@ const sexColor = (pal, sx) => sx === 'M' ? pal.male : sx === 'F' ? pal.female : 
 
 // ======================================================================= layouts
 // Each returns { nodes:[{id,x,y,w,h,root?}], links:[{d, kind}], extra:[], bounds }
-function boxSize(o) { return { w: o.photos ? 196 : 168, h: o.places ? 74 : 62 }; }
+function boxSize(o) { return { w: o.photos ? 224 : 196, h: o.places ? 90 : 76 }; }
+// spouse cards slide in behind their partner: shifted right/down, only the bottom strip (with the name) shows
+export const SDX = 30, SDY = 30;
 
 export function layoutAncestors(rootId, o, vertical = false) {
   const { w, hh } = { w: boxSize(o).w, hh: boxSize(o).h };
@@ -60,53 +62,59 @@ export function layoutAncestors(rootId, o, vertical = false) {
 
 export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
   const { w, h: hh } = boxSize(o);
-  const G = o.down, sgap = 18, kgap = 22, vgap = 64;
+  const G = o.down, kgap = 26, vgap = 64;
   const nodes = [], links = [];
   const guard = new Set();
+  let maxSp = 0;
   const measure = (id, d) => {
     const p = P(id);
-    const fams = (d < G || (d === G && o.spouses)) && (d > 0 || withRootSpouses) ? (p?.fs || []).map(F).filter(Boolean) : [];
-    const showSp = o.spouses !== false;
-    const unitW = w + (showSp ? fams.filter(f => spouseIn(f, id)).length * (w + sgap) : 0);
+    const showSp = o.spouses !== false && (d > 0 || withRootSpouses);
+    const fams = (p?.fs || []).map(F).filter(Boolean);
+    const sps = showSp ? fams.filter(f => spouseIn(f, id)) : [];
+    maxSp = Math.max(maxSp, Math.min(sps.length, 3));
+    const unitW = w + sps.length * SDX;
     const kids = [];
     if (d < G && !guard.has(id)) {
       guard.add(id);
       for (const f of fams) for (const c of f.c) kids.push({ fam: f.id, m: measure(c, d + 1) });
     }
     const kidsW = kids.reduce((s, k) => s + k.m.width, 0) + Math.max(0, kids.length - 1) * kgap;
-    return { id, d, fams, unitW, kids, kidsW, width: Math.max(unitW, kidsW), showSp };
+    return { id, d, fams, sps, unitW, kids, kidsW, width: Math.max(unitW, kidsW) };
   };
+  const m0 = measure(rootId, 0);
+  const rowStep = hh + maxSp * SDY + vgap;
   const placeT = (m, left, top) => {
     const ux = left + (m.width - m.unitW) / 2;
-    nodes.push({ id: m.id, x: ux, y: top, w, h: hh, root: m.d === 0 });
-    const famX = {};
-    let sx = ux + w + sgap;
-    for (const f of m.fams) {
-      const sp = spouseIn(f, m.id);
-      if (m.showSp && sp) {
-        nodes.push({ id: sp, x: sx, y: top, w, h: hh, spouse: true, div: f.dv });
-        links.push({ d: `M${sx - sgap},${top + hh / 2}H${sx}`, kind: f.dv ? 'div' : 'marr' });
-        famX[f.id] = sx - sgap / 2; sx += w + sgap;
-      } else famX[f.id] = ux + w / 2;
-    }
+    nodes.push({ id: m.id, x: ux, y: top, w, h: hh, root: m.d === 0, main: true });
+    // where each family's line to its children starts: bottom of that spouse's strip (or of the person)
+    const famPt = {};
+    m.sps.forEach((f, i) => {
+      const k = i + 1;
+      nodes.push({ id: spouseIn(f, m.id), x: ux + k * SDX, y: top + k * SDY, w, h: hh, spouse: true, layer: k, of: m.id, div: f.dv });
+      famPt[f.id] = [ux + k * SDX + w / 2, top + hh + k * SDY];
+    });
+    for (const f of m.fams) if (!famPt[f.id]) famPt[f.id] = [ux + w / 2, top + hh];
     let kx = left + (m.width - m.kidsW) / 2;
-    const ky = top + hh + vgap;
+    const ky = top + rowStep;
     const byFam = {};
     for (const k of m.kids) {
       placeT(k.m, kx, ky);
-      const kn = nodes.find(n => n.id === k.m.id && n.y === ky && !n.spouse && n.x >= kx - 1 && n.x <= kx + k.m.width);
-      (byFam[k.fam] ||= []).push(kn.x + w / 2);
+      (byFam[k.fam] ||= []).push(kx + (k.m.width - k.m.unitW) / 2 + w / 2);
       kx += k.m.width + kgap;
     }
-    for (const [fid, xs] of Object.entries(byFam)) {
-      const fx = famX[fid] ?? ux + w / 2, bus = top + hh + vgap / 2;
+    const famIds = Object.keys(byFam);
+    famIds.forEach((fid, fi) => {
+      const xs = byFam[fid];
+      const [fx, fy] = famPt[fid] || [ux + w / 2, top + hh];
+      // separate bus heights when a person has children with several spouses
+      const bus = ky - vgap / 2 + (famIds.length > 1 ? (fi - (famIds.length - 1) / 2) * 8 : 0);
       const lo = Math.min(fx, ...xs), hi = Math.max(fx, ...xs);
-      let d = `M${fx},${top + (famX[fid] !== ux + w / 2 ? hh / 2 : hh)}V${bus}M${lo},${bus}H${hi}`;
+      let d = `M${fx},${fy}V${bus}M${lo},${bus}H${hi}`;
       for (const x of xs) d += `M${x},${bus}V${ky}`;
       links.push({ d });
-    }
+    });
   };
-  placeT(measure(rootId, 0), 0, 0);
+  placeT(m0, 0, 0);
   return { nodes, links };
 }
 
@@ -124,49 +132,55 @@ export function layoutHourglass(rootId, o) {
 export function layoutFamily(rootId, o) {
   const { w, h: hh } = boxSize(o);
   const nodes = [], links = [];
-  const gap = 18, vgap = 70;
+  const gap = 22, vgap = 70;
   const bf = P(rootId)?.fc?.length ? F(P(rootId).fc[0]) : null;
   const sibs = bf ? bf.c.slice() : [rootId];
   if (!sibs.includes(rootId)) sibs.push(rootId);
   const fams = (P(rootId)?.fs || []).map(F).filter(Boolean);
-  // middle row: siblings (in birth order) with root's spouses right after the root
-  const row = [];
-  for (const s of sibs) { row.push({ id: s, root: s === rootId }); if (s === rootId) for (const f of fams) { const sp = spouseIn(f, rootId); if (sp) row.push({ id: sp, spouse: true, fam: f.id }); } }
-  const rowW = row.length * w + (row.length - 1) * gap;
+  const sps = o.spouses === false ? [] : fams.filter(f => spouseIn(f, rootId));
+  // middle row: siblings in birth order; the root's spouses slide in behind the root card
   const y1 = hh + vgap;
-  row.forEach((n, i) => nodes.push({ ...n, x: i * (w + gap), y: y1, w, h: hh }));
-  const rootN = nodes.find(n => n.root);
+  let x = 0;
+  const sibX = {};
+  for (const s of sibs) {
+    sibX[s] = x;
+    nodes.push({ id: s, x, y: y1, w, h: hh, root: s === rootId, main: true });
+    if (s === rootId) sps.forEach((f, i) => nodes.push({ id: spouseIn(f, rootId), x: x + (i + 1) * SDX, y: y1 + (i + 1) * SDY, w, h: hh, spouse: true, layer: i + 1, of: rootId, div: f.dv }));
+    x += w + (s === rootId ? sps.length * SDX : 0) + gap;
+  }
+  const rowW = x - gap;
   if (bf) {
     const parents = [bf.h, bf.w].filter(Boolean);
     const pw = parents.length * w + (parents.length - 1) * gap;
     const px0 = rowW / 2 - pw / 2;
-    parents.forEach((id, i) => nodes.push({ id, x: px0 + i * (w + gap), y: 0, w, h: hh }));
+    parents.forEach((id, i) => nodes.push({ id, x: px0 + i * (w + gap), y: 0, w, h: hh, main: true }));
     const cx = rowW / 2, bus = y1 - vgap / 2;
     let d = parents.length === 2 ? `M${px0 + w},${hh / 2}H${px0 + w + gap}M${cx},${hh / 2}V${bus}` : `M${cx},${hh}V${bus}`;
-    const sibNodes = nodes.filter(n => sibs.includes(n.id) && n.y === y1);
-    const xs = sibNodes.map(n => n.x + w / 2);
+    const xs = sibs.map(s => sibX[s] + w / 2);
     d += `M${Math.min(cx, ...xs)},${bus}H${Math.max(cx, ...xs)}`;
-    for (const x of xs) d += `M${x},${bus}V${y1}`;
-    links.push({ d });
+    for (const xx of xs) d += `M${xx},${bus}V${y1}`;
+    links.push({ d, kind: parents.length === 2 ? null : null });
+    if (parents.length === 2) links.push({ d: `M${px0 + w},${hh / 2}H${px0 + w + gap}`, kind: 'marr' });
   }
-  // children of root below, grouped under each spouse
-  const y2 = y1 + hh + vgap;
+  // the root's children below, each family's line starting from that spouse's strip
+  const y2 = y1 + hh + sps.length * SDY + vgap;
   const kidsAll = [];
   for (const f of fams) for (const c of f.c) kidsAll.push({ c, f });
   const kw = kidsAll.length * w + Math.max(0, kidsAll.length - 1) * gap;
-  const kx0 = rootN.x + w / 2 + (fams.length && spouseIn(fams[0], rootId) ? (w + gap) / 2 : 0) - kw / 2;
-  kidsAll.forEach((k, i) => nodes.push({ id: k.c, x: kx0 + i * (w + gap), y: y2, w, h: hh }));
-  for (const f of fams) {
-    const spN = nodes.find(n => n.spouse && n.fam === f.id);
-    const fx = spN ? spN.x - gap / 2 : rootN.x + w / 2;
-    if (spN) links.push({ d: `M${spN.x - gap},${y1 + hh / 2}H${spN.x}`, kind: f.dv ? 'div' : 'marr' });
-    const xs = kidsAll.map((k, i) => k.f === f ? kx0 + i * (w + gap) + w / 2 : null).filter(x => x !== null);
-    if (!xs.length) continue;
-    const bus = y2 - vgap / 2;
-    let d = `M${fx},${y1 + (spN ? hh / 2 : hh)}V${bus}M${Math.min(fx, ...xs)},${bus}H${Math.max(fx, ...xs)}`;
-    for (const x of xs) d += `M${x},${bus}V${y2}`;
+  const rx = sibX[rootId];
+  const kx0 = rx + (w + sps.length * SDX) / 2 - kw / 2;
+  kidsAll.forEach((k, i) => nodes.push({ id: k.c, x: kx0 + i * (w + gap), y: y2, w, h: hh, main: true }));
+  fams.forEach((f, fi) => {
+    const si = sps.indexOf(f);
+    const fx = si >= 0 ? rx + (si + 1) * SDX + w / 2 : rx + w / 2;
+    const fy = si >= 0 ? y1 + hh + (si + 1) * SDY : y1 + hh;
+    const xs = kidsAll.map((k, i) => k.f === f ? kx0 + i * (w + gap) + w / 2 : null).filter(v => v !== null);
+    if (!xs.length) return;
+    const bus = y2 - vgap / 2 + (fams.length > 1 ? (fi - (fams.length - 1) / 2) * 8 : 0);
+    let d = `M${fx},${fy}V${bus}M${Math.min(fx, ...xs)},${bus}H${Math.max(fx, ...xs)}`;
+    for (const xx of xs) d += `M${xx},${bus}V${y2}`;
     links.push({ d });
-  }
+  });
   return { nodes, links };
 }
 
@@ -200,9 +214,17 @@ export function findPath(a, b) {
   }
   return null;
 }
-const STEP = { up: { M: 'apja', F: 'anyja', U: 'szülője' }, down: { M: 'fia', F: 'lánya', U: 'gyermeke' }, sp: { M: 'férje', F: 'felesége', U: 'házastársa' } };
-/** Hungarian kinship term (possessive form) for a blood path: `a` steps up then `b` steps down; sx = sex of the target. */
-export function kinTerm(a, b, sx) {
+const STEPS = {
+  hu: { up: { M: 'apja', F: 'anyja', U: 'szülője' }, down: { M: 'fia', F: 'lánya', U: 'gyermeke' }, sp: { M: 'férje', F: 'felesége', U: 'házastársa' } },
+  en: { up: { M: 'father', F: 'mother', U: 'parent' }, down: { M: 'son', F: 'daughter', U: 'child' }, sp: { M: 'husband', F: 'wife', U: 'spouse' } },
+  de: { up: { M: 'Vater', F: 'Mutter', U: 'Elternteil' }, down: { M: 'Sohn', F: 'Tochter', U: 'Kind' }, sp: { M: 'Ehemann', F: 'Ehefrau', U: 'Ehepartner' } },
+};
+const stepWord = (how, sx, lang = S.lang) => (STEPS[lang] || STEPS.hu)[how][sx || 'U'];
+
+/** Kinship term for a blood path: `a` steps up then `b` steps down; sx = sex of the target. Hungarian: possessive form. */
+export function kinTerm(a, b, sx, lang = S.lang) {
+  if (lang === 'en') return kinTermEn(a, b, sx);
+  if (lang === 'de') return kinTermDe(a, b, sx);
   const pick = (m, f, u) => sx === 'M' ? m : sx === 'F' ? f : u;
   if (b === 0) {
     const t = [null, pick('apja', 'anyja', 'szülője'), pick('nagyapja', 'nagyanyja', 'nagyszülője'), pick('dédapja', 'dédanyja', 'dédszülője'),
@@ -220,17 +242,57 @@ export function kinTerm(a, b, sx) {
   if (a === b) return deg(c);
   return `${deg(c)} (${Math.abs(a - b)} nemzedék eltéréssel)`;
 }
-export function relationLabel(path) {
-  if (!path) return 'A családfában nincs kimutatható kapcsolat kettejük között.';
-  if (path.length === 1) return 'Ugyanazt a személyt választottad.';
+function kinTermEn(a, b, sx) {
+  const pick = (m, f, u) => sx === 'M' ? m : sx === 'F' ? f : u;
+  const greats = n => n <= 0 ? '' : n === 1 ? 'great-' : n === 2 ? 'great-great-' : `${n}× great-`;
+  if (b === 0) return a === 1 ? pick('father', 'mother', 'parent') : greats(a - 2) + pick('grandfather', 'grandmother', 'grandparent');
+  if (a === 0) return b === 1 ? pick('son', 'daughter', 'child') : greats(b - 2) + pick('grandson', 'granddaughter', 'grandchild');
+  if (a === 1 && b === 1) return pick('brother', 'sister', 'sibling');
+  if (b === 1) return greats(a - 2) + pick('uncle', 'aunt', 'uncle or aunt');
+  if (a === 1) return greats(b - 2) + pick('nephew', 'niece', 'nephew or niece');
+  const c = Math.min(a, b) - 1, r = Math.abs(a - b);
+  const ord = ['', 'first', 'second', 'third', 'fourth', 'fifth'][c] || c + 'th';
+  const rem = r === 0 ? '' : r === 1 ? ' once removed' : r === 2 ? ' twice removed' : ` ${r} times removed`;
+  return `${ord} cousin${rem}`;
+}
+function kinTermDe(a, b, sx) {
+  const pick = (m, f, u) => sx === 'M' ? m : sx === 'F' ? f : u;
+  const ur = n => 'Ur'.repeat(Math.max(0, n)).replace(/^Ur(Ur)+/, m => 'Ur' + m.slice(2).toLowerCase());
+  if (b === 0) return a === 1 ? pick('Vater', 'Mutter', 'Elternteil') : (a === 2 ? '' : ur(a - 2)) + (a === 2 ? pick('Großvater', 'Großmutter', 'Großelternteil') : pick('großvater', 'großmutter', 'großelternteil'));
+  if (a === 0) return b === 1 ? pick('Sohn', 'Tochter', 'Kind') : (b === 2 ? pick('Enkel', 'Enkelin', 'Enkelkind') : ur(b - 2) + pick('enkel', 'enkelin', 'enkelkind'));
+  if (a === 1 && b === 1) return pick('Bruder', 'Schwester', 'Geschwister');
+  if (b === 1) return a === 2 ? pick('Onkel', 'Tante', 'Onkel oder Tante') : (a === 3 ? pick('Großonkel', 'Großtante', 'Großonkel oder Großtante') : `${pick('Großonkel', 'Großtante', 'Großonkel/-tante')} (${a - 3}. Grades)`);
+  if (a === 1) return b === 2 ? pick('Neffe', 'Nichte', 'Neffe oder Nichte') : (b === 3 ? pick('Großneffe', 'Großnichte', 'Großneffe oder Großnichte') : `${pick('Großneffe', 'Großnichte', 'Großneffe/-nichte')} (${b - 3}. Grades)`);
+  const c = Math.min(a, b) - 1, r = Math.abs(a - b);
+  return `${pick('Cousin', 'Cousine', 'Cousin/Cousine')} ${c}. Grades${r ? ` (${r} Generation${r > 1 ? 'en' : ''} Unterschied)` : ''}`;
+}
+export function relationLabel(path, lang = S.lang) {
+  const L = {
+    hu: { none: 'A családfában nincs kimutatható kapcsolat kettejük között.', same: 'Ugyanazt a személyt választottad.' },
+    en: { none: 'There is no traceable relationship between them in the family tree.', same: 'You picked the same person twice.' },
+    de: { none: 'Im Stammbaum ist keine Verwandtschaft zwischen den beiden zu finden.', same: 'Du hast zweimal dieselbe Person gewählt.' },
+  }[lang] || {};
+  if (!path) return L.none;
+  if (path.length === 1) return L.same;
   const steps = path.slice(1).map(s => s.how);
   const from = P(path[0].id), tgt = P(path[path.length - 1].id);
   let a = 0, b = 0, blood = true;
   for (const x of steps) { if (x === 'up') { if (b) blood = false; a++; } else if (x === 'down') b++; else blood = false; }
   const tn = personName(tgt, { withTitle: false }), fn = personName(from, { withTitle: false });
-  if (blood) return `${tn} ${fn} ${kinTerm(a, b, tgt?.sx)}.`;
-  if (steps.length === 1) return `${tn} ${fn} ${STEP.sp[tgt?.sx || 'U']}.`;
-  return `${tn} és ${fn} kapcsolata ${steps.length} lépésben: ` + path.slice(1).map(s => STEP[s.how][P(s.id)?.sx || 'U']).join(' → ') + '.';
+  const chain = path.slice(1).map(s => stepWord(s.how, P(s.id)?.sx, lang)).join(' → ');
+  if (lang === 'en') {
+    if (blood) return `${tn} is ${fn}'s ${kinTerm(a, b, tgt?.sx, 'en')}.`;
+    if (steps.length === 1) return `${tn} is ${fn}'s ${stepWord('sp', tgt?.sx, 'en')}.`;
+    return `${tn} and ${fn} are connected in ${steps.length} steps: ${chain}.`;
+  }
+  if (lang === 'de') {
+    if (blood) return `${tn}: ${kinTerm(a, b, tgt?.sx, 'de')} von ${fn}.`;
+    if (steps.length === 1) return `${tn}: ${stepWord('sp', tgt?.sx, 'de')} von ${fn}.`;
+    return `${tn} und ${fn} sind über ${steps.length} Schritte verbunden: ${chain}.`;
+  }
+  if (blood) return `${tn} ${fn} ${kinTerm(a, b, tgt?.sx, 'hu')}.`;
+  if (steps.length === 1) return `${tn} ${fn} ${stepWord('sp', tgt?.sx, 'hu')}.`;
+  return `${tn} és ${fn} kapcsolata ${steps.length} lépésben: ${chain}.`;
 }
 export function layoutRelation(a, b, o) {
   const { w, h: hh } = boxSize(o);
@@ -248,7 +310,7 @@ export function layoutRelation(a, b, o) {
     if (i > 0) {
       const p = nodes[i - 1], n = nodes[i];
       const tgt = P(s.id);
-      const lab = STEP[s.how][tgt?.sx || 'U'];
+      const lab = stepWord(s.how, tgt?.sx);
       if (s.how === 'sp') { links.push({ d: `M${p.x + w},${p.y + hh / 2}H${n.x}`, kind: 'marr' }); extra.push({ x: (p.x + w + n.x) / 2, y: p.y + hh / 2 - 8, t: lab }); }
       else {
         const up = s.how === 'up';
@@ -272,45 +334,73 @@ function measureBounds(nodes, extraPts = []) {
 
 function clip(s, max) { s = String(s || ''); return s.length > max ? s.slice(0, Math.max(1, max - 1)) + '…' : s; }
 
+/** At most two given names when three would not fit ("Árpád István Ernő" → "Árpád István"). */
+export function fitGiven(given, max) {
+  given = String(given || '');
+  if (given.length <= max) return given;
+  const parts = given.split(/\s+/);
+  if (parts.length > 2) { const two = parts.slice(0, 2).join(' '); if (two.length <= max) return two; }
+  return clip(given, max);
+}
+
+function photoCircle(g, p, cx, cy, r, col, pal, defs, uid, n) {
+  if (p.ph) {
+    const cid = `c${uid}_${n.id}_${Math.round(n.x)}_${Math.round(n.y)}_${r}`.replace(/[^\w]/g, '_');
+    defs.append(sv('clipPath', { id: cid }, sv('circle', { cx, cy, r })));
+    const fx = p.fx ?? .5, fy = p.fy ?? .35;
+    // emulate object-fit:cover with a focus point on a square crop
+    g.append(sv('image', { href: p.ph, x: cx - r, y: cy - r, width: r * 2, height: r * 2, preserveAspectRatio: `x${fx < .34 ? 'Min' : fx > .66 ? 'Max' : 'Mid'}Y${fy < .34 ? 'Min' : fy > .66 ? 'Max' : 'Mid'} slice`, 'clip-path': `url(#${cid})` }));
+    g.append(sv('circle', { cx, cy, r, fill: 'none', stroke: col, 'stroke-width': 1.5 }));
+  } else {
+    g.append(sv('circle', { cx, cy, r, fill: pal.surface2, stroke: pal.line }));
+    g.append(sv('text', { x: cx, y: cy + r * 0.3, 'text-anchor': 'middle', 'font-size': Math.round(r * 0.62), 'font-weight': 700, fill: pal.muted, 'font-family': 'Alegreya, Georgia, serif' }, ((p.s || '')[0] || '') + ((p.g || '')[0] || '')));
+  }
+}
+
 function personBox(n, o, pal, defs, uid) {
   const p = P(n.id) || { g: '?', sx: 'U' };
   const st = o.style || 'album';
-  const g = sv('g', { class: 'node', transform: `translate(${n.x},${n.y})`, 'data-id': n.id, tabindex: 0, role: 'button', 'aria-label': personName(p) });
+  const g = sv('g', { class: 'node' + (n.spouse ? ' spouse' : ''), transform: `translate(${n.x},${n.y})`, 'data-id': n.id, tabindex: 0, role: 'button', 'aria-label': personName(p) });
   const col = sexColor(pal, p.sx);
-  const fill = st === 'classic' ? pal.surface2 : st === 'minimal' ? 'none' : pal.surface;
+  const font = 'Alegreya, Georgia, serif', sans = '"Alegreya Sans", "Segoe UI", sans-serif';
+  const masked = p.masked && S.settings.privacy_living === 'names';
+  if (n.spouse) {
+    // card tucked behind the partner: only the bottom strip (SDY high) is visible, the name lives there
+    const fill = st === 'minimal' ? pal.paper : pal.surface2;
+    g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke: n.div ? pal.muted : pal.line, 'stroke-width': 1, ...(n.div ? { 'stroke-dasharray': '4 3' } : {}) }));
+    g.append(sv('rect', { x: 0, y: n.h - SDY + 6, width: 4, height: SDY - 12, rx: 2, fill: col }));
+    const sy = n.h - SDY / 2;
+    let tx = 12;
+    if (o.photos) { photoCircle(g, p, 12 + 10, sy, 10, col, pal, defs, uid, n); tx = 38; }
+    const nm = masked ? T('Élő személy') : personName(p, { short: true, withTitle: false });
+    const yr = years(p);
+    const room = Math.floor((n.w - tx - 8) / 6.6);
+    const label = (n.div ? '⚮ ' : '⚭ ') + clip(nm, Math.max(6, room - (yr ? yr.length + 1 : 0)));
+    const t = sv('text', { x: tx, y: sy + 4.5, 'font-size': 13.5, fill: pal.ink, 'font-family': sans }, label);
+    if (yr && label.length + yr.length + 1 <= room) t.append(sv('tspan', { fill: pal.muted, dx: 6, 'font-size': 12 }, yr));
+    g.append(t);
+    return g;
+  }
+  const fill = st === 'classic' ? pal.surface2 : st === 'minimal' ? pal.paper : pal.surface;
   const stroke = n.root ? pal.accent : st === 'classic' ? col : pal.line;
-  g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke, 'stroke-width': n.root ? 2.4 : 1, ...(n.dup ? { 'stroke-dasharray': '4 3' } : {}) }));
+  g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke, 'stroke-width': n.root ? 2.6 : 1, ...(n.dup ? { 'stroke-dasharray': '4 3' } : {}) }));
   if (st !== 'minimal') g.append(sv('rect', { x: 0, y: st === 'classic' ? 0 : 8, width: 4, height: st === 'classic' ? n.h : n.h - 16, rx: 2, fill: col }));
   else g.append(sv('rect', { x: 0, y: n.h - 2, width: n.w, height: 2, fill: col }));
   let tx = 14;
-  const r = Math.min(23, n.h / 2 - 7);
-  if (o.photos) {
-    const cx = 12 + r, cy = n.h / 2;
-    if (p.ph) {
-      const cid = `c${uid}_${n.id}_${Math.round(n.x)}_${Math.round(n.y)}`.replace(/[^\w]/g, '_');
-      defs.append(sv('clipPath', { id: cid }, sv('circle', { cx, cy, r })));
-      const fx = p.fx ?? .5, fy = p.fy ?? .35;
-      // emulate object-fit:cover with a focus point on a square crop
-      g.append(sv('image', { href: p.ph, x: cx - r, y: cy - r, width: r * 2, height: r * 2, preserveAspectRatio: `x${fx < .34 ? 'Min' : fx > .66 ? 'Max' : 'Mid'}Y${fy < .34 ? 'Min' : fy > .66 ? 'Max' : 'Mid'} slice`, 'clip-path': `url(#${cid})` }));
-      g.append(sv('circle', { cx, cy, r, fill: 'none', stroke: col, 'stroke-width': 1.5 }));
-    } else {
-      g.append(sv('circle', { cx, cy, r, fill: pal.surface2, stroke: pal.line }));
-      g.append(sv('text', { x: cx, y: cy + 5, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 700, fill: pal.muted, 'font-family': 'Alegreya, Georgia, serif' }, ((p.s || '')[0] || '') + ((p.g || '')[0] || '')));
-    }
-    tx = 12 + r * 2 + 9;
-  }
-  const maxC = Math.floor((n.w - tx - 6) / 7.1);
+  const r = Math.min(27, n.h / 2 - 8);
+  if (o.photos) { photoCircle(g, p, 12 + r, o.places ? 38 : n.h / 2, r, col, pal, defs, uid, n); tx = 12 + r * 2 + 10; }
+  const maxC = Math.floor((n.w - tx - 6) / 8.4);
   const west = S.settings.name_order === 'west';
-  const l1 = p.masked && S.settings.privacy_living === 'names' ? 'Élő személy' : (west ? p.g : p.s) || '';
-  const l2 = p.masked && S.settings.privacy_living === 'names' ? '' : ((p.t ? p.t + ' ' : '') + ((west ? p.s : p.g) || ''));
-  const font = 'Alegreya, Georgia, serif', sans = '"Alegreya Sans", "Segoe UI", sans-serif';
-  const top = o.places ? 20 : 23;
-  g.append(sv('text', { x: tx, y: top, 'font-size': 15, 'font-weight': 700, fill: pal.ink, 'font-family': font }, clip(l1 || l2 || '?', maxC)));
-  if (l1 && l2) g.append(sv('text', { x: tx, y: top + 17, 'font-size': 14, fill: pal.ink, 'font-family': font }, clip(l2, maxC + 1)));
+  const l1 = masked ? T('Élő személy') : (west ? p.g : p.s) || '';
+  const givenRaw = masked ? '' : ((west ? p.s : p.g) || '');
+  const title = !masked && p.t ? p.t + ' ' : '';
+  const l2 = givenRaw ? title + fitGiven(givenRaw, maxC + 1 - title.length) : title.trim();
+  const top = o.places ? 22 : 26;
+  g.append(sv('text', { x: tx, y: top, 'font-size': 17, 'font-weight': 700, fill: pal.ink, 'font-family': font }, clip(l1 || l2 || '?', maxC)));
+  if (l1 && l2) g.append(sv('text', { x: tx, y: top + 19, 'font-size': 16, fill: pal.ink, 'font-family': font }, clip(l2, maxC + 1)));
   const yr = years(p);
-  g.append(sv('text', { x: tx, y: top + (l1 && l2 ? 33 : 18), 'font-size': 12.5, fill: pal.muted, 'font-family': sans }, yr));
-  if (o.places && (p.bp || p.dp)) g.append(sv('text', { x: tx, y: top + 48, 'font-size': 11.5, fill: pal.muted, 'font-family': sans }, clip(p.bp || p.dp, maxC + 3)));
-  if (n.div) g.append(sv('text', { x: n.w - 8, y: 14, 'text-anchor': 'end', 'font-size': 11, fill: pal.muted, 'font-family': sans }, 'elvált'));
+  g.append(sv('text', { x: tx, y: top + (l1 && l2 ? 37 : 20), 'font-size': 13.5, fill: pal.muted, 'font-family': sans }, yr));
+  if (o.places && (p.bp || p.dp)) g.append(sv('text', { x: tx, y: top + 54, 'font-size': 12.5, fill: pal.muted, 'font-family': sans }, clip(p.bp || p.dp, maxC + 4)));
   return g;
 }
 
@@ -396,13 +486,13 @@ export function renderChart(host, opts) {
   const o = { up: 3, down: 2, photos: true, places: false, spouses: true, style: 'album', interactive: true, ...opts };
   const pal = palette();
   const uid = ++UID;
-  const svg = sv('svg', { xmlns: NS, 'xmlns:xlink': 'http://www.w3.org/1999/xlink', role: 'img', 'aria-label': (CHART_KINDS[o.kind]?.label || 'Diagram') + ': ' + personName(P(o.root)) });
+  const svg = sv('svg', { xmlns: NS, 'xmlns:xlink': 'http://www.w3.org/1999/xlink', role: 'img', 'aria-label': T(CHART_KINDS[o.kind]?.label || 'Diagram') + ': ' + personName(P(o.root)) });
   const defs = sv('defs');
   svg.append(defs);
   const world = sv('g');
   svg.append(world);
   let bounds, info = {};
-  if (!P(o.root)) { host.replaceChildren(h('div', { class: 'empty', style: 'padding:30px' }, 'Válassz egy személyt.')); return null; }
+  if (!P(o.root)) { host.replaceChildren(h('div', { class: 'empty', style: 'padding:30px' }, T('Válassz egy személyt.'))); return null; }
 
   if (o.kind === 'fan') {
     bounds = renderFan(o.root, o, pal, world, defs, uid);
@@ -417,7 +507,9 @@ export function renderChart(host, opts) {
     for (const l of L.links) lg.append(sv('path', { d: l.d, ...(l.kind === 'marr' ? { stroke: pal.accent, 'stroke-width': 2.2 } : {}), ...(l.kind === 'div' ? { stroke: pal.muted, 'stroke-dasharray': '5 4' } : {}) }));
     world.append(lg);
     for (const e of L.extra || []) world.append(sv('text', { x: e.x, y: e.y, 'text-anchor': 'middle', 'font-size': 12, fill: pal.accent, 'font-family': '"Alegreya Sans", sans-serif', 'font-style': 'italic', 'paint-order': 'stroke', stroke: pal.paper, 'stroke-width': 4 }, e.t));
-    for (const n of L.nodes) world.append(personBox(n, o, pal, defs, uid));
+    // spouse cards first (deepest layer first) so their partner's card covers them
+    const order = L.nodes.slice().sort((a, b) => (b.spouse ? b.layer : 0) - (a.spouse ? a.layer : 0));
+    for (const n of order) world.append(personBox(n, o, pal, defs, uid));
     bounds = measureBounds(L.nodes);
     info.count = new Set(L.nodes.map(n => n.id)).size;
   }
@@ -442,10 +534,10 @@ export function renderChart(host, opts) {
     const node = world.querySelector(`.node[data-id="${o.root}"]`);
     if (!node || o.kind === 'fan') return fit();
     const bb = node.getBBox(); const ctm = node.transform.baseVal.consolidate()?.matrix;
-    const cx = (ctm ? ctm.e : 0) + bb.x + bb.width / 2, cy = (ctm ? ctm.f : 0) + bb.y + bb.height / 2;
+    const cx = (ctm ? ctm.e : 0) + bb.x + bb.width / 2, cy = (ctm ? ctm.f : 0) + bb.y + bb.height / 2 + (o.focusShift || 0);
     const s = Math.min(r.width / bounds.w, r.height / bounds.h);
     if (s >= 0.7) return fit(1.1); // small chart: show all of it
-    const sc = Math.max(s, Math.min(1, r.width / 1000));
+    const sc = Math.max(s, o.minScale || Math.min(1, r.width / 1000));
     vb = { w: r.width / sc, h: r.height / sc, x: cx - r.width / sc / 2, y: cy - r.height / sc / 2 };
     apply();
   };
@@ -460,6 +552,36 @@ export function renderChart(host, opts) {
   // embedded charts: one finger scrolls the page, two fingers pinch-zoom the chart; full-screen explorer: all gestures go to the chart
   host.style.touchAction = o.wheel === false ? 'pan-y' : 'none';
 
+  // ---------------- quick card (popover) for a clicked person
+  let pop = null;
+  const closePop = () => { if (pop) { pop.remove(); pop = null; } };
+  const openPop = (id, nodeEl) => {
+    closePop();
+    const p = P(id); if (!p) return;
+    const hr = host.getBoundingClientRect(), nr = nodeEl.getBoundingClientRect();
+    const actions = (o.popActions || defaultPopActions)(id);
+    pop = h('div', { class: 'chart-pop', role: 'dialog', 'aria-label': personName(p) },
+      h('div', { class: 'cp-head' }, popAvatar(p), h('div', null, h('b', null, personName(p)), h('div', { class: 'cp-yr' }, [years(p), p.bp].filter(Boolean).join(' · ')))),
+      h('div', { class: 'cp-act' }, actions.map(a => h('button', { type: 'button', class: 'btn btn-sm' + (a.primary ? ' btn-primary' : ''), onclick: ev => { ev.stopPropagation(); closePop(); a.run(id); } }, a.label))));
+    host.append(pop);
+    // place under the card, kept inside the chart area
+    const pw = Math.min(300, hr.width - 16);
+    let left = nr.left - hr.left + nr.width / 2 - pw / 2;
+    left = Math.max(8, Math.min(left, hr.width - pw - 8));
+    let top = nr.bottom - hr.top + 8;
+    if (top + 140 > hr.height) top = Math.max(8, nr.top - hr.top - 148);
+    Object.assign(pop.style, { left: left + 'px', top: top + 'px', width: pw + 'px' });
+  };
+  const defaultPopActions = id => [
+    { label: T('Középre'), primary: true, run: x => recenter(x) },
+    { label: T('Adatlap'), run: x => (o.onOpen ? o.onOpen(x) : (location.hash = '#/person/' + x)) },
+  ];
+  const popAvatar = p => {
+    const el = h('span', { class: 'av ' + (p.sx || 'U'), style: '--sz:40px' });
+    if (p.ph) el.append(h('img', { src: p.ph, alt: '' })); else el.append(((p.s || '')[0] || '') + ((p.g || '')[0] || ''));
+    return el;
+  };
+
   const cleanups = [];
   let touched = false; // once the user zoomed/panned, resizes no longer reset the view
   if (o.interactive) {
@@ -467,9 +589,12 @@ export function renderChart(host, opts) {
     const pts = new Map();
     let drag = null, pinch = null, moved = false;
     const startDrag = (x, y) => { drag = { x, y, vx: vb.x, vy: vb.y }; };
+    let downNode = null, multi = false;
     const down = e => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
-      if (e.target.closest('.chart-ctl')) return;
+      if (e.target.closest('.chart-ctl') || e.target.closest('.chart-pop')) return;
+      if (pts.size === 0) { downNode = e.target.closest('.node'); multi = false; }
+      else multi = true;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { host.setPointerCapture(e.pointerId); } catch (_) { }
       if (pts.size === 1) { startDrag(e.clientX, e.clientY); moved = false; }
@@ -493,44 +618,57 @@ export function renderChart(host, opts) {
       }
       if (!drag) return;
       const r = host.getBoundingClientRect(); const sc = vb.w / r.width;
-      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) { moved = true; touched = true; }
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) { if (!moved) closePop(); moved = true; touched = true; }
       vb.x = drag.vx - (e.clientX - drag.x) * sc; vb.y = drag.vy - (e.clientY - drag.y) * sc; apply();
     };
     const up = e => {
+      if (!pts.has(e.pointerId)) return;
       pts.delete(e.pointerId);
+      // a tap/click: pointer capture retargets the browser's click event, so it is recognised here
+      if (pts.size === 0 && !moved && !multi && e.type === 'pointerup') tap(downNode);
       try { host.releasePointerCapture(e.pointerId); } catch (_) { }
       if (pts.size < 2) pinch = null;
       if (pts.size === 1) { const p = [...pts.values()][0]; startDrag(p.x, p.y); } else drag = null;
     };
     const wheel = e => { if (o.wheel === false && !e.ctrlKey && !e.metaKey) return; e.preventDefault(); touched = true; zoom(Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX, e.clientY); };
-    const click = e => {
-      if (moved || e.target.closest('.chart-ctl')) return;
-      const n = e.target.closest('.node'); if (!n) return;
+    // click = quick card, double click / double tap = make that person the centre
+    let lastTap = { id: null, t: 0 };
+    const recenter = id => { closePop(); (o.onRecenter || (x => (location.hash = '#/person/' + x)))(id); };
+    const tap = n => {
+      if (!n) { closePop(); return; }
       const id = +n.dataset.id;
-      if (e.detail >= 2 || !o.onNode) { o.onOpen ? o.onOpen(id) : (location.hash = '#/person/' + id); return; }
-      o.onNode(id);
+      const now = Date.now();
+      if (lastTap.id === id && now - lastTap.t < 450) { lastTap = { id: null, t: 0 }; recenter(id); return; }
+      lastTap = { id, t: now };
+      openPop(id, n);
     };
-    const key = e => { const n = e.target.closest?.('.node'); if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); (o.onNode || (id => location.hash = '#/person/' + id))(+n.dataset.id); } };
+    const key = e => {
+      if (e.key === 'Escape') return closePop();
+      const n = e.target.closest?.('.node'); if (!n) return;
+      if (e.key === 'Enter') { e.preventDefault(); recenter(+n.dataset.id); }
+      else if (e.key === ' ') { e.preventDefault(); openPop(+n.dataset.id, n); }
+    };
     host.addEventListener('pointerdown', down); host.addEventListener('pointermove', move, { passive: false }); host.addEventListener('pointerup', up); host.addEventListener('pointercancel', up);
-    host.addEventListener('wheel', wheel, { passive: false }); host.addEventListener('click', click); host.addEventListener('keydown', key);
-    cleanups.push(() => { host.removeEventListener('pointerdown', down); host.removeEventListener('pointermove', move); host.removeEventListener('pointerup', up); host.removeEventListener('pointercancel', up); host.removeEventListener('wheel', wheel); host.removeEventListener('click', click); host.removeEventListener('keydown', key); });
+    host.addEventListener('wheel', wheel, { passive: false }); host.addEventListener('keydown', key);
+    cleanups.push(() => { host.removeEventListener('pointerdown', down); host.removeEventListener('pointermove', move); host.removeEventListener('pointerup', up); host.removeEventListener('pointercancel', up); host.removeEventListener('wheel', wheel); host.removeEventListener('keydown', key); });
     // on-screen zoom buttons (always available: touch screens, trackpads, embedded charts without wheel zoom)
     if (o.controls !== false) {
       const btn = (label, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = title; b.setAttribute('aria-label', title); b.addEventListener('click', ev => { ev.stopPropagation(); touched = true; fn(); }); return b; };
       const ctl = document.createElement('div');
       ctl.className = 'chart-ctl';
-      ctl.append(btn('+', 'Nagyítás', () => zoom(0.75)), btn('−', 'Kicsinyítés', () => zoom(1.33)), btn('⤢', 'Teljes nézet', () => fit(3)));
+      ctl.append(btn('+', T('Nagyítás'), () => zoom(0.75)), btn('−', T('Kicsinyítés'), () => zoom(1.33)), btn('⤢', T('Teljes nézet'), () => fit(3)));
       host.append(ctl);
     }
   } else {
     host.addEventListener('click', e => { const n = e.target.closest('.node'); if (n) (o.onOpen || (id => location.hash = '#/person/' + id))(+n.dataset.id); });
   }
+  cleanups.push(closePop);
   const ro = new ResizeObserver(() => { if (!touched) (o.focus || host.clientWidth < 640 ? focusRoot() : fit()); });
   ro.observe(host);
   cleanups.push(() => ro.disconnect());
 
   return {
-    svg, bounds, info, opts: o, fit, zoom, focusRoot,
+    svg, bounds, info, opts: o, fit, zoom, focusRoot, closePop,
     destroy: () => cleanups.forEach(f => f()),
     exportSVG: (title) => buildExportSVG(svg, bounds, pal, title),
   };
@@ -596,7 +734,7 @@ export async function svgToPNG(svgText, w, h, scale = 2) {
   scale = Math.min(scale, maxSide / Math.max(w, h));
   const img = new Image();
   const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }));
-  await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('A diagram képpé alakítása nem sikerült.')); img.src = url; });
+  await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error(T('A diagram képpé alakítása nem sikerült.'))); img.src = url; });
   const cv = document.createElement('canvas');
   cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
   const ctx = cv.getContext('2d');
