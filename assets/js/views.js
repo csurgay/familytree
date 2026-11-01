@@ -94,7 +94,7 @@ export async function viewHome() {
     homeCtrl?.destroy();
     homeCtrl = renderChart(host, {
       kind, root, up: tp.up || s.home_tree_gens, down: tp.down || s.home_tree_down || 2, photos: s.chart_photos, style: s.chart_style,
-      places: false, interactive: true, wheel: false, focus: true, minScale: host.clientWidth < 640 ? 0.6 : 0.75, focusShift: 130,
+      places: false, interactive: true, wheel: false, focus: true, minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130,
       onRecenter: id => drawHome(id), onOpen: id => go('#/person/' + id),
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => drawHome(x) },
@@ -266,7 +266,7 @@ export async function viewFamily(id) {
         h('section', { class: 'section' }, h('h2', null, T('Szülők')), h('div', { class: 'panel' }, [f.h, f.w].filter(Boolean).map(x => chip(x)))),
         h('section', { class: 'section' }, h('h2', null, T('Gyermekek')), h('div', { class: 'panel' }, f.c.length ? f.c.map(x => chip(x)) : h('p', { class: 'hint' }, T('Nincsenek rögzítve.')))),
         h('section', { class: 'section' }, host))));
-  requestAnimationFrame(() => renderChart(host, { kind: 'descendants', root: f.h || f.w, down: 2, photos: true, wheel: false, onRecenter: nid => go('#/person/' + nid), popActions: personPop }));
+  requestAnimationFrame(() => renderChart(host, { kind: 'descendants', root: f.h || f.w, down: 2, photos: true, wheel: false, focus: true, onRecenter: nid => go('#/person/' + nid), popActions: personPop }));
   return page;
 }
 

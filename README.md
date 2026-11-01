@@ -68,7 +68,8 @@ A szabályok (pl. hogy a családfő módosítása is jóváhagyást kér-e) a fo
   javítása, bélyegkép). A nézegetőben személyek jelölhetők, kattintással megadható az arc helye
   (ez adja a portrék és a kvíz kivágását), beállítható fő portré.
 - **Diagramok:** felmenők, leszármazottak, homokóra, legyező, családlap, rokonsági útvonal (magyar
-  rokonsági elnevezéssel). Fotókkal, helyekkel, három dobozstílussal. Letöltés PNG/SVG, nyomtatás,
+  rokonsági elnevezéssel). Fotókkal, helyekkel, három dobozstílussal, állítható kártya-betűmérettel
+  (100% = normál szövegméret) és névbetűtípussal (talpas, talpatlan, nagybetűs). Letöltés PNG/SVG, nyomtatás,
   mentés a közös „Diagramok” galériába.
 - **Arcképcsarnok:** portrék nemzedékenként, szűrés családnévre, teljes névsor, fotóalbum.
 - **Kvíz:** 5–20 arc (állítható), két mód: 4 hasonló korú (és azonos nemű) családtag közül, vagy

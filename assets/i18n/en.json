@@ -770,5 +770,9 @@
 " arc": " faces",
 "sz. {0}": "b. {0}",
 "Betűméret a kártyákon (%)": "Font size on the cards (%)",
-"A fán és a diagramokon; a kártyák is ezzel arányosan nőnek. 100 = a korábbi méret.": "In the tree and the charts; the cards grow with it. 100 = the previous size."
+"A fán és a diagramokon, a kezdő nagyításnál. 100% = a nevek akkorák, mint az oldal normál szövege (16 px); a kártyák arányosan nőnek.": "In the tree and the charts, at the starting zoom. 100% = names as large as the normal page text (16 px); the cards grow with it.",
+"Nevek betűtípusa a kártyákon": "Name font on the cards",
+"Talpas (klasszikus)": "Serif (classic)",
+"Talpatlan": "Sans serif",
+"Talpatlan, NAGYBETŰS nevek": "Sans serif, CAPITAL names"
 }

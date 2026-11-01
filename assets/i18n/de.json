@@ -770,5 +770,9 @@
 " arc": " Gesichter",
 "sz. {0}": "geb. {0}",
 "Betűméret a kártyákon (%)": "Schriftgröße auf den Karten (%)",
-"A fán és a diagramokon; a kártyák is ezzel arányosan nőnek. 100 = a korábbi méret.": "Im Stammbaum und in den Diagrammen; die Karten wachsen mit. 100 = die bisherige Größe."
+"A fán és a diagramokon, a kezdő nagyításnál. 100% = a nevek akkorák, mint az oldal normál szövege (16 px); a kártyák arányosan nőnek.": "Im Stammbaum und in den Diagrammen, beim Start-Zoom. 100 % = Namen so groß wie der normale Text der Seite (16 px); die Karten wachsen mit.",
+"Nevek betűtípusa a kártyákon": "Schrift der Namen auf den Karten",
+"Talpas (klasszikus)": "Serifen (klassisch)",
+"Talpatlan": "Serifenlos",
+"Talpatlan, NAGYBETŰS nevek": "Serifenlos, Namen in GROSSBUCHSTABEN"
 }

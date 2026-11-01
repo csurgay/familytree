@@ -30,7 +30,8 @@ const sexColor = (pal, sx) => sx === 'M' ? pal.male : sx === 'F' ? pal.female : 
 // Each returns { nodes:[{id,x,y,w,h,root?}], links:[{d, kind}], extra:[], bounds }
 // card scale from the admin setting (chart_font %): fonts, cards and the spouse strips grow together
 let K = 1;
-function scaleK() { K = Math.min(2, Math.max(0.6, (+S.settings?.chart_font || 100) / 100)); SDX = Math.round(30 * K); SDY = Math.round(30 * K); return K; }
+// 100% = names as large as normal body text (16px) at the chart's starting zoom
+function scaleK() { K = Math.min(2.2, Math.max(0.6, (+S.settings?.chart_font || 125) / 100 * 16 / 17)); SDX = Math.round(30 * K); SDY = Math.round(30 * K); return K; }
 function boxSize(o) { scaleK(); return { w: Math.round((o.photos ? 224 : 196) * K), h: Math.round((o.places ? 90 : 76) * K) }; }
 // spouse cards slide in behind their partner: shifted right/down, only the bottom strip (with the name) shows
 export let SDX = 30, SDY = 30;
@@ -395,7 +396,13 @@ function personBox(n, o, pal, defs, uid) {
   n = { ...n, w: n.w / k, h: n.h / k };
   const SDY = 30;
   const col = sexColor(pal, p.sx);
-  const font = 'Alegreya, Georgia, serif', sans = '"Alegreya Sans", "Segoe UI", sans-serif';
+  const sans = '"Alegreya Sans", "Segoe UI", sans-serif';
+  // name typography (chart_name_style): serif, sans, or sans with capitalised names
+  const ns = S.settings.chart_name_style || 'serif';
+  const font = ns === 'serif' ? 'Alegreya, Georgia, serif' : sans;
+  const caps = ns === 'sans_caps';
+  const up = t => (caps ? String(t || '').toLocaleUpperCase('hu') : t);
+  const cw = caps ? 10.6 : ns === 'sans' ? 8.0 : 8.4;   // average glyph width at 17px, for clipping
   const masked = p.masked && S.settings.privacy_living === 'names';
   if (n.spouse) {
     // card tucked behind the partner: only the bottom strip (SDY high) is visible, the name lives there
@@ -405,11 +412,11 @@ function personBox(n, o, pal, defs, uid) {
     const sy = n.h - SDY / 2;
     let tx = 12;
     if (o.photos) { photoCircle(g, p, 12 + 10, sy, 10, col, pal, defs, uid, n); tx = 38; }
-    const nm = masked ? T('Élő személy') : personName(p, { short: true, withTitle: false });
+    const nm = masked ? T('Élő személy') : up(personName(p, { short: true, withTitle: false }));
     const yr = years(p);
-    const room = Math.floor((n.w - tx - 8) / 6.6);
+    const room = Math.floor((n.w - tx - 8) / (caps ? 8.6 : 6.6));
     const label = (n.div ? '⚮ ' : '⚭ ') + clip(nm, Math.max(6, room - (yr ? yr.length + 1 : 0)));
-    const t = sv('text', { x: tx, y: sy + 4.5, 'font-size': 13.5, fill: pal.ink, 'font-family': sans }, label);
+    const t = sv('text', { x: tx, y: sy + 4.5, 'font-size': caps ? 12.5 : 13.5, fill: pal.ink, 'font-family': sans, ...(caps ? { 'letter-spacing': '.02em' } : {}) }, label);
     if (yr && label.length + yr.length + 1 <= room) t.append(sv('tspan', { fill: pal.muted, dx: 6, 'font-size': 12 }, yr));
     g.append(t);
     return outer;
@@ -422,12 +429,12 @@ function personBox(n, o, pal, defs, uid) {
   let tx = 14;
   const r = Math.min(27, n.h / 2 - 8);
   if (o.photos) { photoCircle(g, p, 12 + r, o.places ? 38 : n.h / 2, r, col, pal, defs, uid, n); tx = 12 + r * 2 + 10; }
-  const maxC = Math.floor((n.w - tx - 6) / 8.4);
+  const maxC = Math.floor((n.w - tx - 6) / cw);
   const west = S.settings.name_order === 'west';
-  const l1 = masked ? T('Élő személy') : (west ? p.g : p.s) || '';
+  const l1 = masked ? T('Élő személy') : up((west ? p.g : p.s) || '');
   const givenRaw = masked ? '' : ((west ? p.s : p.g) || '');
   const title = !masked && p.t ? p.t + ' ' : '';
-  const l2 = givenRaw ? title + fitGiven(givenRaw, maxC + 1 - title.length) : title.trim();
+  const l2 = givenRaw ? title + up(fitGiven(givenRaw, maxC + 1 - title.length)) : title.trim();
   const top = o.places ? 22 : 26;
   g.append(sv('text', { x: tx, y: top, 'font-size': 17, 'font-weight': 700, fill: pal.ink, 'font-family': font }, clip(l1 || l2 || '?', maxC)));
   if (l1 && l2) g.append(sv('text', { x: tx, y: top + 19, 'font-size': 16, fill: pal.ink, 'font-family': font }, clip(l2, maxC + 1)));
@@ -569,8 +576,9 @@ export function renderChart(host, opts) {
     const bb = node.getBBox(); const ctm = node.transform.baseVal.consolidate()?.matrix;
     const cx = (ctm ? ctm.e : 0) + bb.x + bb.width / 2, cy = (ctm ? ctm.f : 0) + bb.y + bb.height / 2 + (o.focusShift || 0);
     const s = Math.min(r.width / bounds.w, r.height / bounds.h);
-    if (s >= 0.7) return fit(1.1); // small chart: show all of it
-    const sc = Math.max(s, o.minScale || Math.min(1, r.width / 1000));
+    // fixed starting zoom (not "fit"), so the card font size setting shows up as real on-screen size
+    const sc = o.minScale || (r.width < 640 ? 0.7 : 1);
+    if (s >= sc) return fit(sc);  // small chart: all of it, centred
     vb = { w: r.width / sc, h: r.height / sc, x: cx - r.width / sc / 2, y: cy - r.height / sc / 2 };
     apply();
   };
