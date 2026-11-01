@@ -18,6 +18,7 @@ function ft_load_config(string $root): array
     if (!is_file($file)) return $cfg;
     $srcName = $file === $root . '/config.php' ? 'config.php' : '../config.php';
 
+    $constsBefore = get_defined_constants(true)['user'] ?? [];
     $res = (function () use ($file) {
         $__ret = include $file;
         $__vars = get_defined_vars();
@@ -44,7 +45,9 @@ function ft_load_config(string $root): array
             $sources[] = $a;
         }
     }
-    $consts = get_defined_constants(true)['user'] ?? [];
+    // only constants this config.php defined (another config loaded earlier must not leak in)
+    $consts = array_diff_key(get_defined_constants(true)['user'] ?? [], $constsBefore);
+    if (!$consts && !is_array($ret) && !array_diff_key(array_filter($vars, 'is_scalar'), ['__ret' => 1])) $consts = $constsBefore; // re-included: constants already defined
     $sources[] = $consts;
     $scalars = array_filter($vars, 'is_scalar');
     $sources[] = $scalars;

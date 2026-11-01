@@ -100,6 +100,8 @@ function ft_server_tests(): array
 {
     return [
         'Config: konstansos config.php felismerése' => function () {
+            // the live config.php (define-style) is usually loaded already: its constants must not leak in
+            if (!defined('DB_HOST')) define('DB_HOST', 'live.host');
             $dir = sys_get_temp_dir() . '/ftcfg' . bin2hex(random_bytes(4)); @mkdir($dir);
             file_put_contents("$dir/config.php", "<?php\ndefine('DB_HOST_T','x');\n\$servername='db.host';\$username='u1';\$password='';\$dbname='csurgay_ft';");
             $c = ft_load_config($dir);

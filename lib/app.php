@@ -89,6 +89,12 @@ final class App
         if (session_status() === PHP_SESSION_ACTIVE) return;
         $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
         session_name('ftsess');
+        // Shared hosts often purge sessions after ~24 minutes; keep ours in data/sessions for 30 days.
+        $dir = self::$root . '/data/sessions';
+        if ((is_dir($dir) || @mkdir($dir, 0700, true)) && is_writable($dir)) {
+            session_save_path($dir);
+            ini_set('session.gc_maxlifetime', (string)(60 * 60 * 24 * 30));
+        }
         session_set_cookie_params(['lifetime' => 60 * 60 * 24 * 30, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax', 'secure' => $secure]);
         session_start();
         if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
