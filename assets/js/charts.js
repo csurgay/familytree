@@ -28,9 +28,12 @@ const sexColor = (pal, sx) => sx === 'M' ? pal.male : sx === 'F' ? pal.female : 
 
 // ======================================================================= layouts
 // Each returns { nodes:[{id,x,y,w,h,root?}], links:[{d, kind}], extra:[], bounds }
-function boxSize(o) { return { w: o.photos ? 224 : 196, h: o.places ? 90 : 76 }; }
+// card scale from the admin setting (chart_font %): fonts, cards and the spouse strips grow together
+let K = 1;
+function scaleK() { K = Math.min(2, Math.max(0.6, (+S.settings?.chart_font || 100) / 100)); SDX = Math.round(30 * K); SDY = Math.round(30 * K); return K; }
+function boxSize(o) { scaleK(); return { w: Math.round((o.photos ? 224 : 196) * K), h: Math.round((o.places ? 90 : 76) * K) }; }
 // spouse cards slide in behind their partner: shifted right/down, only the bottom strip (with the name) shows
-export const SDX = 30, SDY = 30;
+export let SDX = 30, SDY = 30;
 
 /**
  * Where the line to the children of a person's k-th relationship (1-based, of n shown spouses) leaves the
@@ -384,7 +387,13 @@ function photoCircle(g, p, cx, cy, r, col, pal, defs, uid, n) {
 function personBox(n, o, pal, defs, uid) {
   const p = P(n.id) || { g: '?', sx: 'U' };
   const st = o.style || 'album';
-  const g = sv('g', { class: 'node' + (n.spouse ? ' spouse' : ''), transform: `translate(${n.x},${n.y})`, 'data-id': n.id, tabindex: 0, role: 'button', 'aria-label': personName(p) });
+  const outer = sv('g', { class: 'node' + (n.spouse ? ' spouse' : ''), transform: `translate(${n.x},${n.y})`, 'data-id': n.id, tabindex: 0, role: 'button', 'aria-label': personName(p) });
+  // everything below is drawn at 100% and scaled as a whole (chart_font setting)
+  const k = n.w / Math.round((o.photos ? 224 : 196)) || 1;
+  const g = sv('g', k !== 1 ? { transform: `scale(${k})` } : {});
+  outer.append(g);
+  n = { ...n, w: n.w / k, h: n.h / k };
+  const SDY = 30;
   const col = sexColor(pal, p.sx);
   const font = 'Alegreya, Georgia, serif', sans = '"Alegreya Sans", "Segoe UI", sans-serif';
   const masked = p.masked && S.settings.privacy_living === 'names';
@@ -403,7 +412,7 @@ function personBox(n, o, pal, defs, uid) {
     const t = sv('text', { x: tx, y: sy + 4.5, 'font-size': 13.5, fill: pal.ink, 'font-family': sans }, label);
     if (yr && label.length + yr.length + 1 <= room) t.append(sv('tspan', { fill: pal.muted, dx: 6, 'font-size': 12 }, yr));
     g.append(t);
-    return g;
+    return outer;
   }
   const fill = st === 'classic' ? pal.surface2 : st === 'minimal' ? pal.paper : pal.surface;
   const stroke = n.root ? pal.accent : st === 'classic' ? col : pal.line;
@@ -425,7 +434,7 @@ function personBox(n, o, pal, defs, uid) {
   const yr = years(p);
   g.append(sv('text', { x: tx, y: top + (l1 && l2 ? 37 : 20), 'font-size': 13.5, fill: pal.muted, 'font-family': sans }, yr));
   if (o.places && (p.bp || p.dp)) g.append(sv('text', { x: tx, y: top + 54, 'font-size': 12.5, fill: pal.muted, 'font-family': sans }, clip(p.bp || p.dp, maxC + 4)));
-  return g;
+  return outer;
 }
 
 function renderFan(rootId, o, pal, svgRoot, defs, uid) {

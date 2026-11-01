@@ -215,11 +215,11 @@ input[type=color] { width: 54px; height: 36px; padding: 2px; border: 1px solid v
 .hero-facts { color: var(--cover-muted); font-size: .98rem; max-width: 46ch; text-align: right; }
 .hero-facts b { color: var(--cover-ink); font-weight: 500; }
 .hero-tree {
-  position: relative; height: 480px; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  position: relative; height: 560px; border-radius: var(--r-lg) var(--r-lg) 0 0;
   background: radial-gradient(ellipse at 50% 40%, rgba(255,255,255,.07), transparent 70%);
   overflow: hidden;
 }
-.hero-tree .chart-host { position: absolute; inset: 0 0 52px 0; }
+.hero-tree .chart-host { position: absolute; inset: 0 0 52px 0; overflow: hidden; }
 .hero-tree-cap { position: absolute; left: 0; bottom: 12px; right: 0; flex-wrap: wrap; display: flex; gap: 10px; align-items: center; z-index: 2; font-size: .95rem; color: var(--cover-muted); }
 .hero-tree-cap .btn { background: rgba(0,0,0,.25); color: var(--cover-ink); border-color: rgba(255,255,255,.18); }
 .hero-tree-cap .pin-mark { color: var(--accent); }

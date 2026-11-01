@@ -768,5 +768,7 @@
 " sikeres": " passed",
 " kihagyva": " skipped",
 " arc": " faces",
-"sz. {0}": "b. {0}"
+"sz. {0}": "b. {0}",
+"Betűméret a kártyákon (%)": "Font size on the cards (%)",
+"A fán és a diagramokon; a kártyák is ezzel arányosan nőnek. 100 = a korábbi méret.": "In the tree and the charts; the cards grow with it. 100 = the previous size."
 }

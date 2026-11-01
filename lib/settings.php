@@ -48,6 +48,7 @@ function ft_settings_def(): array
         ['Diagramok', 'chart_gens_down', 'int', 3, 'Leszármazott nemzedékek (alapérték)', '', [1, 10]],
         ['Diagramok', 'chart_photos', 'bool', true, 'Fotók a dobozokban', ''],
         ['Diagramok', 'chart_places', 'bool', false, 'Helyek a dobozokban', ''],
+        ['Diagramok', 'chart_font', 'int', 125, 'Betűméret a kártyákon (%)', 'A fán és a diagramokon; a kártyák is ezzel arányosan nőnek. 100 = a korábbi méret.', [70, 200]],
         ['Diagramok', 'chart_style', 'select', 'album', 'Doboz stílus', '', ['album' => 'Album', 'classic' => 'Klasszikus', 'minimal' => 'Letisztult']],
         ['Diagramok', 'chart_png_scale', 'int', 2, 'PNG felbontás szorzó', '', [1, 4]],
 

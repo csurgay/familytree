@@ -768,5 +768,7 @@
 " sikeres": " erfolgreich",
 " kihagyva": " übersprungen",
 " arc": " Gesichter",
-"sz. {0}": "geb. {0}"
+"sz. {0}": "geb. {0}",
+"Betűméret a kártyákon (%)": "Schriftgröße auf den Karten (%)",
+"A fán és a diagramokon; a kártyák is ezzel arányosan nőnek. 100 = a korábbi méret.": "Im Stammbaum und in den Diagrammen; die Karten wachsen mit. 100 = die bisherige Größe."
 }
