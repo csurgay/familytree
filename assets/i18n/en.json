@@ -59,7 +59,6 @@
 "Sztori": "Story",
 "Diagram": "Chart",
 "Fa kitűzése": "Pin tree",
-"lánya: ": "daughter of: ",
 "Élő személy – a részletek csak bejelentkezve láthatók.": "Living person – details are visible only when signed in.",
 "Született ": "Born ",
 "Keresztelték ": "Christened ",
@@ -759,8 +758,6 @@
 "Az oldal megtekintéséhez jelentkezz be.": "Sign in to view this page.",
 "POST kérés szükséges.": "POST request required.",
 "Ismeretlen kérés: ": "Unknown request: ",
-"fia: ": "son of: ",
-"gyermeke: ": "child of: ",
 " gyermek": " children",
 "Lejegyezte: ": "Written down by: ",
 "Kapcsolat: ": "Relationship: ",
@@ -774,5 +771,10 @@
 "Nevek betűtípusa a kártyákon": "Name font on the cards",
 "Talpas (klasszikus)": "Serif (classic)",
 "Talpatlan": "Sans serif",
-"Talpatlan, NAGYBETŰS nevek": "Sans serif, CAPITAL names"
+"Talpatlan, NAGYBETŰS nevek": "Sans serif, CAPITAL names",
+"{0} lánya": "daughter of {0}",
+"{0} fia": "son of {0}",
+"{0} gyermeke": "child of {0}",
+"{0} szülője": "parent of {0}",
+"{0} házastársa": "spouse of {0}"
 }

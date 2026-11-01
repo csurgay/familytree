@@ -318,8 +318,8 @@ export function relationLabel(path, lang = S.lang) {
     if (steps.length === 1) return `${tn}: ${stepWord('sp', tgt?.sx, 'de')} von ${fn}.`;
     return `${tn} und ${fn} sind über ${steps.length} Schritte verbunden: ${chain}.`;
   }
-  if (blood) return `${tn} ${fn} ${kinTerm(a, b, tgt?.sx, 'hu')}.`;
-  if (steps.length === 1) return `${tn} ${fn} ${stepWord('sp', tgt?.sx, 'hu')}.`;
+  if (blood) return `${tn} – ${fn} ${kinTerm(a, b, tgt?.sx, 'hu')}.`;
+  if (steps.length === 1) return `${tn} – ${fn} ${stepWord('sp', tgt?.sx, 'hu')}.`;
   return `${tn} és ${fn} kapcsolata ${steps.length} lépésben: ${chain}.`;
 }
 export function layoutRelation(a, b, o) {

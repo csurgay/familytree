@@ -168,7 +168,7 @@ async function changesTab(qs) {
       h('div', { class: 'hd' }, h('b', null, c.summary), target, h('span', { class: 'hint' }, `${c.user_name || '?'} · ${c.created?.slice(0, 16)}`)),
       c.photo ? h('img', { src: c.photo.thumb, alt: '', style: 'max-height:160px;border-radius:6px;margin:10px 0' }) : null,
       diff,
-      p.rel ? h('p', { class: 'hint' }, T('Kapcsolat: '), { child: T('gyermeke'), parent: T('szülője'), spouse: T('házastársa') }[p.rel.type] || '', ' → ', p.rel.of ? personName(P(p.rel.of)) : p.rel.family_id ? familyLabel(F(p.rel.family_id)) : '') : null,
+      p.rel ? h('p', { class: 'hint' }, T('Kapcsolat: '), (() => { const who = p.rel.of ? personName(P(p.rel.of)) : p.rel.family_id ? familyLabel(F(p.rel.family_id)) : '?'; return ({ child: T('{0} gyermeke', who), parent: T('{0} szülője', who), spouse: T('{0} házastársa', who) })[p.rel.type] || who; })()) : null,
       c.status === 'pending' ? h('div', { class: 'row', style: 'margin-top:10px' }, h('div', { class: 'grow' }, note),
         h('button', { class: 'btn btn-danger', onclick: async () => { try { await api('admin.review', { id: c.id, approve: false, note: note.value }); toast(T('Elutasítva.')); S.boot.pending--; render(); } catch (e) { fail(e); } } }, T('Elutasítás')),
         h('button', { class: 'btn btn-primary', onclick: async () => { try { await api('admin.review', { id: c.id, approve: true, note: note.value }); toast(T('Elfogadva és alkalmazva.')); S.boot.pending--; await loadTree(true); render(); } catch (e) { fail(e); } } }, icon('check'), T('Elfogadás')))

@@ -170,7 +170,7 @@ export async function viewPerson(id) {
     isAdmin() ? h('button', { class: 'btn btn-sm', onclick: () => pinTree(id) }, icon('pin'), T('Fa kitűzése')) : null) : h('div', { class: 'row tools' }, h('a', { class: 'btn btn-sm', href: `#/tree/${id}?kind=hourglass` }, icon('tree'), T('Diagram')));
 
   const head = h('div', { class: 'person-head' }, portrait, h('div', null,
-    lineage.length ? h('div', { class: 'lineage' }, (p.sx === 'F' ? T('lánya: ') : p.sx === 'M' ? T('fia: ') : T('gyermeke: ')) + lineage.join(T(' és '))) : null,
+    lineage.length ? h('div', { class: 'lineage' }, (p.sx === 'F' ? T('{0} lánya', lineage.join(T(' és '))) : p.sx === 'M' ? T('{0} fia', lineage.join(T(' és '))) : T('{0} gyermeke', lineage.join(T(' és '))))) : null,
     h('h1', null, personName(p)),
     p.n || d.married_name ? h('div', { class: 'muted', style: 'margin-bottom:6px' }, [p.n ? `„${p.n}”` : null, d.married_name].filter(Boolean).join(' · ')) : null,
     h('div', { class: 'life' }, p.masked ? h('span', null, T('Élő személy – a részletek csak bejelentkezve láthatók.')) : [

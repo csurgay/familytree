@@ -59,7 +59,6 @@
 "Sztori": "Geschichte",
 "Diagram": "Diagramm",
 "Fa kitűzése": "Baum anheften",
-"lánya: ": "Tochter von: ",
 "Élő személy – a részletek csak bejelentkezve láthatók.": "Lebende Person – die Details sind nur nach der Anmeldung sichtbar.",
 "Született ": "Geboren ",
 "Keresztelték ": "Getauft ",
@@ -759,8 +758,6 @@
 "Az oldal megtekintéséhez jelentkezz be.": "Melde dich an, um die Seite anzusehen.",
 "POST kérés szükséges.": "POST-Anfrage erforderlich.",
 "Ismeretlen kérés: ": "Unbekannte Anfrage: ",
-"fia: ": "Sohn von: ",
-"gyermeke: ": "Kind von: ",
 " gyermek": " Kinder",
 "Lejegyezte: ": "Aufgeschrieben von: ",
 "Kapcsolat: ": "Beziehung: ",
@@ -774,5 +771,10 @@
 "Nevek betűtípusa a kártyákon": "Schrift der Namen auf den Karten",
 "Talpas (klasszikus)": "Serifen (klassisch)",
 "Talpatlan": "Serifenlos",
-"Talpatlan, NAGYBETŰS nevek": "Serifenlos, Namen in GROSSBUCHSTABEN"
+"Talpatlan, NAGYBETŰS nevek": "Serifenlos, Namen in GROSSBUCHSTABEN",
+"{0} lánya": "Tochter von {0}",
+"{0} fia": "Sohn von {0}",
+"{0} gyermeke": "Kind von {0}",
+"{0} szülője": "Elternteil von {0}",
+"{0} házastársa": "Ehepartner von {0}"
 }
