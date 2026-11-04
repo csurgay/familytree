@@ -79,7 +79,9 @@ Vendégek nem látják őket; a fogaskerék alatt ki is kapcsolhatók.
   csoportképet (családi, album, vagy bejelölve) legfeljebb 1600×1600 pixelre (fogaskerék alatt állítható). A nézegetőben személyek jelölhetők, kattintással megadható az arc helye
   (ez adja a portrék és a kvíz kivágását), beállítható fő portré.
 - **Diagramok:** felmenők, leszármazottak, homokóra, legyező, családlap, rokonsági útvonal (magyar
-  rokonsági elnevezéssel). Fotókkal, helyekkel, három dobozstílussal, állítható kártya-betűmérettel
+  rokonsági elnevezéssel). Kétféle kártyával: álló (keskeny, fotó felül – sűrű nemzedéknél sokkal keskenyebb a fa,
+  ez az alapértelmezés) vagy fekvő (széles, fotó balra); a fogaskerék alatt és a fa-böngészőben is választható.
+  Fotókkal, helyekkel, három dobozstílussal, állítható kártya-betűmérettel
   (100% = normál szövegméret) és névbetűtípussal (talpas, talpatlan, nagybetűs). A felmenő-, leszármazott- és
   homokóra-diagramon a nemzedékek függőlegesen (fentről lefelé) vagy vízszintesen (balról jobbra) is elrendezhetők;
   a kitűzött főoldali fa is megőrzi a választást. Letöltés PNG/SVG, nyomtatás,

@@ -847,5 +847,9 @@
 "Családi és albumfotóknál, ahol többen vannak a képen.": "For family and album photos with several people in the picture.",
 "JPEG tömörítés minősége (%)": "JPEG compression quality (%)",
 "+{0} további": "+{0} more",
-"Ez a történet élő családtagról szól, ezért csak bejelentkezve olvasható.": "This story is about a living family member, so it can only be read when logged in."
+"Ez a történet élő családtagról szól, ezért csak bejelentkezve olvasható.": "This story is about a living family member, so it can only be read when logged in.",
+"Kártyák formája": "Card shape",
+"Álló (keskeny, fotó felül)": "Portrait (narrow, photo on top)",
+"Fekvő (széles, fotó balra)": "Landscape (wide, photo on the left)",
+"Álló: keskeny kártya, fotó felül, alatta a név – a sűrű nemzedékek (sok unoka, sok felmenő) így jóval keskenyebbek, a fát inkább fel-le kell görgetni. Fekvő: széles kártya, fotó balra, mellette a név.": "Portrait: narrow card, photo on top, name below – dense generations (many grandchildren, many ancestors) become much narrower, so the tree scrolls up and down rather than sideways. Landscape: wide card, photo on the left, name beside it."
 }

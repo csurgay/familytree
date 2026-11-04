@@ -32,8 +32,20 @@ const sexColor = (pal, sx) => sx === 'M' ? pal.male : sx === 'F' ? pal.female : 
 // card scale from the admin setting (chart_font %): fonts, cards and the spouse strips grow together
 let K = 1;
 // 100% = names as large as normal body text (16px) at the chart's starting zoom
-function scaleK() { K = Math.min(2.2, Math.max(0.6, (+S.settings?.chart_font || 125) / 100 * 16 / 17)); SDX = Math.round(30 * K); SDY = Math.round(30 * K); return K; }
-function boxSize(o) { scaleK(); return { w: Math.round((o.photos ? 224 : 196) * K), h: Math.round((o.places ? 90 : 76) * K) }; }
+// card shape (chart_card setting): 'tall' = narrow card, photo on top, name below – dense generations stay narrow;
+// 'wide' = photo on the left, name beside it
+export const cardShape = o => ((o && o.card) || S.settings?.chart_card || 'tall') === 'wide' ? 'wide' : 'tall';
+/** Card size at 100% (before the chart_font scaling) and the visible strip of a tucked-in spouse card. */
+function baseSize(o) {
+  if (cardShape(o) === 'wide') return { w: o.photos ? 224 : 196, h: o.places ? 90 : 76, sdx: 30, sdy: 30 };
+  return { w: 136, h: (o.photos ? 146 : 80) + (o.places ? 16 : 0), sdx: 20, sdy: 40 };
+}
+function scaleK(o = {}) {
+  K = Math.min(2.2, Math.max(0.6, (+S.settings?.chart_font || 125) / 100 * 16 / 17));
+  const b = baseSize(o); SDX = Math.round(b.sdx * K); SDY = Math.round(b.sdy * K);
+  return K;
+}
+function boxSize(o) { scaleK(o); const b = baseSize(o); return { w: Math.round(b.w * K), h: Math.round(b.h * K) }; }
 // spouse cards slide in behind their partner: shifted right/down, only the bottom strip (with the name) shows
 export let SDX = 30, SDY = 30;
 
@@ -61,8 +73,10 @@ export function famExit(ux, top, w, hh, k, n) {
 
 /** Effective generation direction of a chart: 'v' (top-down) or 'h' (left-right). */
 export function chartOrient(o) {
-  const def = CHART_KINDS[o.kind]?.orient;
+  let def = CHART_KINDS[o.kind]?.orient;
   if (!def) return null;
+  // narrow cards: the pedigree also grows upwards (wide cards read better side by side)
+  if (o.kind === 'ancestors' && cardShape(o) === 'tall') def = 'v';
   return o.orient === 'h' || o.orient === 'v' ? o.orient : def;
 }
 
@@ -462,11 +476,12 @@ function personBox(n, o, pal, defs, uid) {
   const st = o.style || 'album';
   const outer = sv('g', { class: 'node' + (n.spouse ? ' spouse' : ''), transform: `translate(${n.x},${n.y})`, 'data-id': n.id, tabindex: 0, role: 'button', 'aria-label': personName(p) });
   // everything below is drawn at 100% and scaled as a whole (chart_font setting)
-  const k = n.w / Math.round((o.photos ? 224 : 196)) || 1;
+  const base = baseSize(o), tall = cardShape(o) === 'tall';
+  const k = n.w / base.w || 1;
   const g = sv('g', k !== 1 ? { transform: `scale(${k})` } : {});
   outer.append(g);
   n = { ...n, w: n.w / k, h: n.h / k };
-  const SDY = 30;
+  const SDY = base.sdy;
   const col = sexColor(pal, p.sx);
   const sans = '"Alegreya Sans", "Segoe UI", sans-serif';
   // name typography (chart_name_style): serif, sans, or sans with capitalised names
@@ -476,6 +491,24 @@ function personBox(n, o, pal, defs, uid) {
   const up = t => (caps ? String(t || '').toLocaleUpperCase('hu') : t);
   const cw = caps ? 10.6 : ns === 'sans' ? 8.0 : 8.4;   // average glyph width at 17px, for clipping
   const masked = p.masked && S.settings.privacy_living === 'names';
+  if (n.spouse && tall) {
+    // narrow card tucked behind the partner: a two-line strip (surname / given name + years) shows below it
+    const fill = st === 'minimal' ? pal.paper : pal.surface2;
+    g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke: n.div ? pal.muted : pal.line, 'stroke-width': 1, ...(n.div ? { 'stroke-dasharray': '4 3' } : {}) }));
+    g.append(sv('rect', { x: 0, y: n.h - SDY + 6, width: 4, height: SDY - 12, rx: 2, fill: col }));
+    let tx = 10;
+    if (o.photos) { photoCircle(g, p, 10 + 10, n.h - SDY / 2, 10, col, pal, defs, uid, n); tx = 35; }
+    const west = S.settings.name_order === 'west';
+    const room = Math.floor((n.w - tx - 5) / (caps ? 7.4 : 6.1));
+    const a = masked ? T('Élő személy') : up((west ? p.g : p.s) || '');
+    const b = masked ? '' : up(fitGiven((west ? p.s : p.g) || '', room));
+    const yr = years(p);
+    g.append(sv('text', { x: tx, y: n.h - SDY / 2 - 3, 'font-size': 12, 'font-weight': 700, fill: pal.ink, 'font-family': sans }, (n.div ? '⚮ ' : '⚭ ') + clip(a || b, room - 2)));
+    const t2 = sv('text', { x: tx, y: n.h - SDY / 2 + 11, 'font-size': 11.5, fill: pal.ink, 'font-family': sans }, a ? clip(b, room) : '');
+    if (yr && (b.length + yr.length + 1 <= room || !a)) t2.append(sv('tspan', { fill: pal.muted, dx: a ? 5 : 0, 'font-size': 10.5 }, yr));
+    g.append(t2);
+    return outer;
+  }
   if (n.spouse) {
     // card tucked behind the partner: only the bottom strip (SDY high) is visible, the name lives there
     const fill = st === 'minimal' ? pal.paper : pal.surface2;
@@ -495,6 +528,28 @@ function personBox(n, o, pal, defs, uid) {
   }
   const fill = st === 'classic' ? pal.surface2 : st === 'minimal' ? pal.paper : pal.surface;
   const stroke = n.root ? pal.accent : st === 'classic' ? col : pal.line;
+  if (tall) {
+    // narrow card: photo on top, the names centred under it, then the years (and place)
+    g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke, 'stroke-width': n.root ? 2.6 : 1, ...(n.dup ? { 'stroke-dasharray': '4 3' } : {}) }));
+    if (st === 'minimal') g.append(sv('rect', { x: 0, y: n.h - 2, width: n.w, height: 2, fill: col }));
+    else g.append(sv('rect', { x: st === 'classic' ? 0 : 10, y: 0, width: st === 'classic' ? n.w : n.w - 20, height: 4, rx: 2, fill: col }));
+    const cx = n.w / 2;
+    let y = 28;
+    if (o.photos) { photoCircle(g, p, cx, 42, 31, col, pal, defs, uid, n); y = 96; }
+    const cwT = (caps ? 10.6 : ns === 'sans' ? 8.0 : 8.4) * 15.5 / 17;
+    const maxT = Math.floor((n.w - 10) / cwT);
+    const west = S.settings.name_order === 'west';
+    const l1 = masked ? T('Élő személy') : up((west ? p.g : p.s) || '');
+    const givenRaw = masked ? '' : ((west ? p.s : p.g) || '');
+    const title = !masked && p.t ? p.t + ' ' : '';
+    const l2 = givenRaw ? title + up(fitGiven(givenRaw, maxT + 1 - title.length)) : title.trim();
+    const txt = (yy, size, t, extra = {}) => g.append(sv('text', { x: cx, y: yy, 'text-anchor': 'middle', 'font-size': size, fill: pal.ink, 'font-family': font, ...extra }, t));
+    txt(y, 15.5, clip(l1 || l2 || '?', maxT), { 'font-weight': 700 });
+    if (l1 && l2) { y += 18; txt(y, 14.5, clip(l2, maxT + 1)); }
+    y += 17; txt(y, 12.5, years(p), { fill: pal.muted, 'font-family': sans });
+    if (o.places && (p.bp || p.dp)) { y += 15; txt(y, 11.5, clip(p.bp || p.dp, maxT + 3), { fill: pal.muted, 'font-family': sans }); }
+    return outer;
+  }
   g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke, 'stroke-width': n.root ? 2.6 : 1, ...(n.dup ? { 'stroke-dasharray': '4 3' } : {}) }));
   if (st !== 'minimal') g.append(sv('rect', { x: 0, y: st === 'classic' ? 0 : 8, width: 4, height: st === 'classic' ? n.h : n.h - 16, rx: 2, fill: col }));
   else g.append(sv('rect', { x: 0, y: n.h - 2, width: n.w, height: 2, fill: col }));

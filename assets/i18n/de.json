@@ -847,5 +847,9 @@
 "Családi és albumfotóknál, ahol többen vannak a képen.": "Für Familien- und Albumfotos mit mehreren Personen.",
 "JPEG tömörítés minősége (%)": "JPEG-Kompressionsqualität (%)",
 "+{0} további": "+{0} weitere",
-"Ez a történet élő családtagról szól, ezért csak bejelentkezve olvasható.": "Diese Geschichte handelt von einem lebenden Familienmitglied und ist nur angemeldet lesbar."
+"Ez a történet élő családtagról szól, ezért csak bejelentkezve olvasható.": "Diese Geschichte handelt von einem lebenden Familienmitglied und ist nur angemeldet lesbar.",
+"Kártyák formája": "Kartenform",
+"Álló (keskeny, fotó felül)": "Hochformat (schmal, Foto oben)",
+"Fekvő (széles, fotó balra)": "Querformat (breit, Foto links)",
+"Álló: keskeny kártya, fotó felül, alatta a név – a sűrű nemzedékek (sok unoka, sok felmenő) így jóval keskenyebbek, a fát inkább fel-le kell görgetni. Fekvő: széles kártya, fotó balra, mellette a név.": "Hochformat: schmale Karte, Foto oben, Name darunter – dichte Generationen (viele Enkel, viele Vorfahren) werden viel schmaler, man scrollt eher nach oben und unten. Querformat: breite Karte, Foto links, Name daneben."
 }
