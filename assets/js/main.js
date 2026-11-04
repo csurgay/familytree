@@ -1,5 +1,5 @@
 import { S, T, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail, setLang } from './core.js';
-import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents, viewRegister, viewSurname } from './views.js';
+import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents, viewRegister, viewSurname, viewForgot, viewReset } from './views.js';
 import { viewQuiz } from './quiz.js';
 import { viewAdmin } from './admin.js';
 
@@ -32,6 +32,8 @@ async function boot() {
   route('/quiz', gate(viewQuiz), { nav: 'quiz' });
   route('/login', qs => viewLogin(qs));
   route('/register', () => viewRegister());
+  route('/forgot', qs => viewForgot(qs));
+  route('/reset/:token', token => viewReset(token));
   route('/account', () => viewAccount());
   route('/admin', qs => viewAdmin('settings', qs));
   route('/admin/:tab', viewAdmin);

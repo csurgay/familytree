@@ -164,6 +164,14 @@ input[type=text], input[type=email], input[type=password], input[type=number], i
   width: 100%; font: inherit; color: var(--ink); background: var(--surface);
   border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
 }
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { padding-right: 42px; }
+.pw-wrap input::-ms-reveal { display: none; }
+.pw-eye { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 36px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; border-radius: 5px; }
+.pw-eye:hover { color: var(--ink); background: var(--surface-2); }
+.pw-eye:focus-visible { outline: 2px solid var(--focus); }
+.pw-eye svg { width: 19px; height: 19px; }
+.auth-forgot { display: block; text-align: right; font-size: .9rem; margin: -6px 0 12px; }
 textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
 textarea.tall { min-height: 320px; font-family: var(--serif); font-size: 1.05rem; }
 input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--focus) 60%, transparent); outline-offset: 0; border-color: var(--focus); }

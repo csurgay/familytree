@@ -50,9 +50,9 @@ try {
         $in = $_GET;
     }
 
-    $open = ['boot', 'login', 'logout', 'install', 'register'];
+    $open = ['boot', 'login', 'logout', 'install', 'register', 'pwreset.request', 'pwreset'];
     if (!in_array($action, $open, true) && !ft_can_read()) throw new ApiError('Az oldal megtekintéséhez jelentkezz be.', 401);
-    $writes = ['login', 'logout', 'install', 'register', 'password', 'op', 'pin', 'unpin', 'chart.save', 'chart.delete', 'quiz.save', 'upload', 'comment.add', 'comment.edit', 'comment.delete'];
+    $writes = ['login', 'logout', 'install', 'register', 'password', 'pwreset.request', 'pwreset', 'op', 'pin', 'unpin', 'chart.save', 'chart.delete', 'quiz.save', 'upload', 'comment.add', 'comment.edit', 'comment.delete'];
     if ((in_array($action, $writes, true) || str_starts_with($action, 'admin.')) && $method !== 'POST' && $action !== 'admin.changes' && $action !== 'admin.users' && $action !== 'admin.branches' && $action !== 'admin.audit' && $action !== 'admin.stats') {
         throw new ApiError('POST kérés szükséges.', 405);
     }

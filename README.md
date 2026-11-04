@@ -23,6 +23,7 @@ Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`
 ## Regisztráció, nyelvek
 
 - **Regisztráció:** bárki regisztrálhat saját jelszóval (Belépés → Regisztrálj), és megírhatja, ki ő a családban.
+- **Elfelejtett jelszó:** a Belépés oldalon az „Elfelejtetted a jelszavad?” linkre e-mailt küld egy egyszer használható, egy óráig érvényes linkkel (az adatbázisba csak a token hash-e kerül). Hogy egy címhez van-e fiók, a válasz nem árulja el; két percen belül nem megy újabb levél. Új jelszó után a fiók zárolása feloldódik, és a tag be is lép. A levél a szerver `mail()` funkciójával megy; ha a tárhely nem küld levelet, az admin a Felhasználóknál adhat új jelszót. Kikapcsolható: fogaskerék → Hozzáférés. Minden jelszómező mellett szemecske mutatja / rejti a beírt jelszót.
   A fiók az admin jóváhagyásáig nem aktív; a fogaskeréken szám jelzi a várakozókat (és ha a tárhely tud levelet
   küldeni, e-mail is megy). Jóváhagyáskor az admin megadhatja, ki ő a fában, és szerkeszthető ágat rendelhet
   hozzá – ezzel lesz valaki **családfő**. Később a Felhasználók lapon bármikor módosítható.

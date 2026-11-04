@@ -574,6 +574,51 @@ function ft_server_tests(): array
             t_throws(fn() => $H['login'](['email' => 'a@b.hu', 'password' => 'jo-jelszo-1']), 'zárolás alatt jó jelszóval sem');
             $_SESSION = $sess;
         },
+        'Elfelejtett jelszó: e-mailes link, lejárat, egyszeri használat' => function () {
+            $db = t_fresh_db();
+            $db->insert('users', ['email' => 'a@b.hu', 'name' => 'Anna', 'pass_hash' => password_hash('regi-jelszo', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 3, 'locked_until' => date('Y-m-d H:i:s', time() + 600), 'lang' => 'en', 'created' => ft_now()]);
+            $db->insert('users', ['email' => 'p@b.hu', 'name' => 'Pál', 'pass_hash' => password_hash('x', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 0, 'status' => 'pending', 'failed' => 0, 'created' => ft_now()]);
+            $H = ft_handlers();
+            $sess = $_SESSION ?? []; $_SESSION = [];
+            $GLOBALS['ft_mail_sink'] = [];
+            try {
+                // unknown and pending addresses get the same answer, but no mail
+                t_eq($H['pwreset.request'](['email' => 'nincs@b.hu']), ['ok' => true]);
+                t_eq($H['pwreset.request'](['email' => 'p@b.hu']), ['ok' => true]);
+                t_eq(count($GLOBALS['ft_mail_sink']), 0, 'nem létező / jóváhagyásra váró címre nem megy levél');
+                t_eq($H['pwreset.request'](['email' => ' A@B.hu ']), ['ok' => true]);
+                t_eq(count($GLOBALS['ft_mail_sink']), 1, 'egy levél ment');
+                $m = $GLOBALS['ft_mail_sink'][0];
+                t_eq($m['to'], 'a@b.hu');
+                t_ok(preg_match('~#/reset/([0-9a-f]{48})~', $m['body'], $mm), 'link a levélben');
+                $tok = $mm[1];
+                t_ok(!$db->val('SELECT id FROM {users} WHERE reset_hash = ?', [$tok]), 'a token nyersen nincs az adatbázisban');
+                // a second request right away does not send another mail (and keeps the first link valid)
+                $H['pwreset.request'](['email' => 'a@b.hu']);
+                t_eq(count($GLOBALS['ft_mail_sink']), 1, 'két percen belül nincs újabb levél');
+                t_throws(fn() => $H['pwreset'](['token' => str_repeat('a', 48), 'password' => 'uj-jelszo-1']), 'rossz token');
+                t_throws(fn() => $H['pwreset'](['token' => $tok, 'password' => 'rovid']), 'rövid jelszó');
+                t_eq($H['pwreset'](['token' => $tok, 'check' => 1])['name'], 'Anna');
+                $H['pwreset'](['token' => $tok, 'password' => 'uj-jelszo-1']);
+                $u = $db->row('SELECT * FROM {users} WHERE email = ?', ['a@b.hu']);
+                t_ok(password_verify('uj-jelszo-1', $u['pass_hash']), 'új jelszó él');
+                t_eq($u['locked_until'], null, 'zárolás feloldva');
+                t_eq((int)$_SESSION['uid'], (int)$u['id'], 'be is lépett');
+                t_throws(fn() => $H['pwreset'](['token' => $tok, 'password' => 'masik-jelszo']), 'egyszer használható');
+                // expiry
+                $db->update('users', ['reset_sent' => null], (int)$u['id']);
+                $H['pwreset.request'](['email' => 'a@b.hu']);
+                preg_match('~#/reset/([0-9a-f]{48})~', end($GLOBALS['ft_mail_sink'])['body'], $mm);
+                $db->update('users', ['reset_until' => date('Y-m-d H:i:s', time() - 1)], (int)$u['id']);
+                t_throws(fn() => $H['pwreset'](['token' => $mm[1], 'password' => 'uj-jelszo-2']), 'lejárt link');
+                // switched off
+                App::$s['pw_reset'] = false;
+                t_throws(fn() => $H['pwreset.request'](['email' => 'a@b.hu']), 'kikapcsolva');
+            } finally {
+                unset($GLOBALS['ft_mail_sink']);
+                $_SESSION = $sess;
+            }
+        },
     ];
 }
 

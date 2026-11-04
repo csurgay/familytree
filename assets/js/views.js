@@ -1,5 +1,5 @@
 import { S, T, P, F, h, api, op, icon, LANG_NAMES, personName, years, avatar, chip, personLink, parentsOf, childrenOf, siblingsOf, spouseIn, familyLabel,
-  loadTree, setTitle, md, fmtDate, splitDate, toast, fail, opDone, personPicker, field, go, norm, huCmp, photoStyle, modal, formData, render, confirmBox } from './core.js';
+  loadTree, setTitle, md, fmtDate, splitDate, toast, fail, opDone, personPicker, field, go, norm, huCmp, photoStyle, modal, formData, render, confirmBox, pwInput } from './core.js';
 import { renderChart, exportChart, CHART_KINDS, chartOrient, cardShape } from './charts.js';
 import { editPerson, addRelative, linkExisting, editFamily, editEvent, uploadPhotos, photoViewer, editStory, refresh } from './edit.js';
 import { commentsBox, recentComments } from './comments.js';
@@ -555,7 +555,8 @@ export function viewLogin(qs) {
     h('h1', null, T('Belépés')),
     h('p', { class: 'muted' }, S.settings.public_access === 'login' ? T('A családfa csak a család tagjainak látható. Hozzáférést az admintól kérhetsz.') : T('Szerkesztéshez jelentkezz be.')),
     field(T('E-mail cím'), h('input', { type: 'email', name: 'email', autocomplete: 'username', required: true })),
-    field(T('Jelszó'), h('input', { type: 'password', name: 'password', autocomplete: 'current-password', required: true })),
+    field(T('Jelszó'), pwInput({ name: 'password', autocomplete: 'current-password', required: true })),
+    S.boot.pwReset ? h('a', { class: 'auth-forgot', href: '#/forgot' }, T('Elfelejtetted a jelszavad?')) : null,
     h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%;margin-top:6px' }, T('Belépés')),
     S.boot.allowRegister ? h('p', { style: 'margin:16px 0 0;text-align:center' }, T('Még nincs fiókod? '), h('a', { href: '#/register' }, T('Regisztrálj'))) : null);
   form.addEventListener('submit', async e => {
@@ -566,6 +567,55 @@ export function viewLogin(qs) {
   });
   return h('div', { class: 'auth-wrap' }, form);
 }
+export function viewForgot(qs) {
+  setTitle(T('Elfelejtett jelszó'));
+  if (!S.boot.pwReset) return h('div', { class: 'auth-wrap' }, h('div', { class: 'auth-card' }, h('h1', null, T('Elfelejtett jelszó')), h('p', null, T('Új jelszót az admintól kérhetsz.')), h('a', { class: 'btn', href: '#/login' }, T('Vissza a belépéshez'))));
+  const form = h('form', { class: 'auth-card' },
+    h('h1', null, T('Elfelejtett jelszó')),
+    h('p', { class: 'muted' }, T('Add meg az e-mail címed, amivel regisztráltál. Küldünk egy linket, amellyel egy órán belül új jelszót állíthatsz be.')),
+    field(T('E-mail cím'), h('input', { type: 'email', name: 'email', autocomplete: 'username', required: true, value: qs?.get('email') || '' })),
+    h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%' }, T('Link küldése')),
+    h('p', { style: 'margin:16px 0 0;text-align:center' }, h('a', { href: '#/login' }, T('Vissza a belépéshez'))));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const b = form.querySelector('button[type=submit]'); b.disabled = true;
+    const email = formData(form).email;
+    try {
+      await api('pwreset.request', { email });
+      form.replaceChildren(h('h1', null, T('Nézd meg a leveleidet')),
+        h('p', null, T('Ha a(z) {0} címmel van fiók az oldalon, néhány percen belül megérkezik a link. Nézd meg a levélszemét mappát is.', email)),
+        h('p', { class: 'muted' }, T('Nem jött levél? Az admin a felhasználók között közvetlenül is adhat új jelszót.')),
+        h('a', { class: 'btn', href: '#/login' }, T('Vissza a belépéshez')));
+    } catch (er) { fail(er); b.disabled = false; }
+  });
+  return h('div', { class: 'auth-wrap' }, form);
+}
+export async function viewReset(token) {
+  setTitle(T('Új jelszó'));
+  const wrap = h('div', { class: 'auth-wrap' });
+  let name = '';
+  try { name = (await api('pwreset', { token, check: 1 })).name; }
+  catch (er) {
+    wrap.append(h('div', { class: 'auth-card' }, h('h1', null, T('Új jelszó')), h('p', null, er.message), h('a', { class: 'btn', href: '#/forgot' }, T('Új link kérése'))));
+    return wrap;
+  }
+  const form = h('form', { class: 'auth-card' },
+    h('h1', null, T('Új jelszó')),
+    h('p', { class: 'muted' }, T('Szia {0}! Add meg az új jelszavad.', name)),
+    field(T('Új jelszó'), pwInput({ name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), T('Legalább 8 karakter.')),
+    field(T('Jelszó még egyszer'), pwInput({ name: 'password2', required: true, minlength: 8, autocomplete: 'new-password' })),
+    h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%' }, T('Jelszó beállítása')));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const v = formData(form);
+    if (v.password !== v.password2) return toast(T('A két jelszó nem egyezik.'), 'bad');
+    const b = form.querySelector('button[type=submit]'); b.disabled = true;
+    try { await api('pwreset', { token, password: v.password }); toast(T('Új jelszó beállítva, beléptél.')); setTimeout(() => { location.hash = '#/'; location.reload(); }, 700); }
+    catch (er) { fail(er); b.disabled = false; }
+  });
+  wrap.append(form);
+  return wrap;
+}
 export function viewRegister() {
   setTitle(T('Regisztráció'));
   if (!S.boot.allowRegister) return h('div', { class: 'auth-wrap' }, h('div', { class: 'auth-card' }, h('h1', null, T('Regisztráció')), h('p', null, T('A regisztráció jelenleg nincs engedélyezve. Hozzáférést az admintól kérhetsz.'))));
@@ -574,8 +624,8 @@ export function viewRegister() {
     h('p', { class: 'muted' }, T('Add meg az adataidat. Az admin jóváhagyása után tudsz belépni; ha a családfa egy ágát te gondozod, ő rendeli hozzád szerkesztésre.')),
     field(T('A neved'), h('input', { type: 'text', name: 'name', required: true, autocomplete: 'name' })),
     field(T('E-mail cím'), h('input', { type: 'email', name: 'email', required: true, autocomplete: 'email' })),
-    field(T('Jelszó'), h('input', { type: 'password', name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), T('Legalább 8 karakter.')),
-    field(T('Jelszó még egyszer'), h('input', { type: 'password', name: 'password2', required: true, minlength: 8, autocomplete: 'new-password' })),
+    field(T('Jelszó'), pwInput({ name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), T('Legalább 8 karakter.')),
+    field(T('Jelszó még egyszer'), pwInput({ name: 'password2', required: true, minlength: 8, autocomplete: 'new-password' })),
     field(T('Ki vagy a családban?'), h('textarea', { name: 'intro', rows: 3, placeholder: T('Pl. Csurgay Péter fia, Bence (2006). Anyám Cholnoky Viktória.') }), T('Ebből tudja az admin, ki vagy a fában.')),
     h('div', { class: 'hp', 'aria-hidden': 'true' }, h('label', null, T('Weboldal'), h('input', { type: 'text', name: 'website', tabindex: -1, autocomplete: 'off' }))),
     h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%' }, T('Regisztráció elküldése')),
@@ -601,7 +651,7 @@ export function viewInstall() {
     field(T('Az oldal címe'), h('input', { type: 'text', name: 'title', value: S.settings.site_title })),
     field(T('A neved'), h('input', { type: 'text', name: 'name', required: true, autocomplete: 'name' })),
     field(T('E-mail cím'), h('input', { type: 'email', name: 'email', required: true, autocomplete: 'username' })),
-    field(T('Jelszó'), h('input', { type: 'password', name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), T('Legalább 8 karakter.')),
+    field(T('Jelszó'), pwInput({ name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), T('Legalább 8 karakter.')),
     ged ? h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'import', checked: true }), h('span', null, T("Kiinduló adatok betöltése: "), h('code', null, ged))) : null,
     h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%' }, T('Létrehozás')),
     h('p', { class: 'hint', style: 'margin-top:12px' }, T('Adatbázis: '), S.boot.driver === 'sqlite' ? T('helyi SQLite fájl (nincs config.php)') : T('MySQL a config.php alapján')));
@@ -619,8 +669,8 @@ export async function viewAccount() {
   await loadTree();
   const mine = await api('changes.mine');
   const pw = h('form', { class: 'panel', style: 'max-width:420px' }, h('h2', null, T('Jelszócsere')),
-    field(T('Jelenlegi jelszó'), h('input', { type: 'password', name: 'old', autocomplete: 'current-password' })),
-    field(T('Új jelszó'), h('input', { type: 'password', name: 'new', autocomplete: 'new-password', minlength: 8 })),
+    field(T('Jelenlegi jelszó'), pwInput({ name: 'old', autocomplete: 'current-password' })),
+    field(T('Új jelszó'), pwInput({ name: 'new', autocomplete: 'new-password', minlength: 8 })),
     h('button', { class: 'btn btn-primary', type: 'submit' }, T('Jelszó módosítása')));
   pw.addEventListener('submit', async e => { e.preventDefault(); try { await api('password', formData(pw)); toast(T('Jelszó módosítva.')); pw.reset(); } catch (er) { fail(er); } });
   const roleTxt = { admin: T('Admin – mindent szerkeszthetsz.'), head: T('Családfő – a saját ágadon új adatot azonnal felvehetsz, módosítás és törlés admin jóváhagyással.'), member: T('Családtag – javaslataidat az admin hagyja jóvá.') }[S.user.role];

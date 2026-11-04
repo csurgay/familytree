@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 6;
+const FT_SCHEMA_VERSION = 7;
 
 function ft_schema(): array
 {
@@ -10,7 +10,8 @@ function ft_schema(): array
             'id' => 'id', 'email' => 'str190', 'name' => 'str120', 'pass_hash' => 'str255', 'role' => 'str16',
             'person_id' => 'int', 'active' => 'bool', 'failed' => 'int', 'locked_until' => 'datetime',
             'created' => 'datetime', 'last_login' => 'datetime',
-            'status' => 'str16', 'intro' => 'text', 'lang' => 'str5'],
+            'status' => 'str16', 'intro' => 'text', 'lang' => 'str5',
+            'reset_hash' => 'str64', 'reset_until' => 'datetime', 'reset_sent' => 'datetime'],
             'idx' => ['u_email' => ['email']]],
         'persons' => ['cols' => [
             'id' => 'id', 'xref' => 'str20', 'given' => 'str120', 'surname' => 'str120', 'title' => 'str40',

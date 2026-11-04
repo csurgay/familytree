@@ -4,7 +4,9 @@
 /** Best-effort e-mail (hosting mail()); never throws. */
 function ft_mail(string $to, string $subject, string $body): bool
 {
-    if (!filter_var($to, FILTER_VALIDATE_EMAIL) || !function_exists('mail')) return false;
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
+    if (isset($GLOBALS['ft_mail_sink']) && is_array($GLOBALS['ft_mail_sink'])) { $GLOBALS['ft_mail_sink'][] = compact('to', 'subject', 'body'); return true; } // self-tests
+    if (!function_exists('mail')) return false;
     $host = preg_replace('/[^a-z0-9.\-]/i', '', $_SERVER['HTTP_HOST'] ?? 'localhost');
     $headers = "From: " . (App::$s['site_title'] ?? 'Családfa') . " <noreply@$host>\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit";
     $subject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
@@ -195,7 +197,7 @@ function ft_handlers(): array
                 'user' => $u ? ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'person_id' => ft_int($u['person_id'])] : null,
                 'settings' => array_filter(App::$s, fn($k) => $k[0] !== '_', ARRAY_FILTER_USE_KEY),
                 'canRead' => ft_can_read(), 'eventTypes' => FT_EVENT_TYPES, 'driver' => $db->driver,
-                'langs' => array_map(fn($l) => ['code' => $l, 'name' => FT_LANGS[$l]], ft_langs()), 'allowRegister' => (bool)App::$s['allow_register'],
+                'langs' => array_map(fn($l) => ['code' => $l, 'name' => FT_LANGS[$l]], ft_langs()), 'allowRegister' => (bool)App::$s['allow_register'], 'pwReset' => (bool)App::$s['pw_reset'],
                 'repoGedcom' => $installed ? null : (($gf = ft_find_ged(App::$root)) ? basename($gf) : null)];
             if (App::isAdmin()) {
                 $out['settingsDef'] = ft_settings_def();
@@ -277,7 +279,7 @@ function ft_handlers(): array
             if (!$name) throw ft_err('Add meg a neved.');
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw ft_err('Érvényes e-mail címet adj meg.');
             if (mb_strlen($pass) < 8) throw ft_err('A jelszó legalább 8 karakter legyen.');
-            if ($db->val('SELECT id FROM {users} WHERE email = ?', [$email])) throw ft_err('Ezzel az e-mail címmel már regisztráltak. Ha elfelejtetted a jelszavad, szólj az adminnak.');
+            if ($db->val('SELECT id FROM {users} WHERE email = ?', [$email])) throw ft_err('Ezzel az e-mail címmel már regisztráltak. Ha elfelejtetted a jelszavad, a belépésnél kérhetsz újat.');
             $intro = ft_str($in['intro'] ?? '', 2000);
             $id = $db->insert('users', ['email' => $email, 'name' => $name, 'pass_hash' => password_hash($pass, PASSWORD_DEFAULT), 'role' => 'member',
                 'active' => 0, 'status' => 'pending', 'intro' => $intro, 'lang' => ft_lang($in['lang'] ?? 'hu'), 'failed' => 0, 'created' => ft_now()]);
@@ -295,7 +297,49 @@ function ft_handlers(): array
             ft_require_login();
             if (!password_verify((string)($in['old'] ?? ''), App::$user['pass_hash'])) throw ft_err('A jelenlegi jelszó nem stimmel.');
             if (mb_strlen((string)($in['new'] ?? '')) < 8) throw ft_err('Az új jelszó legalább 8 karakter legyen.');
-            App::$db->update('users', ['pass_hash' => password_hash((string)$in['new'], PASSWORD_DEFAULT)], App::uid());
+            App::$db->update('users', ['pass_hash' => password_hash((string)$in['new'], PASSWORD_DEFAULT), 'reset_hash' => null, 'reset_until' => null], App::uid());
+            return ['ok' => true];
+        },
+        // forgotten password: always the same answer, so the form does not reveal who has an account
+        'pwreset.request' => function ($in) {
+            $db = App::$db;
+            if (!App::$s['pw_reset']) throw ft_err('Az elfelejtett jelszó funkció ki van kapcsolva. Keresd az admint.', 403);
+            $email = mb_strtolower(trim((string)($in['email'] ?? '')));
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw ft_err('Érvényes e-mail címet adj meg.');
+            $now = time();
+            $_SESSION['pwr'] = array_values(array_filter($_SESSION['pwr'] ?? [], fn($t) => $t > $now - 3600));
+            if (count($_SESSION['pwr']) >= 5) throw ft_err('Túl sok kérés. Próbáld újra egy óra múlva.', 429);
+            $_SESSION['pwr'][] = $now;
+            $u = $db->row('SELECT * FROM {users} WHERE email = ?', [$email]);
+            if ($u && $u['active'] && (!$u['reset_sent'] || $u['reset_sent'] < date('Y-m-d H:i:s', $now - 120))) {
+                $token = bin2hex(random_bytes(24));
+                $db->update('users', ['reset_hash' => hash('sha256', $token), 'reset_until' => date('Y-m-d H:i:s', $now + 3600), 'reset_sent' => ft_now()], (int)$u['id']);
+                $site = App::$s['site_title'] ?? 'Családfa';
+                $keep = App::$lang; App::$lang = ft_lang($u['lang'] ?: 'hu'); // the mail goes in the member's own language
+                $tr = fn($s) => ft_t($s);
+                ft_mail($u['email'], $tr('Új jelszó beállítása') . ' – ' . $site,
+                    $tr('Szia') . ' ' . $u['name'] . "!\n\n" . $tr('Valaki (remélhetőleg te) új jelszót kért a fiókodhoz. Az alábbi linken egy órán belül megadhatod az új jelszót:') . "\n\n"
+                    . ft_base_url() . '/#/reset/' . $token . "\n\n" . $tr('Ha nem te kérted, nyugodtan hagyd figyelmen kívül ezt a levelet, a jelszavad nem változik.') . "\n");
+                App::$lang = $keep;
+                App::audit('pwreset.request', 'user', (int)$u['id'], $u['email']);
+            }
+            usleep(200000);
+            return ['ok' => true];
+        },
+        'pwreset' => function ($in) {
+            $db = App::$db;
+            $token = (string)($in['token'] ?? '');
+            $u = preg_match('/^[0-9a-f]{48}$/', $token) ? $db->row('SELECT * FROM {users} WHERE reset_hash = ?', [hash('sha256', $token)]) : null;
+            if (!$u || !$u['active'] || !$u['reset_until'] || $u['reset_until'] < ft_now()) throw ft_err('Ez a link érvénytelen vagy lejárt. Kérj újat az „Elfelejtett jelszó” linkkel.', 410);
+            if (!empty($in['check'])) return ['ok' => true, 'name' => $u['name']];
+            $pass = (string)($in['password'] ?? '');
+            if (mb_strlen($pass) < 8) throw ft_err('A jelszó legalább 8 karakter legyen.');
+            $db->update('users', ['pass_hash' => password_hash($pass, PASSWORD_DEFAULT), 'reset_hash' => null, 'reset_until' => null,
+                'failed' => 0, 'locked_until' => null, 'last_login' => ft_now()], (int)$u['id']);
+            App::audit('pwreset', 'user', (int)$u['id'], $u['email']);
+            if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
+            $_SESSION['uid'] = (int)$u['id'];
+            App::$user = $db->row('SELECT * FROM {users} WHERE id = ?', [(int)$u['id']]);
             return ['ok' => true];
         },
 
