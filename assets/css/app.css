@@ -606,3 +606,7 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
   .crop-modal { max-height: 100vh; max-height: 100svh; border-radius: 0; }
   .crop-stage { height: 52vh; height: 52svh; }
 }
+.story-teaser .st-who { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 0 5px; font-size: .86rem; color: var(--ink); }
+.story-teaser .st-p { display: inline-flex; align-items: center; gap: 5px; }
+.story-teaser .st-p svg { width: 18px; height: 18px; color: var(--muted); }
+.story-teaser .st-who .av { font-size: .6rem; }

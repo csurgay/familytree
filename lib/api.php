@@ -91,8 +91,37 @@ function ft_photo_visible(array $photo, array $g): bool
 {
     if ($photo['status'] !== 'ok' && !App::isAdmin() && (int)$photo['uploaded_by'] !== App::uid()) return false;
     if (!ft_mask_living()) return true;
-    foreach ($photo['links'] ?? [] as $l) if ($l['person_id'] && ft_is_living($g, $l['person_id'])) return false;
+    foreach ($photo['links'] ?? [] as $l) {
+        if ($l['person_id'] && ft_is_living($g, $l['person_id'])) return false;
+        if ($l['family_id'] && ft_story_visible(['family_ids' => [$l['family_id']]]) === false) return false;
+        if ($l['story_id'] && ($st = App::$db->row('SELECT * FROM {stories} WHERE id = ?', [(int)$l['story_id']])) && !ft_story_visible(ft_story_json($st))) return false;
+    }
     return true;
+}
+
+/** Stories about living people (or a family with a living partner) are for logged-in members only. */
+function ft_story_visible(array $story): bool
+{
+    if (!ft_mask_living()) return true;
+    $g = ft_graph();
+    foreach ($story['person_ids'] ?? [] as $pid) if (ft_is_living($g, (int)$pid)) return false;
+    foreach ($story['family_ids'] ?? [] as $fid) {
+        $f = $g['F'][(int)$fid] ?? null;
+        if ($f && (($f['husband_id'] && ft_is_living($g, $f['husband_id'])) || ($f['wife_id'] && ft_is_living($g, $f['wife_id'])))) return false;
+    }
+    return true;
+}
+/** ft_story_json for a list of rows, without the ones the viewer may not see. */
+function ft_story_list(array $rows, ?string $lang = null, int $limit = 0): array
+{
+    $out = [];
+    foreach ($rows as $r) {
+        $j = ft_story_json($r);
+        if (!ft_story_visible($j)) continue;
+        $out[] = $lang ? ft_story_localize($j, $r, $lang) : $j;
+        if ($limit && count($out) >= $limit) break;
+    }
+    return $out;
 }
 
 function ft_story_json(array $s, bool $full = false): array
@@ -303,7 +332,7 @@ function ft_handlers(): array
             if (!$masked) foreach (App::$db->all('SELECT p.* FROM {photos} p JOIN {photo_links} l ON l.photo_id = p.id WHERE l.person_id = ? ORDER BY p.y IS NULL, p.y, p.id', [$id]) as $ph) {
                 $j = ft_photo_json($ph); if (ft_photo_visible($j, $g)) $photos[] = $j;
             }
-            $stories = array_map(fn($s) => ft_story_json($s), App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.person_id = ? ORDER BY s.y IS NULL, s.y, s.id', [$id]));
+            $stories = ft_story_list(App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.person_id = ? ORDER BY s.y IS NULL, s.y, s.id', [$id]));
             $out = ['person' => $light, 'notes' => $masked ? null : $row['notes'], 'married_name' => $masked ? null : $row['married_name'],
                 'photo_id' => $masked ? null : ft_int($row['photo_id']), 'events' => $events, 'families' => $families, 'photos' => $photos, 'stories' => $stories,
                 'modes' => ft_modes([$id], []), 'xref' => $row['xref'], 'created' => $row['created'], 'updated' => $row['updated']];
@@ -325,7 +354,7 @@ function ft_handlers(): array
             foreach (App::$db->all('SELECT p.* FROM {photos} p JOIN {photo_links} l ON l.photo_id = p.id WHERE l.family_id = ? ORDER BY p.y IS NULL, p.y, p.id', [$id]) as $ph) {
                 $j = ft_photo_json($ph); if (ft_photo_visible($j, $g)) $photos[] = $j;
             }
-            $stories = array_map(fn($s) => ft_story_json($s), App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.family_id = ?', [$id]));
+            $stories = ft_story_list(App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.family_id = ?', [$id]));
             $f = $g['F'][$id];
             $hidden = ft_mask_living() && (($f['husband_id'] && ft_is_living($g, $f['husband_id'])) || ($f['wife_id'] && ft_is_living($g, $f['wife_id'])));
             return ['id' => $id, 'notes' => $hidden ? null : $row['notes'], 'events' => $events, 'photos' => $photos, 'stories' => $stories,
@@ -389,7 +418,8 @@ function ft_handlers(): array
                 } elseif ($p['kind'] === 'story') {
                     $st = $db->row('SELECT * FROM {stories} WHERE id = ?', [(int)$p['ref_id']]);
                     if (!$st) continue;
-                    $o['story'] = ft_story_localize(ft_story_json($st), $st, ft_lang($_GET['lang'] ?? 'hu'));
+                    $sj = ft_story_json($st); if (!ft_story_visible($sj)) continue;
+                    $o['story'] = ft_story_localize($sj, $st, ft_lang($_GET['lang'] ?? 'hu'));
                 } elseif ($p['kind'] === 'photo') {
                     $ph = $db->row("SELECT * FROM {photos} WHERE id = ? AND status = 'ok'", [(int)$p['ref_id']]);
                     if (!$ph) continue;
@@ -401,7 +431,7 @@ function ft_handlers(): array
                 $pins[] = $o;
             }
             $lang = ft_lang($_GET['lang'] ?? 'hu');
-            $stories = array_map(fn($x) => ft_story_localize(ft_story_json($x), $x, $lang), $db->all('SELECT * FROM {stories} ORDER BY created DESC LIMIT ' . max(0, (int)$s['home_stories'])));
+            $stories = (int)$s['home_stories'] > 0 ? ft_story_list($db->all('SELECT * FROM {stories} ORDER BY created DESC LIMIT 200'), $lang, (int)$s['home_stories']) : [];
             $minY = $db->val('SELECT MIN(y) FROM {events} WHERE y IS NOT NULL AND y > 1000');
             $stats = ['persons' => count($g['P']), 'families' => count($g['F']), 'photos' => (int)$db->val("SELECT COUNT(*) FROM {photos} WHERE status = 'ok'"),
                 'stories' => (int)$db->val('SELECT COUNT(*) FROM {stories}'), 'since' => $minY ? (int)$minY : null,
@@ -451,11 +481,13 @@ function ft_handlers(): array
         'stories' => function ($in) {
             $lang = ft_lang($in['lang'] ?? 'hu');
             $rows = App::$db->all('SELECT * FROM {stories} ORDER BY y IS NULL, y DESC, created DESC');
-            return array_map(fn($s) => ft_story_localize(ft_story_json($s), $s, $lang), $rows);
+            return ft_story_list($rows, $lang);
         },
         'story' => function ($in) {
             $s = ft_story_row((int)($in['id'] ?? 0));
-            $o = ft_story_localize(ft_story_json($s, true), $s, ft_lang($in['lang'] ?? 'hu'));
+            $sj = ft_story_json($s, true);
+            if (!ft_story_visible($sj)) throw ft_err('Ez a történet élő családtagról szól, ezért csak bejelentkezve olvasható.', 401);
+            $o = ft_story_localize($sj, $s, ft_lang($in['lang'] ?? 'hu'));
             $o['raw_body'] = $s['body']; $o['raw_title'] = $s['title'];
             $g = ft_graph();
             $o['photos'] = [];

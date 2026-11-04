@@ -420,6 +420,25 @@ function ft_server_tests(): array
             t_as(t_user($db, 'member'));
             $tree = ft_handlers()['tree']([]);
             t_eq(array_values(array_filter($tree['persons'], fn($p) => $p['id'] === $ids['I5']))[0]['g'], 'Anna', 'bejelentkezve minden látszik');
+            // stories about living people: hidden from guests everywhere, readable for members
+            t_as(t_user($db, 'admin'));
+            $live = ft_run_op('story.create', ['title' => 'Anna ballagása', 'body' => 'Szép nap volt.', 'person_ids' => [$ids['I5']]]);
+            $fam = ft_run_op('story.create', ['title' => 'A család nyaralása', 'body' => 'Balaton.', 'family_ids' => [$ids['F2']]]);
+            $old = ft_run_op('story.create', ['title' => 'János malma', 'body' => 'Régen.', 'person_ids' => [$ids['I1']]]);
+            $free = ft_run_op('story.create', ['title' => 'A falu', 'body' => 'Általános.']);
+            App::$s['public_access'] = 'public';
+            t_as(null);
+            $H = ft_handlers();
+            $titles = array_column($H['stories']([]), 'title');
+            t_ok(in_array('János malma', $titles, true) && in_array('A falu', $titles, true), 'régi és általános sztori látszik');
+            t_ok(!in_array('Anna ballagása', $titles, true), 'élőről szóló sztori rejtve');
+            t_ok(!in_array('A család nyaralása', $titles, true), 'élő házaspár családjáról szóló sztori rejtve');
+            t_throws(fn() => $H['story'](['id' => $live['id']]), 'közvetlen linkkel sem olvasható');
+            t_eq(array_column($H['person'](['id' => $ids['I5']])['stories'], 'title'), [], 'a személy lapján sincs');
+            t_ok(!in_array('Anna ballagása', array_column($H['home']([])['stories'], 'title'), true), 'a kezdőlapon sincs');
+            t_as(t_user($db, 'member', 'olvaso@x.hu'));
+            t_ok(in_array('Anna ballagása', array_column($H['stories']([]), 'title'), true), 'bejelentkezve látszik');
+            t_eq($H['story'](['id' => $live['id']])['title'], 'Anna ballagása');
         },
         'Beállítások: típusellenőrzés és határértékek' => function () {
             $defs = []; foreach (ft_settings_def() as $d) $defs[$d[1]] = $d;

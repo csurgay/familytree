@@ -145,9 +145,24 @@ function pinnedEvent(pin) {
       e.note ? h('p', { style: 'margin-top:6px' }, e.note) : null,
       isAdmin() ? h('button', { class: 'btn btn-sm btn-ghost', style: 'margin-top:8px', onclick: async () => { await api('unpin', { id: pin.id }); render(); } }, T('Levétel a kezdőlapról')) : null));
 }
-function storyTeaser(s, pinned = false) {
+/** One story in a list; shows whom it is about (except the people of the page it is listed on). */
+function storyTeaser(s, pinned = false, exclude = []) {
+  const ids = (s.person_ids || []).filter(id => P(id) && !exclude.includes(id));
+  const fams = ids.length ? [] : (s.family_ids || []).filter(fid => F(fid) && !exclude.includes('f' + fid));
+  const who = ids.length || fams.length ? h('div', { class: 'st-who' },
+    ids.slice(0, 4).map(id => {
+      const p = P(id), nm = personName(p, { short: true });
+      // the name already is the title (imported life stories): say where they belong in the family instead
+      const pa = parentsOf(id).map(x => personName(P(x), { short: true }));
+      const rel = pa.length ? (p.sx === 'F' ? T('{0} lánya', pa.join(T(' és '))) : p.sx === 'M' ? T('{0} fia', pa.join(T(' és '))) : T('{0} gyermeke', pa.join(T(' és ')))) : '';
+      const inTitle = norm(s.title).includes(norm(nm));
+      return h('span', { class: 'st-p' }, avatar(p, 22), inTitle ? (rel || nm) : (rel && ids.length === 1 ? [nm, h('span', { class: 'hint' }, ' · ' + rel)] : nm));
+    }),
+    ids.length > 4 ? h('span', { class: 'hint' }, T('+{0} további', ids.length - 4)) : null,
+    fams.map(fid => h('span', { class: 'st-p' }, icon('family'), familyLabel(F(fid))))) : null;
   return h('a', { class: 'story-teaser', href: '#/story/' + s.id },
     h('h3', null, pinned ? h('span', { style: 'color:var(--accent);margin-right:6px' }, icon('pin')) : null, s.title),
+    who,
     h('p', null, [s.date, s.excerpt].filter(Boolean).join(' — ')));
 }
 
@@ -229,7 +244,7 @@ export async function viewPerson(id) {
     h('section', { class: 'section' }, h('h2', null, T('Fotók'), canTry(m.create) ? h('button', { class: 'btn btn-sm side', onclick: () => uploadPhotos({ person_id: id }) }, icon('plus'), T('Feltöltés')) : null),
       d.photos.length ? photoGrid(d.photos) : h('p', { class: 'empty' }, p.masked ? T('Élő személy fotói csak bejelentkezve láthatók.') : T('Még nincs fotó róla.'))),
     h('section', { class: 'section' }, h('h2', null, T('Sztorik'), S.user ? h('button', { class: 'btn btn-sm side', onclick: () => editStory(null, { person_ids: [id] }) }, icon('plus'), T('Új sztori')) : null),
-      d.stories.length ? d.stories.map(s => storyTeaser(s)) : h('p', { class: 'empty' }, T('Még nincs róla történet.'))),
+      d.stories.length ? d.stories.map(s => storyTeaser(s, false, [id])) : h('p', { class: 'empty' }, T('Még nincs róla történet.'))),
     d.extra?.length ? h('section', { class: 'section' }, h('h2', null, T('Egyéb adatok')), h('dl', { class: 'facts' }, d.extra.map(([k, v]) => [h('dt', null, { _PHOM: T('Telefon (otthon)'), _PMOB: T('Mobil'), _POFF: T('Telefon (munka)'), EMAIL: T('E-mail') }[k] || k), h('dd', null, v)]))) : null,
     commentsBox('person', id));
   const rightCol = h('div', null, h('section', { class: 'section' }, h('h2', null, T('Család')), fam),
@@ -286,7 +301,7 @@ export async function viewFamily(id) {
         d.notes ? h('section', { class: 'section' }, h('h2', null, T('A családról')), h('div', { class: 'bio' }, d.notes)) : null,
         d.events.length ? h('section', { class: 'section' }, h('h2', null, T('Események')), timeline(d.events, { withSubject: false, editable: S.user ? e => editEvent(e, { family_id: id, mode: m.update }) : null })) : null,
         h('section', { class: 'section' }, h('h2', null, T('Családi fotók')), d.photos.length ? photoGrid(d.photos) : h('p', { class: 'empty' }, T('Még nincs családi fotó.'))),
-        d.stories.length ? h('section', { class: 'section' }, h('h2', null, T('Sztorik')), d.stories.map(s => storyTeaser(s))) : null,
+        d.stories.length ? h('section', { class: 'section' }, h('h2', null, T('Sztorik')), d.stories.map(s => storyTeaser(s, false, [f.h, f.w, 'f' + id].filter(Boolean)))) : null,
         commentsBox('family', id)),
       h('div', null,
         h('section', { class: 'section' }, h('h2', null, T('Szülők')), h('div', { class: 'panel' }, [f.h, f.w].filter(Boolean).map(x => chip(x)))),

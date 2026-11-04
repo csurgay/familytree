@@ -845,5 +845,7 @@
 "A nagyobb képeket erre kicsinyítjük (szélesség és magasság is legfeljebb ennyi).": "Größere Bilder werden darauf verkleinert (Breite und Höhe höchstens so groß).",
 "Csoportkép (több ember) max. mérete (px)": "Max. Größe von Gruppenfotos (mehrere Personen) (px)",
 "Családi és albumfotóknál, ahol többen vannak a képen.": "Für Familien- und Albumfotos mit mehreren Personen.",
-"JPEG tömörítés minősége (%)": "JPEG-Kompressionsqualität (%)"
+"JPEG tömörítés minősége (%)": "JPEG-Kompressionsqualität (%)",
+"+{0} további": "+{0} weitere",
+"Ez a történet élő családtagról szól, ezért csak bejelentkezve olvasható.": "Diese Geschichte handelt von einem lebenden Familienmitglied und ist nur angemeldet lesbar."
 }

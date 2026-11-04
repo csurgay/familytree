@@ -51,7 +51,7 @@ Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`
 | **Admin** | Mindent azonnal. Felhasználókat vesz fel, ágakat rendel családfőkhöz, jóváhagy. |
 | **Családfő** | A hozzá rendelt ág(ak)on – a kezdő személy leszármazottai és házastársaik – új személyt, eseményt, fotót, sztorit azonnal felvehet. Módosítás és törlés admin jóváhagyással. A gyökere **fölé** (szülők, nagyszülők, testvérek, nagynénik és családjaik) szintén azonnal felvehet új személyt és adatot, de az ott már meglévőt – a saját korábbi felvitelét is – csak jóváhagyással módosíthatja vagy törölheti. |
 | **Családtag** | Megnézhet mindent, javaslatot tehet (jóváhagyási sorba kerül). Regisztráció után ez az alapszerep. |
-| **Vendég** | Csak ha a beállításokban nyilvános az oldal; az élő személyek adatai rejtve. |
+| **Vendég** | Csak ha a beállításokban nyilvános az oldal; az élő személyek adatai, fotói és a róluk (vagy élő házaspár családjáról) szóló sztorik rejtve. |
 
 Minden módosítás egy „művelet” (`lib/ops.php`); a `lib/perms.php` dönti el, hogy azonnal érvényes,
 jóváhagyásra vár, vagy tiltott. Az admin a Jóváhagyások lapon a régi és új értékeket egymás mellett látja.
