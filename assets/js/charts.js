@@ -697,6 +697,19 @@ export function renderChart(host, opts) {
     vb = { w: W / s, h: H / s, x: bounds.x + bounds.w / 2 - W / s / 2, y: bounds.y + bounds.h / 2 - H / s / 2 };
     apply();
   };
+  // whole width visible (e.g. the full grandchild generation on the home page); vertically the root and
+  // everything below it are kept in view, the oldest ancestors may be cut off at the top
+  const fitWidth = () => {
+    const r = host.getBoundingClientRect();
+    if (!r.width || !r.height || !host.isConnected) return;
+    const avail = r.width - (o.padRight || 0);   // room left of the zoom buttons
+    const sc = Math.min(avail / bounds.w, o.maxScale || 1);
+    vb = { w: r.width / sc, h: r.height / sc, x: bounds.x - (avail - bounds.w * sc) / 2 / sc, y: 0 };
+    const extra = (o.padBottom || 0) / sc;
+    vb.y = bounds.h + extra <= vb.h ? bounds.y + bounds.h / 2 - vb.h / 2 + extra / 2 : bounds.y + bounds.h + extra - vb.h;
+    apply();
+  };
+  const initialView = () => (o.fitWidth && host.clientWidth >= 640 ? fitWidth() : o.focus || host.clientWidth < 640 ? focusRoot() : fit());
   const focusRoot = () => {
     const r = host.getBoundingClientRect();
     if (!r.width || !r.height || !host.isConnected) return;
@@ -718,7 +731,7 @@ export function renderChart(host, opts) {
     vb.x += (vb.w - nw) * px; vb.y += (vb.h - nh) * py; vb.w = nw; vb.h = nh;
     apply();
   };
-  requestAnimationFrame(() => (o.focus || host.clientWidth < 640 ? focusRoot() : fit()));
+  requestAnimationFrame(initialView);
   // embedded charts: one finger scrolls the page, two fingers pinch-zoom the chart; full-screen explorer: all gestures go to the chart
   host.style.touchAction = o.wheel === false ? 'pan-y' : 'none';
 
@@ -833,7 +846,7 @@ export function renderChart(host, opts) {
     host.addEventListener('click', e => { const n = e.target.closest('.node'); if (n) (o.onOpen || (id => location.hash = '#/person/' + id))(+n.dataset.id); });
   }
   cleanups.push(closePop);
-  const ro = new ResizeObserver(() => { if (!touched) (o.focus || host.clientWidth < 640 ? focusRoot() : fit()); });
+  const ro = new ResizeObserver(() => { if (!touched) initialView(); });
   ro.observe(host);
   cleanups.push(() => ro.disconnect());
 

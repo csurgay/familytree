@@ -97,7 +97,7 @@ export async function viewHome() {
     homeCtrl?.destroy();
     homeCtrl = renderChart(host, {
       kind, root, up: tp.up || s.home_tree_gens, down: tp.down || s.home_tree_down || 2, photos: s.chart_photos, style: s.chart_style, orient: tp.orient,
-      places: false, interactive: true, wheel: false, focus: true, ...(cardShape({}) === 'tall' ? { minScale: host.clientWidth < 640 ? 0.5 : 0.56, focusShift: 215 } : { minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130 }),
+      places: false, interactive: true, wheel: false, focus: true, fitWidth: true, padBottom: 52, padRight: 58, ...(cardShape({}) === 'tall' ? { minScale: host.clientWidth < 640 ? 0.5 : 0.56, focusShift: 215 } : { minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130 }),
       onRecenter: id => drawHome(id), onOpen: id => go('#/person/' + id),
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => drawHome(x) },
