@@ -72,12 +72,17 @@ Vendégek nem látják őket; a fogaskerék alatt ki is kapcsolhatók.
   Kitűzni az admin tud: eseményt az idővonalon, fát a személy oldalán vagy a fa-böngészőben, sztorit, fotót.
 - **Személy- és családlap:** életrajz, életút, szülők/testvérek/házastársak/gyermekek, fotók, sztorik,
   mini homokóra. Szerkesztés, rokon felvétele, meglévő személy kapcsolása.
-- **Fotók:** feltöltés húzással, többet egyszerre; a szerver GD-vel újrakódolja (EXIF törlés, elforgatás
-  javítása, bélyegkép). A nézegetőben személyek jelölhetők, kattintással megadható az arc helye
+- **Fotók:** feltöltés húzással, többet egyszerre, mobilon kamerával is. Feltöltés előtt minden kép kivágható
+  (nagyítás húzással, két ujjal vagy görgővel, forgatás, 1:1 / 3:4 / 4:3 keret) – személyhez feltöltve a
+  kivágó magától megnyílik az archoz. A túl nagy képeket a böngésző már feltöltés előtt kicsinyíti; a szerver
+  GD-vel újrakódolja (EXIF törlés, elforgatás javítása, bélyegkép), JPEG 80%-kal, portrét legfeljebb 800×800,
+  csoportképet (családi, album, vagy bejelölve) legfeljebb 1600×1600 pixelre (fogaskerék alatt állítható). A nézegetőben személyek jelölhetők, kattintással megadható az arc helye
   (ez adja a portrék és a kvíz kivágását), beállítható fő portré.
 - **Diagramok:** felmenők, leszármazottak, homokóra, legyező, családlap, rokonsági útvonal (magyar
   rokonsági elnevezéssel). Fotókkal, helyekkel, három dobozstílussal, állítható kártya-betűmérettel
-  (100% = normál szövegméret) és névbetűtípussal (talpas, talpatlan, nagybetűs). Letöltés PNG/SVG, nyomtatás,
+  (100% = normál szövegméret) és névbetűtípussal (talpas, talpatlan, nagybetűs). A felmenő-, leszármazott- és
+  homokóra-diagramon a nemzedékek függőlegesen (fentről lefelé) vagy vízszintesen (balról jobbra) is elrendezhetők;
+  a kitűzött főoldali fa is megőrzi a választást. Letöltés PNG/SVG, nyomtatás,
   mentés a közös „Diagramok” galériába.
 - **Arcképcsarnok:** portrék nemzedékenként, szűrés családnévre, teljes névsor, fotóalbum.
 - **Kvíz:** 5–20 arc (állítható), két mód: 4 hasonló korú (és azonos nemű) családtag közül, vagy

@@ -590,3 +590,19 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .c-recent:first-of-type { border-top: 0; }
 .c-recent .c-body { color: var(--muted); font-size: .92rem; }
 .comments.compact .c-replies { margin-left: 8px; padding-left: 10px; }
+
+/* ---- upload: crop button on each picture, cropper dialog */
+.upl-list .it .crop-btn { position: absolute; top: 4px; right: 4px; padding: 2px 7px; font-size: .75rem; min-height: 0; background: rgba(255,255,255,.92); }
+.cropper { display: grid; gap: 10px; }
+.crop-stage { position: relative; height: min(62vh, 560px); height: min(62svh, 560px); border-radius: var(--r-sm); overflow: hidden; background: #111; touch-action: none; cursor: grab; user-select: none; }
+.crop-stage:active { cursor: grabbing; }
+.crop-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.crop-tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.crop-zoom { display: flex; align-items: center; gap: 6px; flex: 1 1 200px; }
+.crop-zoom input { flex: 1; }
+.crop-shapes { display: flex; gap: 4px; flex-wrap: wrap; }
+.crop-shapes .btn.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+@media (max-width: 620px) {
+  .crop-modal { max-height: 100vh; max-height: 100svh; border-radius: 0; }
+  .crop-stage { height: 52vh; height: 52svh; }
+}

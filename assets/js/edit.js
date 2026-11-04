@@ -3,6 +3,7 @@ import { S, T, P, F, h, api, op, modal, field, dateInput, formData, personPicker
   personName, years, avatar, loadTree, render, icon, gedToInput, familyLabel, chip, $, spouseIn } from './core.js';
 
 import { commentsBox } from './comments.js';
+import { cropImage, shrinkImage } from './cropper.js';
 
 export async function refresh() { await loadTree(true); await render(); }
 
@@ -146,8 +147,35 @@ export function uploadPhotos(target = {}, onDone) {
   const title = h('input', { type: 'text', placeholder: T('Pl. Nagyszülők esküvője') });
   const date = dateInput('date', '');
   const primary = target.person_id ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !P(target.person_id)?.ph }), h('span', null, T('Legyen ez a fő portré'))) : null;
+  // portraits are stored at most 800 px, group photos (several people) at most 1600 px
+  const pxOne = +S.settings.photo_portrait_px || 800, pxGroup = +S.settings.photo_group_px || 1600;
+  const groupBox = h('input', { type: 'checkbox', checked: !target.person_id });
+  const group = h('label', { class: 'check' }, groupBox, h('span', null, T('Csoportkép, több emberrel (nagyobb felbontás: {0} px)', pxGroup)));
+  const maxPx = () => (groupBox.checked ? pxGroup : pxOne);
   let files = [];
-  const add = fl => { for (const f of fl) if (f.type.startsWith('image/')) { files.push(f); const it = h('div', { class: 'it' }, h('img', { src: URL.createObjectURL(f), alt: '' }), h('div', { class: 'st' }, T('várakozik'))); f._el = it; list.append(it); } };
+  const crop = async (i, shape) => {
+    const f = files[i];
+    try {
+      const c = await cropImage(f.orig, { max: maxPx(), shape });
+      if (!c) return;
+      c.orig = f.orig; c._el = f._el; files[i] = c;
+      f._el.querySelector('img').src = URL.createObjectURL(c);
+      f._el.querySelector('.st').textContent = T('kivágva');
+    } catch (e) { fail(e); }
+  };
+  const add = fl => {
+    const added = [];
+    for (const f of fl) if (f.type.startsWith('image/')) {
+      f.orig = f;
+      const i = files.length;
+      files.push(f);
+      const it = h('div', { class: 'it' }, h('img', { src: URL.createObjectURL(f), alt: '' }), h('div', { class: 'st' }, T('várakozik')),
+        h('button', { type: 'button', class: 'btn btn-sm crop-btn', onclick: () => crop(i, target.person_id ? '1:1' : 'free') }, '✂ ', T('Kivágás')));
+      f._el = it; list.append(it); added.push(i);
+    }
+    // a portrait: offer cutting out the face straight away
+    if (target.person_id && added.length === 1 && files.length === 1) crop(added[0], '1:1');
+  };
   inp.addEventListener('change', () => add(inp.files));
   // phones: take a picture right away (opens the camera instead of the gallery)
   const cam = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
@@ -158,14 +186,17 @@ export function uploadPhotos(target = {}, onDone) {
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('over'); add(e.dataTransfer.files); });
   const tl = target.person_id ? personName(P(target.person_id)) : target.family_id ? familyLabel(F(target.family_id)) : target.story_id ? T('a sztorihoz') : T('az albumba');
   const body = h('div', null, h('p', { class: 'muted' }, T('Feltöltés: '), h('b', null, tl)), zone, cam, camBtn, list,
-    h('div', { class: 'grid2', style: 'margin-top:14px' }, field(T('Cím (nem kötelező)'), title), field(T('Dátum (nem kötelező)'), date)), primary);
+    h('div', { class: 'grid2', style: 'margin-top:14px' }, field(T('Cím (nem kötelező)'), title), field(T('Dátum (nem kötelező)'), date)), primary, group,
+    h('p', { class: 'hint' }, T('A túl nagy képeket feltöltés előtt kicsinyítjük (portré: legfeljebb {0} px, csoportkép: {1} px, JPEG {2}%).', pxOne, pxGroup, +S.settings.photo_quality || 80)));
   modal({ title: T('Fotók feltöltése'), body, actions: [{ label: T('Mégse') }, { label: T('Feltöltés'), cls: 'btn-primary', onClick: async () => {
     if (!files.length) throw new Error(T('Válassz legalább egy képet.'));
     let ok = 0, queued = 0, lastId = null;
     for (const [i, f] of files.entries()) {
       f._el.querySelector('.st').textContent = T('feltöltés…');
       const fd = new FormData();
-      fd.append('file', f);
+      const small = await shrinkImage(f, maxPx());
+      fd.append('file', small, small.name || f.name || 'foto.jpg');
+      fd.append('group', groupBox.checked ? '1' : '0');
       for (const [k, v] of Object.entries(target)) if (v) fd.append(k, v);
       fd.append('title', title.value || (files.length > 1 ? '' : ''));
       fd.append('date', date.querySelector('input').value);
@@ -186,9 +217,16 @@ export async function photoViewer(list, index = 0) {
   const stage = h('div', { class: 'stage' });
   const side = h('div', { class: 'side' });
   wrap.append(stage, side);
-  const close = () => { wrap.remove(); document.removeEventListener('keydown', key); };
-  const key = e => { if (e.key === 'Escape') close(); if (e.key === 'ArrowRight') show(i + 1); if (e.key === 'ArrowLeft') show(i - 1); };
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', key); window.removeEventListener('hashchange', close); };
+  const key = e => {
+    if (e.key === 'Escape') return close();
+    if (e.target.closest?.('textarea,input,select')) return; // arrows move the cursor while typing a comment
+    if (e.key === 'ArrowRight') show(i + 1); if (e.key === 'ArrowLeft') show(i - 1);
+  };
   document.addEventListener('keydown', key);
+  // following a link (a person, a family…) leaves the viewer – the page behind it changes
+  window.addEventListener('hashchange', close);
+  side.addEventListener('click', e => { const a = e.target.closest('a[href^="#/"]'); if (a) close(); });
   document.body.append(wrap);
   let focusFor = null; // person id whose face point is being set
 
@@ -241,7 +279,7 @@ export async function photoViewer(list, index = 0) {
         S.user?.role === 'admin' ? h('button', { class: 'btn btn-sm', onclick: async () => { try { await api('pin', { kind: 'photo', ref_id: ph.id, replace: true }); toast(T('Kitűzve a kezdőlapra.')); } catch (e) { fail(e); } } }, icon('pin'), T('Kitűzés')) : null,
         S.user && ph.modes?.delete !== 'deny' ? h('button', { class: 'btn btn-sm btn-danger', onclick: async () => {
           if (!await confirmBox(T('Fotó törlése'), T('Biztosan törlöd ezt a fotót?'), T('Törlés'))) return;
-          try { if (opDone(await op('photo.delete', { id: ph.id }), T('Törölve.'))) { list.splice(i, 1); if (!list.length) { close(); await refresh(); } else show(Math.min(i, list.length - 1)); } } catch (e) { fail(e); } } }, icon('trash'), T('Törlés')) : null),
+          try { const done = opDone(await op('photo.delete', { id: ph.id }), T('Törölve.')); close(); if (done) await refresh(); } catch (e) { fail(e); } } }, icon('trash'), T('Törlés')) : null),
       ph.uploader ? h('p', { class: 'hint', style: 'margin-top:16px' }, T('Feltöltötte: '), ph.uploader) : null,
       ph.status === 'ok' ? commentsBox('photo', ph.id, { compact: true }) : null);
   }

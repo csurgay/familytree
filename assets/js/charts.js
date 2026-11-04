@@ -10,9 +10,10 @@ const sv = (tag, attrs = {}, ...kids) => {
 };
 
 export const CHART_KINDS = {
-  ancestors: { label: 'Felmenők', icon: 'ancestors', up: true },
-  descendants: { label: 'Leszármazottak', icon: 'descendants', down: true },
-  hourglass: { label: 'Homokóra', icon: 'hourglass', up: true, down: true },
+  // orient: the kind can lay out its generations both ways; the value is its default (v = top-down, h = left-right)
+  ancestors: { label: 'Felmenők', icon: 'ancestors', up: true, orient: 'h' },
+  descendants: { label: 'Leszármazottak', icon: 'descendants', down: true, orient: 'v' },
+  hourglass: { label: 'Homokóra', icon: 'hourglass', up: true, down: true, orient: 'v' },
   fan: { label: 'Legyező', icon: 'fan', up: true },
   family: { label: 'Családlap', icon: 'family' },
   relation: { label: 'Rokonság', icon: 'relation' },
@@ -58,7 +59,15 @@ export function famExit(ux, top, w, hh, k, n) {
   return { head: `M${x},${bottom}`, x, lvl: -1 };
 }
 
-export function layoutAncestors(rootId, o, vertical = false) {
+/** Effective generation direction of a chart: 'v' (top-down) or 'h' (left-right). */
+export function chartOrient(o) {
+  const def = CHART_KINDS[o.kind]?.orient;
+  if (!def) return null;
+  return o.orient === 'h' || o.orient === 'v' ? o.orient : def;
+}
+
+// dir: in the horizontal layout the ancestors go to the right (1) or, in an hourglass, to the left (-1)
+export function layoutAncestors(rootId, o, vertical = false, dir = 1) {
   const { w, hh } = { w: boxSize(o).w, hh: boxSize(o).h };
   const G = o.up; const nodes = []; const links = [];
   const gapMain = vertical ? 58 : 46, gapCross = vertical ? 14 : 12;
@@ -71,13 +80,13 @@ export function layoutAncestors(rootId, o, vertical = false) {
     for (const pid of parents) pk.push(place(pid, g + 1));
     if (!pk.length) { cross = next; next += (vertical ? w : hh) + gapCross; }
     else cross = (pk[0].cross + pk[pk.length - 1].cross) / 2;
-    const main = g * ((vertical ? hh : w) + gapMain);
+    const main = g * ((vertical ? hh : w) + gapMain) * (vertical ? 1 : dir);
     const n = vertical ? { id, x: cross, y: -main, w, h: hh, g, cross } : { id, x: main, y: cross, w, h: hh, g, cross };
     n.dup = seen.has(id); seen.set(id, true);
     nodes.push(n);
     for (const c of pk) {
       if (vertical) { const x1 = n.x + w / 2, y1 = n.y, x2 = c.x + w / 2, y2 = c.y + hh, my = (y1 + y2) / 2; links.push({ d: `M${x1},${y1}V${my}H${x2}V${y2}` }); }
-      else { const x1 = n.x + w, y1 = n.y + hh / 2, x2 = c.x, y2 = c.y + hh / 2, mx = (x1 + x2) / 2; links.push({ d: `M${x1},${y1}H${mx}V${y2}H${x2}` }); }
+      else { const x1 = dir > 0 ? n.x + w : n.x, y1 = n.y + hh / 2, x2 = dir > 0 ? c.x : c.x + w, y2 = c.y + hh / 2, mx = (x1 + x2) / 2; links.push({ d: `M${x1},${y1}H${mx}V${y2}H${x2}` }); }
     }
     return n;
   };
@@ -146,15 +155,78 @@ export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
   return { nodes, links };
 }
 
-export function layoutHourglass(rootId, o) {
-  const down = layoutDescendants(rootId, o);
-  const up = layoutAncestors(rootId, o, true);
+/**
+ * Descendants with the generations left → right: siblings stacked downwards, each family's line leaving
+ * the right end of that spouse's strip (or the person card) to a vertical bus in front of the children.
+ * Lines are drawn above the cards here (linksOnTop), so a line visibly starts from its own strip.
+ */
+export function layoutDescendantsH(rootId, o, { withRootSpouses = true } = {}) {
+  const { w, h: hh } = boxSize(o);
+  const G = o.down, kgap = 14, hgap = 72;
+  const nodes = [], links = [];
+  const guard = new Set();
+  let maxSp = 0;
+  const measure = (id, d) => {
+    const p = P(id);
+    const showSp = o.spouses !== false && (d > 0 || withRootSpouses);
+    const fams0 = (p?.fs || []).map(F).filter(Boolean);
+    const sps = showSp ? fams0.filter(f => spouseIn(f, id)) : [];
+    const fams = sps.length ? [...fams0.filter(f => !sps.includes(f)), ...sps] : fams0;
+    maxSp = Math.max(maxSp, sps.length);
+    const unitH = hh + sps.length * SDY;
+    const kids = [];
+    if (d < G && !guard.has(id)) {
+      guard.add(id);
+      for (const f of fams) for (const c of f.c) kids.push({ fam: f.id, m: measure(c, d + 1) });
+    }
+    const kidsH = kids.reduce((s, k) => s + k.m.height, 0) + Math.max(0, kids.length - 1) * kgap;
+    return { id, d, fams, sps, unitH, kids, kidsH, height: Math.max(unitH, kidsH) };
+  };
+  const m0 = measure(rootId, 0);
+  const colStep = w + maxSp * SDX + hgap;
+  const placeT = (m, left, top) => {
+    const ux = left, uy = top + (m.height - m.unitH) / 2;
+    nodes.push({ id: m.id, x: ux, y: uy, w, h: hh, root: m.d === 0, main: true });
+    const famPt = {};
+    m.sps.forEach((f, i) => {
+      const k = i + 1;
+      nodes.push({ id: spouseIn(f, m.id), x: ux + k * SDX, y: uy + k * SDY, w, h: hh, spouse: true, layer: k, of: m.id, div: f.dv });
+      famPt[f.id] = { x: ux + k * SDX + w, y: uy + hh + (k - 0.5) * SDY };
+    });
+    // a relationship without a spouse card: from the top of the person card, above the tucked-in spouses
+    for (const f of m.fams) if (!famPt[f.id]) famPt[f.id] = { x: ux + w, y: m.sps.length ? uy + SDY / 2 : uy + hh / 2 };
+    const kx = left + colStep;
+    let ky = top + (m.height - m.kidsH) / 2;
+    const byFam = {};
+    for (const k of m.kids) {
+      placeT(k.m, kx, ky);
+      (byFam[k.fam] ||= []).push(ky + (k.m.height - k.m.unitH) / 2 + hh / 2);
+      ky += k.m.height + kgap;
+    }
+    const famIds = Object.keys(byFam), nf = famIds.length;
+    famIds.forEach((fid, fi) => {
+      const ys = byFam[fid], ex = famPt[fid];
+      // one bus per relationship; the lower ones a little further left, so the lines never cross
+      const bus = kx - hgap / 2 + ((nf - 1) / 2 - fi) * 9;
+      let d = `M${ex.x},${ex.y}H${bus}M${bus},${Math.min(ex.y, ...ys)}V${Math.max(ex.y, ...ys)}`;
+      for (const y of ys) d += `M${bus},${y}H${kx}`;
+      links.push({ d });
+    });
+  };
+  placeT(m0, 0, 0);
+  return { nodes, links, linksOnTop: true };
+}
+
+export function layoutHourglass(rootId, o, orient = 'v') {
+  const horiz = orient === 'h';
+  const down = horiz ? layoutDescendantsH(rootId, o) : layoutDescendants(rootId, o);
+  const up = horiz ? layoutAncestors(rootId, o, false, -1) : layoutAncestors(rootId, o, true);
   const rd = down.nodes.find(n => n.root), ru = up.nodes.find(n => n.root);
   const dx = rd.x - ru.x, dy = rd.y - ru.y;
   const shift = d => d.replace(/([MLHV])([-\d.]+)(?:,([-\d.]+))?/g, (m, c, a, b) => c === 'H' ? `H${+a + dx}` : c === 'V' ? `V${+a + dy}` : `${c}${+a + dx},${+b + dy}`);
   const nodes = down.nodes.concat(up.nodes.filter(n => !n.root).map(n => ({ ...n, x: n.x + dx, y: n.y + dy })));
   const links = down.links.concat(up.links.map(l => ({ ...l, d: shift(l.d) })));
-  return { nodes, links };
+  return { nodes, links, linksOnTop: down.linksOnTop };
 }
 
 export function layoutFamily(rootId, o) {
@@ -538,18 +610,20 @@ export function renderChart(host, opts) {
     bounds = renderFan(o.root, o, pal, world, defs, uid);
   } else {
     let L;
-    if (o.kind === 'ancestors') L = layoutAncestors(o.root, o);
-    else if (o.kind === 'descendants') L = layoutDescendants(o.root, o);
+    const orient = chartOrient(o);
+    if (o.kind === 'ancestors') L = layoutAncestors(o.root, o, orient === 'v');
+    else if (o.kind === 'descendants') L = orient === 'h' ? layoutDescendantsH(o.root, o) : layoutDescendants(o.root, o);
     else if (o.kind === 'family') L = layoutFamily(o.root, o);
     else if (o.kind === 'relation') { L = layoutRelation(o.root, o.other || o.root, o); info.path = L.path; info.label = relationLabel(L.path); }
-    else L = layoutHourglass(o.root, o);
-    const lg = sv('g', { fill: 'none', stroke: pal.muted, 'stroke-width': 1.4, 'stroke-linejoin': 'round', opacity: .75 });
+    else L = layoutHourglass(o.root, o, orient);
+    const lg = sv('g', { fill: 'none', stroke: pal.muted, 'stroke-width': 1.4, 'stroke-linejoin': 'round', opacity: .75, 'pointer-events': 'none' });
     for (const l of L.links) lg.append(sv('path', { d: l.d, ...(l.kind === 'marr' ? { stroke: pal.accent, 'stroke-width': 2.2 } : {}), ...(l.kind === 'div' ? { stroke: pal.muted, 'stroke-dasharray': '5 4' } : {}) }));
-    world.append(lg);
+    if (!L.linksOnTop) world.append(lg);
     for (const e of L.extra || []) world.append(sv('text', { x: e.x, y: e.y, 'text-anchor': 'middle', 'font-size': 12, fill: pal.accent, 'font-family': '"Alegreya Sans", sans-serif', 'font-style': 'italic', 'paint-order': 'stroke', stroke: pal.paper, 'stroke-width': 4 }, e.t));
     // spouse cards first (deepest layer first) so their partner's card covers them
     const order = L.nodes.slice().sort((a, b) => (b.spouse ? b.layer : 0) - (a.spouse ? a.layer : 0));
     for (const n of order) world.append(personBox(n, o, pal, defs, uid));
+    if (L.linksOnTop) world.append(lg);
     bounds = measureBounds(L.nodes);
     info.count = new Set(L.nodes.map(n => n.id)).size;
   }

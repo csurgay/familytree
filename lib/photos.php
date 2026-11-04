@@ -65,7 +65,7 @@ function ft_photo_purge(int $id): void
  * Store an uploaded image: verify it really is an image, re-encode with GD (drops EXIF/metadata,
  * defeats polyglot files), fix camera orientation, make a thumbnail.
  */
-function ft_store_image(string $tmp, string $origName = ''): array
+function ft_store_image(string $tmp, string $origName = '', bool $group = true): array
 {
     $s = App::$s;
     if (!is_file($tmp)) throw ft_err('A feltöltött fájl nem érkezett meg.');
@@ -86,7 +86,9 @@ function ft_store_image(string $tmp, string $origName = ''): array
     $tsub = 'uploads/thumbs/' . date('Y');
     foreach ([$sub, $tsub] as $d) if (!is_dir(App::$root . '/' . $d)) @mkdir(App::$root . '/' . $d, 0775, true);
     $name = bin2hex(random_bytes(10)) . '.jpg';
-    [$w, $h] = ft_save_resized($img, App::$root . "/$sub/$name", (int)$s['photo_max_px'], (int)$s['jpeg_quality']);
+    // portraits at most photo_portrait_px (800), group photos photo_group_px (1600); never enlarged
+    $max = (int)($group ? ($s['photo_group_px'] ?? 1600) : ($s['photo_portrait_px'] ?? 800));
+    [$w, $h] = ft_save_resized($img, App::$root . "/$sub/$name", max(200, $max), (int)($s['photo_quality'] ?? 80));
     ft_save_resized($img, App::$root . "/$tsub/$name", (int)$s['thumb_px'], 82);
     imagedestroy($img);
     return ['file' => "$sub/$name", 'thumb' => "$tsub/$name", 'w' => $w, 'h' => $h];
@@ -120,7 +122,9 @@ function ft_photo_upload(array $file, array $meta): array
     if (!$pid && !$fid) $opts['free'] = true;
     $mode = ft_mode('create', array_filter([$pid]), array_filter([$fid]), $opts);
     if ($mode === 'deny') throw ft_err('Ehhez nincs jogosultságod.', 403);
-    $stored = ft_store_image($file['tmp_name'], $file['name'] ?? '');
+    // group photo unless it is uploaded to a single person (or the uploader said otherwise)
+    $group = isset($meta['group']) ? !empty($meta['group']) : !$pid;
+    $stored = ft_store_image($file['tmp_name'], $file['name'] ?? '', $group);
     $dt = ft_parse_date($meta['date'] ?? null);
     $id = App::$db->insert('photos', $stored + ['title' => ft_str($meta['title'] ?? null), 'descr' => ft_str($meta['descr'] ?? null, 20000),
         'date_raw' => $dt['raw'] ?? null, 'y' => $dt['y'] ?? null, 'status' => $mode === 'direct' ? 'ok' : 'pending',

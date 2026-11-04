@@ -348,8 +348,16 @@ function ft_server_tests(): array
                 t_eq($res['queued'], false);
                 $ph = $db->row('SELECT * FROM {photos} WHERE id = ?', [$res['id']]);
                 t_ok(is_file(App::$root . '/' . $ph['file']) && is_file(App::$root . '/' . $ph['thumb']));
-                t_eq((int)$ph['w'], 2000, 'max 2000 px'); t_eq(getimagesize(App::$root . '/' . $ph['file'])[2], IMAGETYPE_JPEG);
+                t_eq([(int)$ph['w'], (int)$ph['h']], [800, 400], 'portré: max 800×800 px'); t_eq(getimagesize(App::$root . '/' . $ph['file'])[2], IMAGETYPE_JPEG);
+                $g = ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp, 'name' => 'x.png'], ['family_id' => $ids['F2']]);
+                t_eq((int)$db->val('SELECT w FROM {photos} WHERE id = ?', [$g['id']]), 1600, 'családi fotó: max 1600 px');
+                $g2 = ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp, 'name' => 'x.png'], ['person_id' => $ids['I5'], 'group' => '1']);
+                t_eq((int)$db->val('SELECT w FROM {photos} WHERE id = ?', [$g2['id']]), 1600, 'csoportképként jelölve: 1600 px');
+                $im2 = imagecreatetruecolor(300, 200); $tmp2 = App::$root . '/small.png'; imagepng($im2, $tmp2);
+                $sm = ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp2, 'name' => 's.png'], ['person_id' => $ids['I5']]);
+                t_eq((int)$db->val('SELECT w FROM {photos} WHERE id = ?', [$sm['id']]), 300, 'kis képet nem nagyít');
                 t_eq((int)$db->val('SELECT photo_id FROM {persons} WHERE id = ?', [$ids['I5']]), $res['id'], 'automatikusan fő portré');
+                foreach ([$g, $g2, $sm] as $x) ft_run_op('photo.delete', ['id' => $x['id']]);
                 file_put_contents($tmp, "<?php echo 'x'; ?>");
                 t_throws(fn() => ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp, 'name' => 'x.php'], ['person_id' => $ids['I5']]), 'PHP fájl nem mehet át');
                 ft_run_op('photo.delete', ['id' => $res['id']]);

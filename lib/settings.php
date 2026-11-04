@@ -59,9 +59,10 @@ function ft_settings_def(): array
         ['Diagramok', 'chart_png_scale', 'int', 2, 'PNG felbontás szorzó', '', [1, 4]],
 
         ['Fotók', 'upload_max_mb', 'int', 12, 'Feltöltés max. mérete (MB)', 'A szerver php.ini határa is számít.', [1, 100]],
-        ['Fotók', 'photo_max_px', 'int', 2000, 'Tárolt fotó max. oldalhossza (px)', '', [600, 6000]],
+        ['Fotók', 'photo_portrait_px', 'int', 800, 'Portré / egyszemélyes fotó max. mérete (px)', 'A nagyobb képeket erre kicsinyítjük (szélesség és magasság is legfeljebb ennyi).', [200, 6000]],
+        ['Fotók', 'photo_group_px', 'int', 1600, 'Csoportkép (több ember) max. mérete (px)', 'Családi és albumfotóknál, ahol többen vannak a képen.', [200, 6000]],
         ['Fotók', 'thumb_px', 'int', 360, 'Bélyegkép mérete (px)', '', [120, 800]],
-        ['Fotók', 'jpeg_quality', 'int', 85, 'JPEG minőség', '', [50, 100]],
+        ['Fotók', 'photo_quality', 'int', 80, 'JPEG tömörítés minősége (%)', '', [40, 100]],
 
         ['Kvíz', 'quiz_count', 'int', 10, 'Kérdések száma (alapérték)', '', [3, 50]],
         ['Kvíz', 'quiz_min', 'int', 5, 'Választható legkevesebb kérdés', '', [1, 50]],

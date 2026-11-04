@@ -56,7 +56,8 @@ export async function viewHome() {
 
   const host = h('div', { class: 'chart-host' });
   const capText = h('span', null, treePin?.caption || (T(CHART_KINDS[kind]?.label) + ': ' + personName(P(rootId))));
-  const openBtn = h('a', { class: 'btn btn-sm', href: `#/tree/${rootId}?kind=${kind}` }, T('Megnyitás a fa-böngészőben'));
+  const oq = tp.orient ? `&orient=${tp.orient}` : '';
+  const openBtn = h('a', { class: 'btn btn-sm', href: `#/tree/${rootId}?kind=${kind}${oq}` }, T('Megnyitás a fa-böngészőben'));
   const hero = h('section', { class: 'home-hero' },
     h('div', { class: 'hero-title' }, h('div', null, h('h1', null, s.site_title), h('p', null, s.site_subtitle)), h('p', { class: 'hero-facts' }, factLine)),
     rootId ? h('div', { class: 'hero-tree' }, host,
@@ -95,16 +96,16 @@ export async function viewHome() {
   const drawHome = (root, first = false) => {
     homeCtrl?.destroy();
     homeCtrl = renderChart(host, {
-      kind, root, up: tp.up || s.home_tree_gens, down: tp.down || s.home_tree_down || 2, photos: s.chart_photos, style: s.chart_style,
+      kind, root, up: tp.up || s.home_tree_gens, down: tp.down || s.home_tree_down || 2, photos: s.chart_photos, style: s.chart_style, orient: tp.orient,
       places: false, interactive: true, wheel: false, focus: true, minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130,
       onRecenter: id => drawHome(id), onOpen: id => go('#/person/' + id),
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => drawHome(x) },
         { label: T('Adatlap'), run: x => go('#/person/' + x) },
-        { label: T('Fa-böngésző'), run: x => go(`#/tree/${x}?kind=${kind}`) },
+        { label: T('Fa-böngésző'), run: x => go(`#/tree/${x}?kind=${kind}${oq}`) },
       ],
     });
-    if (!first) { capText.textContent = T(CHART_KINDS[kind]?.label) + ': ' + personName(P(root)); openBtn.setAttribute('href', `#/tree/${root}?kind=${kind}`); }
+    if (!first) { capText.textContent = T(CHART_KINDS[kind]?.label) + ': ' + personName(P(root)); openBtn.setAttribute('href', `#/tree/${root}?kind=${kind}${oq}`); }
   };
   if (rootId) requestAnimationFrame(() => drawHome(rootId, true));
   return page;
@@ -246,8 +247,12 @@ function pinTree(id) {
   const kind = h('select', null, Object.entries(CHART_KINDS).filter(([k]) => k !== 'relation').map(([k, v]) => h('option', { value: k, selected: k === 'hourglass' }, T(v.label))));
   const up = h('input', { type: 'number', min: 1, max: 6, value: 2 }), down = h('input', { type: 'number', min: 1, max: 6, value: 2 });
   const cap = h('input', { type: 'text', placeholder: T('Pl. A nagyszülők családja') });
-  modal({ title: T('Családfarészlet kitűzése a kezdőlapra'), body: h('div', null, h('p', { class: 'muted' }, T('Középpontban: '), personName(P(id))), field(T('Diagram'), kind), h('div', { class: 'grid2' }, field(T('Felmenő nemzedékek'), up), field(T('Leszármazott nemzedékek'), down)), field(T('Felirat'), cap)),
-    actions: [{ label: T('Mégse') }, { label: T('Kitűzés'), cls: 'btn-primary', onClick: async () => { await api('pin', { kind: 'tree', ref_id: id, replace: true, caption: cap.value, params: { kind: kind.value, up: +up.value, down: +down.value } }); toast(T('Kitűzve a kezdőlapra.')); } }] });
+  const orient = h('select', null, h('option', { value: '' }, T('Alapértelmezett')), h('option', { value: 'v' }, T('Függőlegesen (fentről lefelé)')), h('option', { value: 'h' }, T('Vízszintesen (balról jobbra)')));
+  const orientF = field(T('Nemzedékek elrendezése'), orient);
+  const syncO = () => { orientF.hidden = !CHART_KINDS[kind.value]?.orient; };
+  kind.addEventListener('change', syncO); syncO();
+  modal({ title: T('Családfarészlet kitűzése a kezdőlapra'), body: h('div', null, h('p', { class: 'muted' }, T('Középpontban: '), personName(P(id))), field(T('Diagram'), kind), orientF, h('div', { class: 'grid2' }, field(T('Felmenő nemzedékek'), up), field(T('Leszármazott nemzedékek'), down)), field(T('Felirat'), cap)),
+    actions: [{ label: T('Mégse') }, { label: T('Kitűzés'), cls: 'btn-primary', onClick: async () => { await api('pin', { kind: 'tree', ref_id: id, replace: true, caption: cap.value, params: { kind: kind.value, up: +up.value, down: +down.value, ...(orient.value && CHART_KINDS[kind.value]?.orient ? { orient: orient.value } : {}) } }); toast(T('Kitűzve a kezdőlapra.')); } }] });
 }
 function photoGrid(photos) {
   return h('div', { class: 'photo-grid' }, photos.map((p, i) => h('a', { href: '#', onclick: e => { e.preventDefault(); photoViewer(photos, i); } },
@@ -416,7 +421,7 @@ export async function viewTree(id, qs) {
   let root = +(id || qs.get('root') || S.user?.person_id || S.tree.home || [...S.tree.P.keys()][0]);
   if (!P(root)) root = S.tree.home;
   const st = { kind: qs.get('kind') || 'hourglass', root, other: +(qs.get('other') || 0) || null, up: +(qs.get('up') || s.chart_gens_up), down: +(qs.get('down') || s.chart_gens_down),
-    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: qs.get('spouses') !== '0', style: qs.get('style') || s.chart_style };
+    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: qs.get('spouses') !== '0', style: qs.get('style') || s.chart_style, orient: qs.get('orient') || '' };
   if (!P(st.root)) return h('div', null, emptyTree());
   setTitle(T('Családfa – ') + personName(P(st.root)));
   const host = h('div', { class: 'chart-host' });
@@ -428,6 +433,8 @@ export async function viewTree(id, qs) {
   const types = h('div', { class: 'ctype' }, Object.entries(CHART_KINDS).map(([k, v]) => h('button', { type: 'button', class: st.kind === k ? 'on' : '', 'data-k': k, onclick: () => { st.kind = k; draw(); } }, icon(v.icon), T(v.label))));
   const num = (key, label, max = 10) => { const i = h('input', { type: 'range', min: 1, max, value: st[key], oninput: e => { st[key] = +e.target.value; i.nextSibling.textContent = st[key]; draw(); } }); return h('label', { class: 'f', 'data-g': key }, h('span', null, label), h('div', { class: 'row', style: 'flex-wrap:nowrap' }, i, h('b', { style: 'min-width:1.5em;text-align:right' }, st[key]))); };
   const tog = (key, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st[key], onchange: e => { st[key] = e.target.checked; draw(); } }), h('span', null, label));
+  const orientSel = h('select', { onchange: e => { st.orient = e.target.value; draw(); } },
+    h('option', { value: 'v' }, T('Függőlegesen (fentről lefelé)')), h('option', { value: 'h' }, T('Vízszintesen (balról jobbra)')));
   const style = h('select', { onchange: e => { st.style = e.target.value; draw(); } }, [['album', T('Album')], ['classic', T('Klasszikus')], ['minimal', T('Letisztult')]].map(([k, l]) => h('option', { value: k, selected: st.style === k }, l)));
   const title = h('input', { type: 'text', placeholder: T('Cím az exporthoz (nem kötelező)') });
   const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { btn.disabled = false; } };
@@ -438,6 +445,7 @@ export async function viewTree(id, qs) {
     types,
     h('div', { 'data-rel': 1 }, field(T('Rokonság vele'), otherPk.el)),
     num('up', T('Felmenő nemzedékek'), 10), num('down', T('Leszármazott nemzedékek'), 10),
+    h('div', { 'data-g': 'orient' }, field(T('Nemzedékek elrendezése'), orientSel)),
     tog('photos', T('Fotók')), tog('places', T('Születési hely')), tog('spouses', T('Házastársak')),
     field(T('Doboz stílus'), style),
     h('hr'),
@@ -448,7 +456,7 @@ export async function viewTree(id, qs) {
       h('button', { class: 'btn btn-sm', onclick: () => window.print() }, icon('print'), T('Nyomtatás'))),
     S.user ? h('div', { class: 'row', style: 'margin-top:8px' },
       h('button', { class: 'btn btn-sm btn-primary', onclick: e => busy(e.currentTarget, async () => { const r = await exportChart(ctrl, { title: autoTitle(), save: true, kind: st.kind, person_id: st.root, config: st }); toast(T('Elmentve a diagramok közé.')); }) }, icon('save'), T('Mentés a diagramok közé')),
-      isAdmin() && st.kind !== 'relation' ? h('button', { class: 'btn btn-sm', onclick: async () => { await api('pin', { kind: 'tree', ref_id: st.root, replace: true, caption: title.value, params: { kind: st.kind, up: Math.min(st.up, 4), down: Math.min(st.down, 4) } }); toast(T('Kitűzve a kezdőlapra.')); } }, icon('pin'), T('Kitűzés')) : null) : null,
+      isAdmin() && st.kind !== 'relation' ? h('button', { class: 'btn btn-sm', onclick: async () => { await api('pin', { kind: 'tree', ref_id: st.root, replace: true, caption: title.value, params: { kind: st.kind, up: Math.min(st.up, 4), down: Math.min(st.down, 4), ...(st.orient ? { orient: st.orient } : {}) } }); toast(T('Kitűzve a kezdőlapra.')); } }, icon('pin'), T('Kitűzés')) : null) : null,
     h('p', { class: 'hint', style: 'margin-top:14px' }, T('Dupla kattintás (mobilon dupla koppintás) egy kártyán: ő kerül középre. Egy kattintás: gyorskártya. Billentyűk: ↑ szülő, ↓ gyermek, ← → testvér, Home: kiinduló személy; a böngésző Vissza gombja az előző személyre ugrik. Nagyítás: görgő, két ujjas csípés vagy +/−.')));
 
   const draw = () => {
@@ -457,7 +465,10 @@ export async function viewTree(id, qs) {
     side.querySelector('[data-g=up]').hidden = !k.up;
     side.querySelector('[data-g=down]').hidden = !k.down;
     side.querySelector('[data-rel]').hidden = st.kind !== 'relation';
+    side.querySelector('[data-g=orient]').hidden = !k.orient;
+    if (k.orient) orientSel.value = st.orient || k.orient;
     const q = new URLSearchParams({ kind: st.kind, up: st.up, down: st.down, photos: st.photos ? 1 : 0, places: st.places ? 1 : 0, spouses: st.spouses ? 1 : 0, style: st.style });
+    if (st.orient) q.set('orient', st.orient);
     if (st.other) q.set('other', st.other);
     const url = `#/tree/${st.root}?${q}`;
     if (pushNext) { history.pushState(null, '', url); pushNext = false; } else history.replaceState(null, '', url);
