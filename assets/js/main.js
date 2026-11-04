@@ -1,5 +1,5 @@
 import { S, T, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail, setLang } from './core.js';
-import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents, viewRegister } from './views.js';
+import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents, viewRegister, viewSurname } from './views.js';
 import { viewQuiz } from './quiz.js';
 import { viewAdmin } from './admin.js';
 
@@ -23,6 +23,7 @@ async function boot() {
   route('/family/:id', gate(viewFamily), { nav: 'people' });
   route('/people', gate(qs => viewPeople(qs)), { nav: 'people' });
   route('/events', gate(qs => viewEvents(qs)), { nav: 'home' });
+  route('/surname/:name', gate(viewSurname), { nav: 'people' });
   route('/stories', gate(viewStories), { nav: 'stories' });
   route('/story/:id', gate(viewStory), { nav: 'stories' });
   route('/tree', gate(qs => viewTree(null, qs)), { nav: 'tree', full: true });

@@ -74,6 +74,7 @@ const ICONS = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  chat: '<path d="M4 5h16v11H10l-5 4v-4H4z"/>',
   pin: '<path d="M9 3h6l-1 6 4 4H6l4-4-1-6zM12 13v8"/>',
   photo: '<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-9 8"/>',
   tree: '<path d="M12 21v-7M12 14l-6-5M12 14l6-5M6 9V5M18 9V5M6 5h0M18 5h0"/><circle cx="6" cy="4" r="1.5"/><circle cx="18" cy="4" r="1.5"/><circle cx="12" cy="21" r="1.5"/>',

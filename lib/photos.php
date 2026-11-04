@@ -56,6 +56,7 @@ function ft_photo_purge(int $id): void
     $db->q('UPDATE {families} SET photo_id = NULL WHERE photo_id = ?', [$id]);
     $db->q('UPDATE {stories} SET cover_photo_id = NULL WHERE cover_photo_id = ?', [$id]);
     $db->q("DELETE FROM {pins} WHERE kind = 'photo' AND ref_id = ?", [$id]);
+    ft_comments_purge('photo', $id);
     $db->delete('photos', $id);
     foreach (['file', 'thumb'] as $k) if ($r[$k] && is_file(App::$root . '/' . $r[$k]) && str_starts_with($r[$k], 'uploads/')) @unlink(App::$root . '/' . $r[$k]);
 }

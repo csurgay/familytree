@@ -137,6 +137,33 @@ function ft_branch_set(array $g, int $root, bool $spouses = true): array
     return $set;
 }
 
+/**
+ * Everything "above" a root: its ancestors, the families they are partners in (incl. the root's own
+ * birth family) and the people in those families – siblings, aunts, uncles, step-parents.
+ * A family head may add new people and data here, but not change what is already there.
+ */
+function ft_above_zone(array $g, int $root): array
+{
+    $A = []; $AF = [];
+    if (!isset($g['P'][$root])) return [$A, $AF];
+    $anc = []; $queue = [$root];
+    while ($queue) {
+        $id = array_shift($queue);
+        foreach ($g['P'][$id]['famc'] as $f) {
+            $AF[$f] = true;
+            foreach (['husband_id', 'wife_id'] as $k) { $x = $g['F'][$f][$k]; if ($x && !isset($anc[$x]) && $x !== $root) { $anc[$x] = true; $queue[] = $x; } }
+        }
+    }
+    foreach ($anc as $id => $v) foreach ($g['P'][$id]['fams'] as $f) $AF[$f] = true;
+    foreach ($AF as $f => $v) {
+        $fam = $g['F'][$f];
+        foreach (['husband_id', 'wife_id'] as $k) if ($fam[$k]) $A[$fam[$k]] = true;
+        foreach ($fam['children'] as $c) $A[$c] = true;
+    }
+    unset($A[$root]);
+    return [$A, $AF];
+}
+
 /** Persons + families a user may treat as "their branch". */
 function ft_user_branch(?int $uid): array
 {
@@ -147,15 +174,23 @@ function ft_user_branch(?int $uid): array
         foreach (App::$db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [$uid]) as $root) {
             foreach (ft_branch_set($g, (int)$root, (bool)App::$s['branch_spouses']) as $id => $v) $P[$id] = (($P[$id] ?? null) === true) ? true : $v;
         }
-        foreach ($g['P'] as $id => $p) if ((int)$p['created_by'] === $uid) $P[$id] = true;
+        // the zone above the roots: ancestors, their families, and everyone in those families (siblings, aunts…)
+        $A = []; $AF = [];
+        foreach (App::$db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [$uid]) as $root) {
+            [$za, $zf] = ft_above_zone($g, (int)$root);
+            $A += $za; $AF += $zf;
+        }
+        foreach ($g['P'] as $id => $p) if ((int)$p['created_by'] === $uid && !isset($A[$id])) $P[$id] = true;
+        foreach ($P as $id => $v) unset($A[$id]);
         $F = [];
         foreach ($g['F'] as $fid => $f) {
             $h = $f['husband_id']; $w = $f['wife_id'];
             // a family belongs to the branch if a branch member (not just an in-law) is a partner, or the user created it
             $isCore = fn($x) => $x && (($P[$x] ?? null) === true);
-            if ($isCore($h) || $isCore($w) || (int)$f['created_by'] === $uid) $F[$fid] = true;
+            if ($isCore($h) || $isCore($w) || ((int)$f['created_by'] === $uid && !isset($AF[$fid]))) $F[$fid] = true;
         }
-        return ['P' => $P, 'F' => $F];
+        foreach ($F as $fid => $v) unset($AF[$fid]);
+        return ['P' => $P, 'F' => $F, 'A' => $A, 'AF' => $AF];
     });
 }
 

@@ -2,6 +2,7 @@ import { S, T, P, F, h, api, op, icon, LANG_NAMES, personName, years, avatar, ch
   loadTree, setTitle, md, fmtDate, splitDate, toast, fail, opDone, personPicker, field, go, norm, huCmp, photoStyle, modal, formData, render, confirmBox } from './core.js';
 import { renderChart, exportChart, CHART_KINDS } from './charts.js';
 import { editPerson, addRelative, linkExisting, editFamily, editEvent, uploadPhotos, photoViewer, editStory, refresh } from './edit.js';
+import { commentsBox, recentComments } from './comments.js';
 
 const isAdmin = () => S.user?.role === 'admin';
 const canTry = mode => !!S.user && mode && mode !== 'deny';
@@ -75,6 +76,7 @@ export async function viewHome() {
       !home.stories.length && !storyPins.length ? h('div', { class: 'empty' }, T('Még nincs sztori. Ki emlékszik valamire a nagyszülőkről?'), S.user ? h('div', null, h('button', { class: 'btn', onclick: () => editStory() }, icon('plus'), T('Sztori írása'))) : null) : null));
 
   const right = h('div', null,
+    recentComments(home.comments, photoViewer),
     photoPin ? h('section', { class: 'section' }, h('h2', null, T('Kitűzött fotó')), h('a', { href: '#', onclick: e => { e.preventDefault(); photoViewer([photoPin.photo]); } }, h('img', { src: photoPin.photo.file, alt: photoPin.photo.title || '', style: 'border-radius:8px' })), photoPin.photo.title ? h('p', { class: 'muted', style: 'margin-top:6px' }, photoPin.photo.title) : null) : null,
     s.anniversaries ? h('section', { class: 'section' }, h('h2', null, T('Évfordulók')),
       home.anniversaries.length ? home.anniversaries.slice(0, 8).map(a => h('div', { class: 'ann' },
@@ -87,7 +89,7 @@ export async function viewHome() {
       h('p', null, T('Felismered a dédszülőket? A kvízben 4 hasonló korú családtag közül kell kiválasztani, ki van a képen.')),
       h('div', { class: 'row' }, h('a', { class: 'btn btn-primary', href: '#/quiz' }, icon('quiz'), T('Kvíz indítása')), h('a', { class: 'btn', href: '#/people' }, T('Arcképcsarnok')))));
 
-  const page = h('div', null, hero, h('div', { class: 'home-body', style: 'padding:6px max(16px, calc((100vw - 1180px) / 2)) 60px' }, h('div', { class: 'cols' }, left, right)));
+  const page = h('div', null, hero, h('div', { class: 'home-body', style: 'padding:6px max(16px, calc((100vw - 1180px) / 2)) 60px' }, h('div', { class: 'cols' }, left, right), s.home_surnames !== false ? surnameIndex() : null));
   // double click / double tap re-centres the tree right here; the caption and the explorer link follow
   let homeCtrl = null;
   const drawHome = (root, first = false) => {
@@ -107,6 +109,23 @@ export async function viewHome() {
   if (rootId) requestAnimationFrame(() => drawHome(rootId, true));
   return page;
 }
+/** All surnames A–Z in columns; the big family names in bold. */
+function surnameIndex() {
+  const cnt = new Map();
+  const junk = /^(unknown|nn|n\.\s*n\.|ismeretlen|\?+|-+)$/i;
+  for (const p of S.tree.P.values()) { const sn = (p.s || '').trim(); if (sn && !junk.test(sn)) cnt.set(sn, (cnt.get(sn) || 0) + 1); }
+  if (!cnt.size) return null;
+  const lc = x => String(x || '').trim().toLocaleLowerCase('hu');
+  const bold = new Set(String(S.settings.home_surnames_bold || '').split(/[,;\n]/).map(lc).filter(Boolean));
+  const min = +S.settings.home_surnames_min || 0;
+  const names = [...cnt.keys()].sort(huCmp);
+  return h('section', { class: 'section surnames' }, h('h2', null, T('Családnevek'), h('span', { class: 'hint' }, T('{0} családnév', names.length))),
+    h('ul', { class: 'surname-cols' }, names.map(n => {
+      const big = bold.has(lc(n)) || (min > 0 && cnt.get(n) >= min);
+      return h('li', null, h('a', { href: '#/surname/' + encodeURIComponent(n), class: big ? 'big' : '' }, n), h('small', null, cnt.get(n)));
+    })));
+}
+
 function emptyTree() {
   return h('div', { class: 'panel', style: 'color:var(--ink)' }, h('h2', null, T('Kezdjük el a családfát')),
     h('p', null, T('Vegyél fel egy első személyt, vagy importálj GEDCOM fájlt az admin felületen.')),
@@ -210,7 +229,8 @@ export async function viewPerson(id) {
       d.photos.length ? photoGrid(d.photos) : h('p', { class: 'empty' }, p.masked ? T('Élő személy fotói csak bejelentkezve láthatók.') : T('Még nincs fotó róla.'))),
     h('section', { class: 'section' }, h('h2', null, T('Sztorik'), S.user ? h('button', { class: 'btn btn-sm side', onclick: () => editStory(null, { person_ids: [id] }) }, icon('plus'), T('Új sztori')) : null),
       d.stories.length ? d.stories.map(s => storyTeaser(s)) : h('p', { class: 'empty' }, T('Még nincs róla történet.'))),
-    d.extra?.length ? h('section', { class: 'section' }, h('h2', null, T('Egyéb adatok')), h('dl', { class: 'facts' }, d.extra.map(([k, v]) => [h('dt', null, { _PHOM: T('Telefon (otthon)'), _PMOB: T('Mobil'), _POFF: T('Telefon (munka)'), EMAIL: T('E-mail') }[k] || k), h('dd', null, v)]))) : null);
+    d.extra?.length ? h('section', { class: 'section' }, h('h2', null, T('Egyéb adatok')), h('dl', { class: 'facts' }, d.extra.map(([k, v]) => [h('dt', null, { _PHOM: T('Telefon (otthon)'), _PMOB: T('Mobil'), _POFF: T('Telefon (munka)'), EMAIL: T('E-mail') }[k] || k), h('dd', null, v)]))) : null,
+    commentsBox('person', id));
   const rightCol = h('div', null, h('section', { class: 'section' }, h('h2', null, T('Család')), fam),
     h('section', { class: 'section' }, h('h2', null, T('Homokóra'), h('a', { href: `#/tree/${id}?kind=hourglass` }, T('Nagyobban'))), mini));
   requestAnimationFrame(() => renderChart(mini, { kind: 'hourglass', root: id, up: 2, down: 1, photos: true, style: S.settings.chart_style, wheel: false, focus: true,
@@ -261,7 +281,8 @@ export async function viewFamily(id) {
         d.notes ? h('section', { class: 'section' }, h('h2', null, T('A családról')), h('div', { class: 'bio' }, d.notes)) : null,
         d.events.length ? h('section', { class: 'section' }, h('h2', null, T('Események')), timeline(d.events, { withSubject: false, editable: S.user ? e => editEvent(e, { family_id: id, mode: m.update }) : null })) : null,
         h('section', { class: 'section' }, h('h2', null, T('Családi fotók')), d.photos.length ? photoGrid(d.photos) : h('p', { class: 'empty' }, T('Még nincs családi fotó.'))),
-        d.stories.length ? h('section', { class: 'section' }, h('h2', null, T('Sztorik')), d.stories.map(s => storyTeaser(s))) : null),
+        d.stories.length ? h('section', { class: 'section' }, h('h2', null, T('Sztorik')), d.stories.map(s => storyTeaser(s))) : null,
+        commentsBox('family', id)),
       h('div', null,
         h('section', { class: 'section' }, h('h2', null, T('Szülők')), h('div', { class: 'panel' }, [f.h, f.w].filter(Boolean).map(x => chip(x)))),
         h('section', { class: 'section' }, h('h2', null, T('Gyermekek')), h('div', { class: 'panel' }, f.c.length ? f.c.map(x => chip(x)) : h('p', { class: 'hint' }, T('Nincsenek rögzítve.')))),
@@ -317,6 +338,35 @@ export async function viewPeople(qs) {
   return wrap;
 }
 
+// ======================================================================= SURNAME
+export async function viewSurname(name) {
+  await loadTree();
+  // accent variants (Szélig / Szelig) are usually the same family written two ways – list them together
+  const key = norm(name);
+  const list = [...S.tree.P.values()].filter(p => norm(p.s) === key);
+  const variants = [...new Set(list.map(p => p.s.trim()))].sort(huCmp);
+  const shown = variants.includes(name) ? name : (list[0]?.s || name);
+  setTitle(shown);
+  const byYear = (a, b) => (a.b || a.e || 9999) - (b.b || b.e || 9999) || huCmp(personName(a), personName(b));
+  const sortSel = h('select', null, h('option', { value: 'born' }, T('Születés szerint')), h('option', { value: 'name' }, T('Név szerint')));
+  const grid = h('div', { class: 'plist surname-list' });
+  const draw = () => {
+    const l = [...list].sort(sortSel.value === 'name' ? (a, b) => huCmp(personName(a), personName(b)) : byYear);
+    grid.replaceChildren(l.map(p => {
+      const pa = parentsOf(p.id).map(x => personName(P(x), { short: true }));
+      const rel = pa.length ? (p.sx === 'F' ? T('{0} lánya', pa.join(T(' és '))) : p.sx === 'M' ? T('{0} fia', pa.join(T(' és '))) : T('{0} gyermeke', pa.join(T(' és ')))) : '';
+      return chip(p.id, rel);
+    }));
+  };
+  sortSel.addEventListener('input', draw);
+  draw();
+  return h('div', null,
+    h('p', null, h('a', { href: '#/' }, T('← Kezdőlap'))),
+    h('div', { class: 'page-head' }, h('div', null, h('h1', null, shown), h('p', null, list.length ? T('{0} családtag ezen a néven', list.length) : T('Nincs ilyen nevű családtag.'), variants.length > 1 ? ' ' + T('({0} írásmóddal együtt)', variants.join(', ')) : '')),
+      list.length > 1 ? h('div', { class: 'row' }, sortSel) : null),
+    grid);
+}
+
 // ======================================================================= STORIES
 export async function viewStories() {
   setTitle(T('Történetek'));
@@ -354,7 +404,8 @@ export async function viewStory(id) {
     S.user ? h('div', { class: 'row', style: 'margin-top:20px' },
       canTry(s.modes.update) ? h('button', { class: 'btn', onclick: () => editStory(s) }, icon('edit'), T('Szerkesztés')) : null,
       h('button', { class: 'btn', onclick: () => uploadPhotos({ story_id: s.id }) }, icon('photo'), T('Fotó hozzáadása')),
-      pinBtn('story', s.id, T('Kitűzés a kezdőlapra'))) : null);
+      pinBtn('story', s.id, T('Kitűzés a kezdőlapra'))) : null,
+    commentsBox('story', s.id));
 }
 
 // ======================================================================= TREE EXPLORER / CHART BUILDER

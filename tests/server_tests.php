@@ -210,13 +210,75 @@ function ft_server_tests(): array
             t_eq(ft_mode('update', [$ids['I5']]), 'queue');
             t_eq(ft_mode('delete', [$ids['I5']]), 'queue');
             t_eq(ft_mode('create', [], [$ids['F2']]), 'direct', 'saját család');
+            t_eq(ft_mode('create', [$ids['I1']]), 'direct', 'a gyökér fölé új adat felvihető');
+            t_eq(ft_mode('update', [$ids['I1']]), 'queue', 'a gyökér feletti meglévő adat csak javaslattal módosul');
+            t_eq(ft_mode('create', [$ids['I6']]), 'direct', 'testvér is a gyökér feletti részhez tartozik');
+            App::$s['head_above_create'] = false;
             t_eq(ft_mode('create', [$ids['I1']]), 'queue', 'ágon kívül csak javaslat');
             App::$s['member_suggest'] = false;
             t_eq(ft_mode('create', [$ids['I1']]), 'deny');
             App::$s['member_suggest'] = true;
+            App::$s['head_above_create'] = true;
             App::$s['head_update_approval'] = false;
             t_eq(ft_mode('update', [$ids['I5']]), 'direct');
             t_as($mem); t_eq(ft_mode('create', [$ids['I5']]), 'queue');
+        },
+        'Családfő: a gyökere fölé felvehet, de ott semmit nem módosíthat közvetlenül' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $admin = t_user($db, 'admin'); $head = t_user($db, 'head');
+            $db->insert('branches', ['user_id' => $head['id'], 'person_id' => $ids['I3'], 'created' => ft_now()]);
+            t_as($admin);
+            $out = ft_run_op('person.create', ['given' => 'Idegen', 'surname' => 'Anya', 'sex' => 'F', 'rel' => ['type' => 'parent', 'of' => $ids['I4']]]);
+            t_as($head);
+            $gp = ft_run_op('person.create', ['given' => 'Nagyapa', 'surname' => 'Régi', 'sex' => 'M', 'rel' => ['type' => 'parent', 'of' => $ids['I1']]]);
+            t_eq($gp['queued'], false, 'nagyszülő felvétele közvetlen');
+            $ev = ft_run_op('event.create', ['person_id' => $ids['I1'], 'type' => 'OCCU', 'label' => 'molnár']);
+            t_eq($ev['queued'], false, 'esemény a felmenőhöz közvetlen');
+            t_eq(ft_run_op('person.update', ['id' => $gp['id'], 'given' => 'Nagyapó'])['queued'], true, 'saját felvitt felmenő módosítása is javaslat');
+            t_eq(ft_run_op('event.delete', ['id' => $ev['id']])['queued'], true, 'felmenő eseményének törlése javaslat');
+            t_eq(ft_run_op('person.update', ['id' => $ids['I1'], 'given' => 'X'])['queued'], true);
+            $kid = ft_run_op('person.create', ['given' => 'Unoka', 'sex' => 'F', 'rel' => ['type' => 'child', 'family_id' => $ids['F2']]]);
+            t_eq(ft_run_op('person.update', ['id' => $kid['id'], 'given' => 'Unoka Ilona'])['queued'], true, 'ágon belül a beállítás szerint');
+            App::$s['head_update_approval'] = false;
+            t_eq(ft_run_op('person.update', ['id' => $kid['id'], 'given' => 'Unoka Ilona'])['queued'], false, 'saját ágon közvetlen');
+            t_eq(ft_run_op('person.update', ['id' => $gp['id'], 'given' => 'Nagyapó'])['queued'], true, 'a gyökér fölött ekkor is javaslat');
+            t_eq(ft_mode('create', [$out['id']]), 'queue', 'a házastárs felmenői nem tartoznak hozzá');
+        },
+        'Hozzászólások: írás, válasz, javítás, törlés, jogok' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $admin = t_user($db, 'admin'); $a = t_user($db, 'member', 'ca@x.hu'); $b = t_user($db, 'member', 'cb@x.hu');
+            t_as(null);
+            t_throws(fn() => ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'body' => 'x']), 'vendég nem írhat');
+            t_as($a);
+            $c = ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'body' => "Szerintem 1902-ben született.\nA keresztlevél nálam van."]);
+            t_throws(fn() => ft_comment_add(['entity' => 'person', 'entity_id' => 999999, 'body' => 'x']), 'nem létező személy');
+            t_throws(fn() => ft_comment_add(['entity' => 'user', 'entity_id' => 1, 'body' => 'x']), 'ismeretlen cél');
+            t_throws(fn() => ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'body' => '   ']), 'üres');
+            t_as($b);
+            $r1 = ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'parent_id' => $c['id'], 'body' => 'Köszönöm!']);
+            $r2 = ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'parent_id' => $r1['id'], 'body' => 'Válasz a válaszra']);
+            t_eq((int)$db->val('SELECT parent_id FROM {comments} WHERE id = ?', [$r2['id']]), $c['id'], 'egy szint mély');
+            t_throws(fn() => ft_comment_edit(['id' => $c['id'], 'body' => 'más']), 'másét nem javíthatja');
+            t_throws(fn() => ft_comment_delete(['id' => $c['id']]), 'másét nem törölheti');
+            $l = ft_comments_list('person', $ids['I1']);
+            t_eq(count($l), 3); t_eq($l[0]['mine'], false); t_eq($l[1]['mine'], true);
+            t_as($a);
+            ft_comment_edit(['id' => $c['id'], 'body' => 'Javítva']);
+            ft_comment_delete(['id' => $c['id']]);
+            $l = ft_comments_list('person', $ids['I1']);
+            t_eq($l[0]['deleted'], true, 'válaszok miatt helyőrző marad'); t_eq($l[0]['body'], null);
+            t_as($admin);
+            ft_comment_delete(['id' => $r1['id']]); ft_comment_delete(['id' => $r2['id']]);
+            t_eq(count(ft_comments_list('person', $ids['I1'])), 0, 'üres helyőrző eltűnik');
+            t_as($a);
+            ft_comment_add(['entity' => 'family', 'entity_id' => $ids['F2'], 'body' => 'Esküvői kép?']);
+            t_eq(count(ft_comments_recent(5)), 1);
+            t_as($admin);
+            ft_run_op('family.delete', ['id' => $ids['F2']]);
+            t_eq((int)$db->val("SELECT COUNT(*) FROM {comments} WHERE entity = 'family'"), 0, 'törölt családdal együtt törlődik');
+            App::$s['comments'] = 'off';
+            t_throws(fn() => ft_comments_list('person', $ids['I1']), 'kikapcsolva');
+            App::$s['comments'] = 'members';
         },
         'Műveletek: új gyermek a családba, szülő és házastárs felvétele' => function () {
             $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));

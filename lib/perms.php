@@ -3,6 +3,7 @@
  * Distributed editing rules.
  *   admin               → everything directly
  *   head (családfő)     → inside own branch: create directly; update/delete via admin approval (configurable)
+ *                         above the branch root (ancestors and their families): create directly, never change directly
  *   member / outside    → suggestions go to the approval queue (if enabled), otherwise denied
  *   guest               → denied
  * Returns 'direct' | 'queue' | 'deny'.
@@ -26,6 +27,13 @@ function ft_mode(string $kind, array $persons = [], array $families = [], array 
         foreach ($persons as $p) if (!isset($b['P'][(int)$p])) $inBranch = false;
         foreach ($families as $f) if (!isset($b['F'][(int)$f])) $inBranch = false;
         if (!empty($opts['free'])) $inBranch = true; // not tied to any person (e.g. a general story)
+        // above the root: new people and new data may be added directly, existing ones only changed via approval
+        if (!$inBranch && $kind === 'create' && $s['head_above_create'] && ($persons || $families)) {
+            $ok = true;
+            foreach ($persons as $p) if (!isset($b['P'][(int)$p]) && !isset($b['A'][(int)$p])) $ok = false;
+            foreach ($families as $f) if (!isset($b['F'][(int)$f]) && !isset($b['AF'][(int)$f])) $ok = false;
+            if ($ok) return $s['head_create_direct'] ? 'direct' : 'queue';
+        }
     }
     if ($inBranch) {
         if ($kind === 'create') return $s['head_create_direct'] ? 'direct' : 'queue';

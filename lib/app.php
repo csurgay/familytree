@@ -14,6 +14,7 @@ require_once __DIR__ . '/ops.php';
 require_once __DIR__ . '/photos.php';
 require_once __DIR__ . '/zipimport.php';
 require_once __DIR__ . '/content.php';
+require_once __DIR__ . '/comments.php';
 
 const FT_VERSION = '1.0.0';
 

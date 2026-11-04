@@ -2,6 +2,8 @@
 import { S, T, P, F, h, api, op, modal, field, dateInput, formData, personPicker, toast, fail, opDone, confirmBox, modeNote,
   personName, years, avatar, loadTree, render, icon, gedToInput, familyLabel, chip, $, spouseIn } from './core.js';
 
+import { commentsBox } from './comments.js';
+
 export async function refresh() { await loadTree(true); await render(); }
 
 const sexSelect = v => h('select', { name: 'sex' }, [['U', T('Ismeretlen')], ['M', T('Férfi')], ['F', T('Nő')]].map(([k, l]) => h('option', { value: k, selected: v === k }, l)));
@@ -240,7 +242,8 @@ export async function photoViewer(list, index = 0) {
         S.user && ph.modes?.delete !== 'deny' ? h('button', { class: 'btn btn-sm btn-danger', onclick: async () => {
           if (!await confirmBox(T('Fotó törlése'), T('Biztosan törlöd ezt a fotót?'), T('Törlés'))) return;
           try { if (opDone(await op('photo.delete', { id: ph.id }), T('Törölve.'))) { list.splice(i, 1); if (!list.length) { close(); await refresh(); } else show(Math.min(i, list.length - 1)); } } catch (e) { fail(e); } } }, icon('trash'), T('Törlés')) : null),
-      ph.uploader ? h('p', { class: 'hint', style: 'margin-top:16px' }, T('Feltöltötte: '), ph.uploader) : null);
+      ph.uploader ? h('p', { class: 'hint', style: 'margin-top:16px' }, T('Feltöltötte: '), ph.uploader) : null,
+      ph.status === 'ok' ? commentsBox('photo', ph.id, { compact: true }) : null);
   }
   show(i);
 }

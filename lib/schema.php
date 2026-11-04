@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 5;
+const FT_SCHEMA_VERSION = 6;
 
 function ft_schema(): array
 {
@@ -59,6 +59,9 @@ function ft_schema(): array
             'png' => 'str190', 'svg' => 'str190', 'created_by' => 'int', 'created' => 'datetime']],
         'quiz_scores' => ['cols' => ['id' => 'id', 'name' => 'str80', 'user_id' => 'int', 'score' => 'int', 'total' => 'int',
             'mode' => 'str16', 'ms' => 'int', 'created' => 'datetime']],
+        'comments' => ['cols' => ['id' => 'id', 'entity' => 'str16', 'entity_id' => 'int', 'parent_id' => 'int', 'user_id' => 'int',
+            'body' => 'text', 'status' => 'str16', 'created' => 'datetime', 'updated' => 'datetime'],
+            'idx' => ['e' => ['entity', 'entity_id'], 'c' => ['created']]],
         'audit' => ['cols' => ['id' => 'id', 'user_id' => 'int', 'action' => 'str40', 'entity' => 'str20', 'entity_id' => 'int',
             'summary' => 'text', 'created' => 'datetime'], 'idx' => ['c' => ['created']]],
     ];

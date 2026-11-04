@@ -165,6 +165,7 @@ function ft_ops(): array
                 $db->q('DELETE FROM {photo_links} WHERE person_id = ?', [$id]);
                 $db->q('DELETE FROM {story_links} WHERE person_id = ?', [$id]);
                 $db->q('DELETE FROM {branches} WHERE person_id = ?', [$id]);
+                ft_comments_purge('person', $id);
                 $db->q("DELETE FROM {pins} WHERE kind IN ('person','tree') AND ref_id = ?", [$id]);
                 $db->q('UPDATE {users} SET person_id = NULL WHERE person_id = ?', [$id]);
                 $db->q('UPDATE {families} SET husband_id = NULL WHERE husband_id = ?', [$id]);
@@ -377,6 +378,7 @@ function ft_ops(): array
                 App::$db->q('DELETE FROM {story_tr} WHERE story_id = ?', [$id]);
                 App::$db->q('DELETE FROM {photo_links} WHERE story_id = ?', [$id]);
                 App::$db->q("DELETE FROM {pins} WHERE kind = 'story' AND ref_id = ?", [$id]);
+                ft_comments_purge('story', $id);
                 App::$db->delete('stories', $id);
                 return ['id' => $id];
             },
@@ -391,6 +393,7 @@ function ft_family_purge(int $fid): void
     $db->q('DELETE FROM {events} WHERE family_id = ?', [$fid]);
     $db->q('DELETE FROM {photo_links} WHERE family_id = ?', [$fid]);
     $db->q('DELETE FROM {story_links} WHERE family_id = ?', [$fid]);
+    ft_comments_purge('family', $fid);
     $db->delete('families', $fid);
 }
 

@@ -49,18 +49,26 @@ Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`
 | Szerep | Mit tehet |
 |---|---|
 | **Admin** | Mindent azonnal. Felhasználókat vesz fel, ágakat rendel családfőkhöz, jóváhagy. |
-| **Családfő** | A hozzá rendelt ág(ak)on – a kezdő személy leszármazottai és házastársaik – új személyt, eseményt, fotót, sztorit azonnal felvehet. Módosítás és törlés admin jóváhagyással. |
+| **Családfő** | A hozzá rendelt ág(ak)on – a kezdő személy leszármazottai és házastársaik – új személyt, eseményt, fotót, sztorit azonnal felvehet. Módosítás és törlés admin jóváhagyással. A gyökere **fölé** (szülők, nagyszülők, testvérek, nagynénik és családjaik) szintén azonnal felvehet új személyt és adatot, de az ott már meglévőt – a saját korábbi felvitelét is – csak jóváhagyással módosíthatja vagy törölheti. |
 | **Családtag** | Megnézhet mindent, javaslatot tehet (jóváhagyási sorba kerül). Regisztráció után ez az alapszerep. |
 | **Vendég** | Csak ha a beállításokban nyilvános az oldal; az élő személyek adatai rejtve. |
 
 Minden módosítás egy „művelet” (`lib/ops.php`); a `lib/perms.php` dönti el, hogy azonnal érvényes,
 jóváhagyásra vár, vagy tiltott. Az admin a Jóváhagyások lapon a régi és új értékeket egymás mellett látja.
-A szabályok (pl. hogy a családfő módosítása is jóváhagyást kér-e) a fogaskerék alatt állíthatók.
+A szabályok (pl. hogy a családfő módosítása is jóváhagyást kér-e, felvehet-e a gyökere fölé) a fogaskerék alatt állíthatók.
+
+**Hozzászólások:** személy, család, sztori és fotó alatt a bejelentkezett tagok írhatnak – pontosítást,
+kérdést, emléket, érdekességet –, és válaszolhatnak egymásnak (egy szint mélyen). A saját hozzászólás
+javítható és törölhető, az admin bármelyiket törölheti. A legfrissebbek a kezdőlapon is látszanak.
+Vendégek nem látják őket; a fogaskerék alatt ki is kapcsolhatók.
 
 ## Funkciók
 
 - **Kezdőlap:** kitűzött családfarészlet (élő, mozgatható diagram), kitűzött esemény, friss
-  születések/esküvők/halálesetek/keresztelők, közelgő évfordulók, sztorik, új fotók.
+  születések/esküvők/halálesetek/keresztelők, közelgő évfordulók, sztorik, új fotók, legutóbbi hozzászólások,
+  és alul a **családnevek** ábécérendben, több oszlopban (a fő családnevek vastagon; a listájuk és a
+  „legalább ennyi családtag” küszöb a fogaskerék alatt állítható). Egy névre kattintva az ilyen nevű
+  családtagok listája nyílik meg; az ékezetes és ékezet nélküli írásmód (Szélig/Szelig) együtt látszik.
   Kitűzni az admin tud: eseményt az idővonalon, fát a személy oldalán vagy a fa-böngészőben, sztorit, fotót.
 - **Személy- és családlap:** életrajz, életút, szülők/testvérek/házastársak/gyermekek, fotók, sztorik,
   mini homokóra. Szerkesztés, rokon felvétele, meglévő személy kapcsolása.
@@ -94,7 +102,7 @@ a kvíz válaszgenerálását és az SVG-exportot. Parancssorból: `php tests/ru
 ```
 index.php, api.php        belépési pontok
 lib/                      config-olvasó, DB-réteg (MySQL+SQLite), séma, dátumok, GEDCOM, fa, jogosultság, műveletek, fotók, API
-assets/js/                core (API, router, segédek), views, edit, charts, quiz, admin, tests
+assets/js/                core (API, router, segédek), views, edit, comments, charts, quiz, admin, tests
 assets/css/app.css        a teljes megjelenés (világos/sötét)
 tests/                    szerver tesztek + parancssori futtató
 uploads/                  feltöltött fotók és mentett diagramok (szkriptfuttatás tiltva)

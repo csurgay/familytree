@@ -409,8 +409,13 @@ function ft_handlers(): array
                 'generations' => App::cache('gens', fn() => ft_generations($g))];
             $newPhotos = [];
             foreach ($db->all("SELECT * FROM {photos} WHERE status = 'ok' ORDER BY id DESC LIMIT 12") as $ph) { $j = ft_photo_json($ph); if (ft_photo_visible($j, $g)) $newPhotos[] = $j; }
-            return ['recent' => $recent, 'recentMode' => $recentMode, 'anniversaries' => $ann, 'pins' => $pins, 'stories' => $stories, 'stats' => $stats, 'newPhotos' => array_slice($newPhotos, 0, 8)];
+            return ['recent' => $recent, 'recentMode' => $recentMode, 'anniversaries' => $ann, 'pins' => $pins, 'stories' => $stories, 'stats' => $stats, 'newPhotos' => array_slice($newPhotos, 0, 8), 'comments' => ft_comments_recent(6)];
         },
+
+        'comments' => fn($in) => ft_comments_list((string)($in['entity'] ?? ''), (int)($in['entity_id'] ?? 0)),
+        'comment.add' => fn($in) => ft_comment_add($in),
+        'comment.edit' => fn($in) => ft_comment_edit($in),
+        'comment.delete' => fn($in) => ft_comment_delete($in),
 
         'events' => function ($in) {
             $g = ft_graph();
