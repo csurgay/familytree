@@ -263,6 +263,7 @@ function ft_handlers(): array
             $db->update('users', ['failed' => 0, 'locked_until' => null, 'last_login' => ft_now()], (int)$u['id']);
             session_regenerate_id(true);
             $_SESSION['uid'] = (int)$u['id'];
+            $_SESSION['ep'] = (string)(App::$s['session_epoch'] ?? '');
             App::$user = $u;
             return ['ok' => true];
         },
@@ -339,6 +340,7 @@ function ft_handlers(): array
             App::audit('pwreset', 'user', (int)$u['id'], $u['email']);
             if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
             $_SESSION['uid'] = (int)$u['id'];
+            $_SESSION['ep'] = (string)(App::$s['session_epoch'] ?? '');
             App::$user = $db->row('SELECT * FROM {users} WHERE id = ?', [(int)$u['id']]);
             return ['ok' => true];
         },
@@ -775,6 +777,27 @@ function ft_handlers(): array
             }
             return ['stories' => $done, 'translations' => $calls, 'left' => $left];
         },
+        'admin.backups' => function () { ft_require_admin(); return ft_backup_list(); },
+        'admin.backup.start' => function () { ft_require_admin(); return ft_backup_start(); },
+        'admin.backup.step' => function () { ft_require_admin(); return ft_backup_step(); },
+        'admin.backup.cancel' => function () { ft_require_admin(); if ($j = ft_backup_job()) ft_backup_job_abort($j); return ['ok' => true]; },
+        'admin.backup.upload' => function ($in) { ft_require_admin(); return ft_backup_upload_chunk($in); },
+        'admin.backup.inspect' => function ($in) {
+            ft_require_admin();
+            $i = ft_backup_inspect(ft_backup_path((string)($in['name'] ?? '')));
+            $i['blocking'] = (bool)$i['blocking'];
+            return $i;
+        },
+        'admin.backup.delete' => function ($in) {
+            ft_require_admin();
+            $p = ft_backup_path((string)($in['name'] ?? ''));
+            $j = ft_backup_job();
+            if ($j && ($j['name'] ?? '') === basename($p)) throw ft_err('Ezt a mentést éppen használja egy futó folyamat.', 409);
+            unlink($p);
+            App::audit('backup.delete', 'app', null, basename($p));
+            return ['ok' => true];
+        },
+        'admin.restore.start' => function ($in) { ft_require_admin(); return ft_restore_start((string)($in['name'] ?? '')); },
         'admin.photoimport' => function () {
             ft_require_admin();
             $f = $_FILES['file'] ?? null;

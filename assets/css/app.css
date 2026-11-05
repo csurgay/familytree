@@ -618,3 +618,20 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .story-teaser .st-p { display: inline-flex; align-items: center; gap: 5px; }
 .story-teaser .st-p svg { width: 18px; height: 18px; color: var(--muted); }
 .story-teaser .st-who .av { font-size: .6rem; }
+
+/* full backup */
+.bk-prog { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+.bk-prog progress { flex: 1 1 240px; height: 12px; accent-color: var(--accent); }
+.bk-list td { vertical-align: top; }
+.bk-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.bk-warn { border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line)); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border-radius: 8px; padding: 8px 12px; margin: 10px 0; }
+.bk-warn p { margin: 4px 0; }
+.bk-sum th { text-align: left; width: 9em; font-weight: 500; color: var(--muted); }
+.backup .bad, .bk-list .bad { color: var(--bad); }
+@media (max-width: 640px) {
+  .bk-list, .bk-list tbody, .bk-list tr, .bk-list td { display: block; width: 100%; }
+  .bk-list tr:first-child { display: none; }
+  .bk-list tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  .bk-list td { border: 0; padding: 2px 0; }
+  .bk-act { justify-content: flex-start; margin-top: 6px; }
+}

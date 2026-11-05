@@ -25,6 +25,10 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 try {
     // ---- downloads (GET)
+    if ($action === 'backup.download') {
+        ft_require_admin();
+        ft_backup_send((string)($_GET['name'] ?? ''));
+    }
     if ($action === 'export') {
         if (!ft_can_read() || !App::loggedIn()) throw new ApiError('Az exporthoz be kell jelentkezni.', 401);
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -53,7 +57,7 @@ try {
     $open = ['boot', 'login', 'logout', 'install', 'register', 'pwreset.request', 'pwreset'];
     if (!in_array($action, $open, true) && !ft_can_read()) throw new ApiError('Az oldal megtekintéséhez jelentkezz be.', 401);
     $writes = ['login', 'logout', 'install', 'register', 'password', 'pwreset.request', 'pwreset', 'op', 'pin', 'unpin', 'chart.save', 'chart.delete', 'quiz.save', 'upload', 'comment.add', 'comment.edit', 'comment.delete'];
-    if ((in_array($action, $writes, true) || str_starts_with($action, 'admin.')) && $method !== 'POST' && $action !== 'admin.changes' && $action !== 'admin.users' && $action !== 'admin.branches' && $action !== 'admin.audit' && $action !== 'admin.stats') {
+    if ((in_array($action, $writes, true) || str_starts_with($action, 'admin.')) && $method !== 'POST' && $action !== 'admin.changes' && $action !== 'admin.users' && $action !== 'admin.branches' && $action !== 'admin.audit' && $action !== 'admin.stats' && $action !== 'admin.backups') {
         throw new ApiError('POST kérés szükséges.', 405);
     }
 

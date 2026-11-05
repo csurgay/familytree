@@ -98,6 +98,17 @@ Vendégek nem látják őket; a fogaskerék alatt ki is kapcsolhatók.
 - **Admin (fogaskerék):** minden paraméter, felhasználók, családfők és ágak, jóváhagyások,
   import/export, napló, autotesztek, rendszerinfó.
 
+## Teljes mentés és visszaállítás
+
+Fogaskerék → Import / export → **Teljes mentés és visszaállítás**.
+
+- **Mentés készítése most:** egyetlen ZIP-be kerül minden adatbázis-tábla (személyek, családok, események, fotók adatai és arcjelölései, sztorik és fordításaik, hozzászólások, diagramok, felhasználók jelszó-hash-sel, családfők és ágak, beállítások, jóváhagyási sor, napló) és az `uploads/` összes képe. Nincs benne: `config.php` (adatbázis-jelszó, DeepL kulcs), munkamenetek, jelszó-visszaállító linkek.
+- A ZIP a szerveren a `data/backups` mappába kerül (webről nem érhető el), onnan tölthető le; a letöltés megszakadás után folytatható. A legutóbbi N saját mentés marad meg (beállítás: *Ennyi saját teljes mentést őriz meg a szerveren*, alapból 5).
+- Lépésekben dolgozik (kérésenként ~8 s), így a megosztott tárhely időkorlátja nem akasztja meg; nem kell hozzá ZipArchive. A ZIP szabványos, bármelyik kicsomagolóval megnyitható (`manifest.json`, `OLVASSEL.txt`, `db/*.json`, `uploads/…`).
+- **Visszaállítás másik tárhelyen:** másold fel a programot, írd meg a `config.php`-t az új adatbázissal, telepítsd (a kiinduló GEDCOM pipát kiveheted), lépj be az ideiglenes admin fiókkal, Import / export → *Mentés feltöltése* (darabokban megy, a tárhely feltöltési korlátja nem számít), majd a listában **Visszaállítás**. Utána mindenkit kiléptet; a mentésben lévő fiókokkal lehet belépni, az ideiglenes admin eltűnik.
+- Biztonság: semmi nem változik, amíg minden képfájl ki nincs csomagolva és ellenőrizve (CRC), és minden tábla be nem olvasható. Az adatbázis egyetlen tranzakcióban cserélődik; ha ez nem sikerül, a régi `uploads/` visszakerül. Visszaállítás előtt alapból teljes mentés készül a mostani állapotról. Csak `uploads/photos|thumbs|charts` alatti képfájl kerülhet vissza (szkript, `.htaccess`, `../` útvonal soha). Újabb adatbázis-szerkezetű mentést nem tölt vissza (előbb a programot kell frissíteni); régebbit igen, a hiányzó oszlopok utána létrejönnek.
+- A mentés élő családtagok adatait és a jelszó-hash-eket tartalmazza: bizalmasan kezelendő.
+
 ## Autotesztek
 
 Fogaskerék → Autotesztek. A szerver tesztek (27 db) minden futáskor egy friss, memóriabeli SQLite

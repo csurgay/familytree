@@ -31,6 +31,7 @@ function ft_settings_def(): array
         ['Szerkesztés', 'member_suggest', 'bool', true, 'Családtagok (és családfők a saját águkon kívül) javaslatot tehetnek', 'A javaslatok a jóváhagyási sorba kerülnek.'],
         ['Szerkesztés', 'story_author_edit', 'bool', true, 'A sztori szerzője jóváhagyás nélkül javíthatja a saját sztoriját', ''],
 
+        ['Hozzáférés', 'backup_keep', 'int', 5, 'Ennyi saját teljes mentést őriz meg a szerveren', 'A data/backups mappában; a régebbiek automatikusan törlődnek. A feltöltött mentéseket nem törli.', [1, 50]],
         ['Nyelvek és szövegek', 'languages', 'multi', ['hu', 'en', 'de'], 'Nyelvek', 'Ezekre a nyelvekre fordítjuk a sztorikat. A DeepL kulcs a config.php-ben van (deepl_key).', ['hu' => 'Magyar', 'en' => 'English', 'de' => 'Deutsch']],
         ['Nyelvek és szövegek', 'translate_auto', 'bool', true, 'Sztori mentésekor automatikus fordítás', 'Ha ki van kapcsolva, az Import / export lapon kézzel indítható.'],
         ['Nyelvek és szövegek', 'notes_to_stories', 'bool', true, 'GEDCOM-importkor a hosszabb életrajzokból sztori is készül', 'Az életrajz a személy lapján is megmarad.'],

@@ -574,6 +574,124 @@ function ft_server_tests(): array
             t_throws(fn() => $H['login'](['email' => 'a@b.hu', 'password' => 'jo-jelszo-1']), 'zárolás alatt jó jelszóval sem');
             $_SESSION = $sess;
         },
+        'Teljes mentés → visszaállítás: minden tábla és fájl változatlanul visszajön' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $admin = t_user($db, 'admin', 'admin@x.hu'); t_as($admin);
+            ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'body' => 'Árvíztűrő tükörfúrógép „idézőjel”']);
+            ft_setting_set($db, 'site_title', 'Próba család');
+            ft_setting_set($db, 'deepl_key', 'TITKOS-KULCS');
+            $db->update('users', ['reset_hash' => str_repeat('a', 64), 'reset_until' => '2099-01-01 00:00:00'], (int)$admin['id']);
+            $oldRoot = App::$root;
+            App::$root = sys_get_temp_dir() . '/ftbak' . bin2hex(random_bytes(4));
+            mkdir(App::$root . '/uploads/photos/2026', 0755, true); mkdir(App::$root . '/uploads/thumbs/2026', 0755, true);
+            file_put_contents(App::$root . '/uploads/.htaccess', "php_flag engine off\n");
+            $jpg = random_bytes(300000);                       // incompressible, like a real photo
+            file_put_contents(App::$root . '/uploads/photos/2026/a.jpg', $jpg);
+            file_put_contents(App::$root . '/uploads/thumbs/2026/a.jpg', 'kicsi');
+            file_put_contents(App::$root . '/uploads/photos/2026/rossz.php', '<?php echo 1;');
+            $phid = $db->insert('photos', ['file' => 'uploads/photos/2026/a.jpg', 'thumb' => 'uploads/thumbs/2026/a.jpg', 'w' => 10, 'h' => 10, 'status' => 'ok', 'created' => ft_now()]);
+            $db->insert('photo_links', ['photo_id' => $phid, 'person_id' => $ids['I1'], 'fx' => 0.25, 'fy' => 0.75]);
+            $sess = $_SESSION ?? [];
+            try {
+                $snap = function () use ($db) {
+                    $o = [];
+                    foreach (array_keys(ft_schema()) as $t) if (!in_array($t, ['audit', 'settings'], true)) $o[$t] = $db->all('SELECT * FROM {' . $t . '} ORDER BY id');
+                    foreach ($o['users'] as &$u) { $u['reset_hash'] = $u['reset_until'] = $u['reset_sent'] = null; } unset($u);
+                    $o['settings'] = $db->all("SELECT k, v FROM {settings} WHERE k NOT IN ('session_epoch', 'deepl_key') ORDER BY k");
+                    return $o;
+                };
+                $before = $snap();
+                $r = ft_backup_start();
+                for ($i = 0; $i < 50 && empty($r['done']); $i++) $r = ft_backup_step();
+                t_ok(!empty($r['done']), 'a mentés elkészült');
+                $zip = App::$root . '/data/backups/' . $r['name'];
+                $idx = ft_zip_index($zip);
+                t_ok(isset($idx['manifest.json'], $idx['db/persons.json'], $idx['db/users.json'], $idx['db/settings.json'], $idx['uploads/photos/2026/a.jpg'], $idx['uploads/thumbs/2026/a.jpg']), 'minden benne van');
+                t_ok(!isset($idx['uploads/photos/2026/rossz.php']) && !isset($idx['uploads/.htaccess']), 'szkript és .htaccess nem kerül bele');
+                $set = ft_zip_extract($zip, 'db/settings.json', $idx['db/settings.json']);
+                t_ok(!str_contains($set, 'TITKOS-KULCS'), 'a DeepL kulcs nincs a mentésben');
+                t_ok(!str_contains(ft_zip_extract($zip, 'db/users.json', $idx['db/users.json']), str_repeat('a', 64)), 'jelszó-visszaállító token nincs a mentésben');
+                $info = ft_backup_inspect($zip);
+                t_eq([$info['files'], $info['manifest']['tables']['persons'], $info['blocking']], [2, count($before['persons']), false]);
+                if (class_exists('ZipArchive')) {                // a standard tool must be able to open it too
+                    $za = new ZipArchive(); t_eq($za->open($zip, ZipArchive::CHECKCONS), true, 'szabványos ZIP');
+                    t_eq($za->getFromName('uploads/photos/2026/a.jpg') === $jpg, true); $za->close();
+                }
+                // everything changes…
+                $db->q('DELETE FROM {persons} WHERE id = ?', [$ids['I3']]);
+                $db->q('DELETE FROM {comments}');
+                ft_setting_set($db, 'site_title', 'Elrontva');
+                $db->insert('users', ['email' => 'uj@x.hu', 'name' => 'Új', 'pass_hash' => 'x', 'role' => 'admin', 'active' => 1, 'failed' => 0, 'created' => ft_now()]);
+                unlink(App::$root . '/uploads/photos/2026/a.jpg');
+                file_put_contents(App::$root . '/uploads/photos/2026/uj.jpg', 'új');
+                $_SESSION = ['uid' => (int)$admin['id'], 'ep' => ''];
+                // …and comes back
+                $r = ft_restore_start(basename($zip));
+                for ($i = 0; $i < 50 && empty($r['done']); $i++) $r = ft_backup_step();
+                t_ok(!empty($r['done']), 'a visszaállítás lefutott');
+                t_eq($snap(), $before, 'minden tábla a mentés szerinti');
+                t_eq(file_get_contents(App::$root . '/uploads/photos/2026/a.jpg'), $jpg, 'a fotó bájtra azonos');
+                t_ok(!is_file(App::$root . '/uploads/photos/2026/uj.jpg'), 'a mentés utáni fájl eltűnt');
+                t_eq(file_get_contents(App::$root . '/uploads/.htaccess'), "php_flag engine off\n", 'az uploads védelme megmaradt');
+                t_eq($db->val("SELECT v FROM {settings} WHERE k = 'deepl_key'"), null);
+                t_ok(empty($_SESSION['uid']), 'mindenki újra belép');
+                t_ok((string)App::$s['session_epoch'] !== '', 'a régi munkamenetek érvénytelenek');
+                t_eq(ft_backup_job(), null, 'nem maradt félkész folyamat');
+                t_eq(glob(App::$root . '/data/backups/.restore-*') ?: [], [], 'az ideiglenes mappa törölve');
+
+                // a damaged file: nothing changes
+                $bad = App::$root . '/data/backups/serult.zip'; copy($zip, $bad);
+                $lh = ft_zip_index($bad)['uploads/photos/2026/a.jpg']['off'];
+                $fh = fopen($bad, 'r+b'); fseek($fh, $lh + 30 + strlen('uploads/photos/2026/a.jpg') + 1000); fwrite($fh, 'XXXX'); fclose($fh);
+                $db->q('DELETE FROM {comments}');
+                try { $r = ft_restore_start('serult.zip'); for ($i = 0; $i < 50 && empty($r['done']); $i++) $r = ft_backup_step(); throw new FtAssert('sérült mentést visszaállított'); }
+                catch (ApiError $e) { t_ok(str_contains($e->getMessage(), 'Ellenőrzőösszeg'), $e->getMessage()); }
+                t_eq((int)$db->val('SELECT COUNT(*) FROM {comments}'), 0, 'sérült mentés után az adatbázis érintetlen');
+                t_eq(file_get_contents(App::$root . '/uploads/photos/2026/a.jpg'), $jpg, 'sérült mentés után a fotók érintetlenek');
+                t_eq(ft_backup_job(), null);
+
+                // a hostile ZIP: path tricks and scripts are never unpacked; a newer schema is refused
+                $evil = App::$root . '/data/backups/gonosz.zip'; $fh = fopen($evil, 'wb'); $c = [];
+                ft_zip_put($fh, 'manifest.json', json_encode(['format' => FT_BACKUP_FORMAT, 'format_version' => 1, 'schema' => FT_SCHEMA_VERSION, 'tables' => ['users' => 1]]), $c);
+                ft_zip_put($fh, 'db/users.json', ft_zip_extract($zip, 'db/users.json', $idx['db/users.json']), $c);
+                ft_zip_put($fh, 'uploads/photos/../../hack.jpg', 'x', $c);
+                ft_zip_put($fh, 'uploads/photos/2026/hack.php', 'x', $c);
+                ft_zip_put($fh, 'uploads/photos/2026/ok.png', 'png', $c);
+                ft_zip_finish($fh, $c); fclose($fh);
+                t_eq(count(ft_backup_inspect($evil)['problems']), 1, 'figyelmeztet a tiltott fájlokra');
+                $r = ft_restore_start('gonosz.zip'); for ($i = 0; $i < 50 && empty($r['done']); $i++) $r = ft_backup_step();
+                t_ok(!is_file(App::$root . '/hack.jpg') && !is_file(sys_get_temp_dir() . '/hack.jpg') && !is_file(App::$root . '/uploads/photos/2026/hack.php'), 'nem írt a mappán kívülre, szkriptet sem');
+                t_ok(is_file(App::$root . '/uploads/photos/2026/ok.png'));
+                $new = App::$root . '/data/backups/ujabb.zip'; $fh = fopen($new, 'wb'); $c = [];
+                ft_zip_put($fh, 'manifest.json', json_encode(['format' => FT_BACKUP_FORMAT, 'format_version' => 1, 'schema' => FT_SCHEMA_VERSION + 1, 'tables' => []]), $c);
+                ft_zip_finish($fh, $c); fclose($fh);
+                t_throws(fn() => ft_restore_start('ujabb.zip'), 'újabb szerkezetű mentést nem tölt vissza');
+                t_throws(fn() => ft_backup_path('../config.php'), 'csak a mentések mappájából');
+
+                // upload in chunks, with a resume
+                $bytes = file_get_contents($zip); $id = bin2hex(random_bytes(8)); $tot = strlen($bytes); $cs = intdiv($tot, 3) + 1;
+                $send = function (int $off) use ($bytes, $id, $tot, $cs) {
+                    $tmp = tempnam(sys_get_temp_dir(), 'ch'); file_put_contents($tmp, substr($bytes, $off, $cs));
+                    $_FILES['chunk'] = ['tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => min($cs, $tot - $off)];
+                    try { return ft_backup_upload_chunk(['id' => $id, 'offset' => $off, 'total' => $tot, 'name' => 'Péter mentése.zip']); } finally { @unlink($tmp); }
+                };
+                t_eq($send(0)['have'], $cs);
+                t_eq($send(0)['have'], $cs, 'ismételt rész: a szerver megmondja, hol tart');
+                $send($cs); $last = $send(2 * $cs);
+                t_ok(!empty($last['done']) && str_starts_with($last['name'], 'feltoltott-'), 'összeállt');
+                t_eq(md5_file(App::$root . '/data/backups/' . $last['name']), md5($bytes));
+                unset($_FILES['chunk']);
+                // keep only the newest N own backups
+                App::$s['backup_keep'] = 1;
+                foreach ([1, 2] as $k) { $r = ft_backup_start(); for ($i = 0; $i < 50 && empty($r['done']); $i++) $r = ft_backup_step(); $lastOwn = $r['name']; }
+                t_eq(array_map('basename', glob(App::$root . '/data/backups/csaladfa-mentes-*.zip')), [$lastOwn], 'csak a legújabb saját mentés marad');
+                t_ok(is_file(App::$root . '/data/backups/' . $last['name']), 'a feltöltöttet nem törli');
+            } finally {
+                $_SESSION = $sess;
+                ft_rrmdir(App::$root);
+                App::$root = $oldRoot;
+            }
+        },
         'Elfelejtett jelszó: e-mailes link, lejárat, egyszeri használat' => function () {
             $db = t_fresh_db();
             $db->insert('users', ['email' => 'a@b.hu', 'name' => 'Anna', 'pass_hash' => password_hash('regi-jelszo', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 3, 'locked_until' => date('Y-m-d H:i:s', time() + 600), 'lang' => 'en', 'created' => ft_now()]);

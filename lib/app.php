@@ -15,6 +15,7 @@ require_once __DIR__ . '/photos.php';
 require_once __DIR__ . '/zipimport.php';
 require_once __DIR__ . '/content.php';
 require_once __DIR__ . '/comments.php';
+require_once __DIR__ . '/backup.php';
 
 const FT_VERSION = '1.0.0';
 
@@ -108,6 +109,7 @@ final class App
             session_save_path($defaultPath); self::$sessionDir = null; session_start();
         }
         if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
+        if (!empty($_SESSION['uid']) && ($_SESSION['ep'] ?? '') !== (string)(self::$s['session_epoch'] ?? '')) unset($_SESSION['uid']);
         if (!empty($_SESSION['uid'])) {
             $u = self::$db->row('SELECT * FROM {users} WHERE id = ? AND active = 1', [(int)$_SESSION['uid']]);
             self::$user = $u ?: null;

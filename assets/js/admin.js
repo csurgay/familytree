@@ -179,6 +179,149 @@ async function changesTab(qs) {
 }
 
 // ------------------------------------------------------------------ import / export
+// ------------------------------------------------------------------ full backup / restore
+const fmtBytes = b => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' kB';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** api() with a few retries – a long job must survive a flaky connection. */
+async function apiRetry(action, data, tries = 5) {
+  for (let i = 0; ; i++) {
+    try { return await api(action, data); }
+    catch (e) { if (i >= tries - 1 || (e.status && e.status < 500 && e.status !== 408 && e.status !== 429)) throw e; await sleep(1500 * (i + 1)); }
+  }
+}
+
+function backupSection() {
+  const box = h('section', { class: 'section panel backup' });
+  const bar = h('progress', { max: 1, value: 0 });
+  const barTxt = h('span', { class: 'hint' });
+  const prog = h('div', { class: 'bk-prog', hidden: true }, bar, barTxt);
+  const setProg = (txt, v, max) => { prog.hidden = false; barTxt.textContent = txt; if (max) { bar.max = max; bar.value = v; } else bar.removeAttribute('value'); };
+  const listEl = h('div', null, h('p', { class: 'hint' }, T('Betöltés…')));
+  const fileIn = h('input', { type: 'file', accept: '.zip,application/zip' });
+  let busy = false, info = null;
+  const lock = on => { busy = on; box.querySelectorAll('button').forEach(b => { if (!b.dataset.free) b.disabled = on; }); };
+
+  /** Drive a running backup or restore job to the end. */
+  const runJob = async (st, label) => {
+    while (!st.done) {
+      const what = st.kind === 'backup' ? T('Mentés: fotók becsomagolása') : st.stage === 'db' ? T('Visszaállítás: adatbázis cseréje') : T('Visszaállítás: fotók kicsomagolása és ellenőrzése');
+      setProg(`${label || what} – ${st.i} / ${st.n}`, st.i, Math.max(1, st.n));
+      st = await apiRetry('admin.backup.step', {});
+    }
+    return st;
+  };
+  const makeBackup = async () => {
+    setProg(T('Mentés: adatbázis kiírása…'));
+    const r = await runJob(await api('admin.backup.start', {}));
+    toast(T('A mentés elkészült ({0}).', fmtBytes(r.size)) + (r.missing ? ' ' + T('{0} fájl közben eltűnt, kimaradt.', r.missing) : ''));
+    return r;
+  };
+
+  const restore = async b => {
+    const ins = await api('admin.backup.inspect', { name: b.name });
+    const m = ins.manifest, t = m.tables || {};
+    const safety = h('input', { type: 'checkbox', checked: true });
+    const proceed = await new Promise(res => {
+      let ok = false;
+      modal({ title: T('Visszaállítás mentésből'), wide: true, onClose: () => res(ok),
+        body: h('div', null,
+          h('p', null, h('b', null, T('A mostani adatok mind lecserélődnek a mentés tartalmára:')), ' ', T('személyek, családok, események, fotók, sztorik, hozzászólások, felhasználók és jelszavaik, családfők, beállítások, napló.')),
+          h('table', { class: 'tbl bk-sum' },
+            h('tr', null, h('th', null, T('Készült')), h('td', null, (m.created || '').replace('T', ' ').slice(0, 16), m.source ? ' · ' + m.source : '')),
+            h('tr', null, h('th', null, T('Tartalom')), h('td', null, T('{0} személy, {1} család, {2} fotó, {3} sztori, {4} felhasználó', t.persons ?? 0, t.families ?? 0, t.photos ?? 0, t.stories ?? 0, t.users ?? 0))),
+            h('tr', null, h('th', null, T('Fájlok')), h('td', null, T('{0} kép, {1}', ins.files, fmtBytes(ins.bytes)))),
+            h('tr', null, h('th', null, T('Programváltozat')), h('td', null, (m.app_version || '?') + ' · ' + T('adatbázis-szerkezet: {0}', m.schema)))),
+          ins.problems.length ? h('div', { class: 'bk-warn' }, ins.problems.map(p => h('p', null, '⚠ ', T(p)))) : null,
+          h('label', { class: 'check' }, safety, h('span', null, T('Előtte teljes mentés a mostani állapotról (ajánlott – így vissza lehet lépni)'))),
+          h('p', { class: 'hint' }, T('Utána mindenkit kiléptetünk. A mentésben lévő fiókokkal és jelszavakkal lehet belépni – a te mostani fiókod is csak akkor marad, ha a mentésben benne van.'))),
+        actions: [{ label: T('Mégse') }, ins.blocking ? null : { label: T('Visszaállítás'), cls: 'btn-danger', onClick: () => { ok = true; } }].filter(Boolean) });
+    });
+    if (!proceed) return;
+    lock(true);
+    try {
+      if (safety.checked) await makeBackup();
+      setProg(T('Visszaállítás indítása…'));
+      const r = await runJob(await api('admin.restore.start', { name: b.name }));
+      prog.hidden = true;
+      await new Promise(res => modal({ title: T('A visszaállítás kész'), onClose: res,
+        body: h('div', null, h('p', null, T('Visszaállítva: {0} személy, {1} fotó ({2} képfájl), {3} felhasználó.', r.persons, r.photos, r.files, r.users)),
+          h('p', null, T('Mindenkit kiléptettünk. Lépj be a mentésben lévő fiókoddal.'))),
+        actions: [{ label: T('Belépés'), cls: 'btn-primary' }] }));
+      location.hash = '#/login'; location.reload();
+    } catch (e) { fail(e); prog.hidden = true; lock(false); load(); }
+  };
+
+  const upload = async () => {
+    const f = fileIn.files[0];
+    if (!f) return toast(T('Válassz egy mentésfájlt (.zip).'), 'bad');
+    lock(true);
+    const id = [...crypto.getRandomValues(new Uint8Array(12))].map(x => x.toString(16).padStart(2, '0')).join('');
+    const cs = info?.chunk || 2 * 1048576;
+    let off = 0, r = null;
+    try {
+      while (true) {
+        setProg(T('Feltöltés: {0} / {1}', fmtBytes(off), fmtBytes(f.size)), off, f.size);
+        const fd = new FormData();
+        fd.append('id', id); fd.append('offset', off); fd.append('total', f.size); fd.append('name', f.name);
+        fd.append('chunk', f.slice(off, off + cs), 'chunk');
+        r = await apiRetry('admin.backup.upload', fd);
+        if (r.done) break;
+        off = r.have;
+      }
+      toast(T('A mentés feltöltve és ellenőrizve. Most visszaállíthatod.'));
+      fileIn.value = '';
+    } catch (e) { fail(e); }
+    prog.hidden = true; lock(false); load();
+  };
+
+  const load = async () => {
+    try { info = await api('admin.backups'); } catch (e) { listEl.replaceChildren(h('p', { class: 'hint' }, e.message)); return; }
+    const rows = info.backups;
+    listEl.replaceChildren(
+      rows.length ? h('table', { class: 'tbl bk-list' },
+        h('tr', null, [T('Készült'), T('Tartalom'), T('Méret'), ''].map(x => h('th', null, x))),
+        rows.map(b => {
+          const m = b.manifest, t = m?.tables || {};
+          return h('tr', null,
+            h('td', null, (m?.created || b.mtime).replace('T', ' ').slice(0, 16), h('div', { class: 'hint' }, b.uploaded ? T('feltöltött') : T('itt készült'), m?.source && b.uploaded ? ' · ' + m.source.replace(/^https?:\/\//, '') : '')),
+            h('td', null, b.error ? h('span', { class: 'bad' }, T(b.error)) : T('{0} személy, {1} fotó, {2} felhasználó', t.persons ?? 0, t.photos ?? 0, t.users ?? 0),
+              b.problems?.length ? h('div', { class: 'hint bad' }, '⚠ ', b.problems.map(T).join(' ')) : null),
+            h('td', { style: 'white-space:nowrap' }, fmtBytes(b.size)),
+            h('td', { class: 'bk-act' },
+              h('a', { class: 'btn btn-sm', href: 'api.php?a=backup.download&name=' + encodeURIComponent(b.name), download: b.name }, icon('download'), T('Letöltés')),
+              b.error ? null : h('button', { class: 'btn btn-sm', onclick: () => restore(b).catch(fail) }, T('Visszaállítás')),
+              h('button', { class: 'icon-btn', title: T('Törlés'), onclick: async () => {
+                if (!await confirmBox(T('Mentés törlése'), T('Törlöd a szerverről ezt a mentést? ({0})', b.name), T('Törlés'))) return;
+                try { await api('admin.backup.delete', { name: b.name }); load(); } catch (e) { fail(e); }
+              } }, icon('trash'))));
+        })) : h('p', { class: 'hint' }, T('Még nincs mentés a szerveren.')),
+      h('p', { class: 'hint' }, T('Szabad hely a tárhelyen: {0}. A szerveren a legutóbbi {1} saját mentés marad meg (fogaskerék → Beállítások).', info.free == null ? '?' : fmtBytes(info.free), info.keep)));
+    if (info.job && !busy) {
+      // a job left running (closed tab, lost connection): continue or drop it
+      listEl.prepend(h('div', { class: 'bk-warn' }, h('p', null, info.job.kind === 'backup' ? T('Félbemaradt mentés.') : T('Félbemaradt visszaállítás – eddig semmi nem változott.')),
+        h('div', { class: 'row' },
+          h('button', { class: 'btn btn-sm btn-primary', onclick: async () => {
+            lock(true);
+            try { const r = await runJob(info.job); if (r.kind === 'restore') { location.hash = '#/login'; location.reload(); return; } toast(T('Kész.')); } catch (e) { fail(e); }
+            prog.hidden = true; lock(false); load();
+          } }, T('Folytatás')),
+          h('button', { class: 'btn btn-sm', onclick: async () => { await api('admin.backup.cancel', {}); load(); } }, T('Megszakítás')))));
+    }
+  };
+
+  box.append(h('h2', null, T('Teljes mentés és visszaállítás')),
+    h('p', null, T('Egyetlen ZIP fájlban minden: személyek, családok, események, fotók és bélyegképek, sztorik és fordításaik, hozzászólások, mentett diagramok, felhasználók (jelszavuk titkosítva), családfők és ágak, beállítások, jóváhagyások, napló. Nincs benne a config.php (adatbázis-jelszó, DeepL kulcs).')),
+    h('p', { class: 'hint' }, T('Visszaállítani ugyanitt lehet, akár egy másik tárhelyen is: ott telepítsd a programot, lépj be, töltsd fel a mentést, majd „Visszaállítás”. A fájlt kezeld bizalmasan: élő családtagok adatait tartalmazza.')),
+    h('div', { class: 'row', style: 'margin:12px 0' },
+      h('button', { class: 'btn btn-primary', onclick: async () => { lock(true); try { await makeBackup(); } catch (e) { fail(e); } prog.hidden = true; lock(false); load(); } }, icon('save'), T('Mentés készítése most'))),
+    prog, listEl,
+    h('h3', { style: 'margin-top:18px' }, T('Mentés feltöltése (pl. visszaállításhoz egy másik tárhelyen)')),
+    h('div', { class: 'row' }, fileIn, h('button', { class: 'btn', onclick: upload }, T('Feltöltés'))),
+    h('p', { class: 'hint' }, T('Nagy fájl is mehet: darabokban töltődik fel, megszakadt kapcsolat után folytatja.')));
+  load();
+  return box;
+}
+
 async function importTab() {
   const file = h('input', { type: 'file', accept: '.ged,text/plain' });
   const zipIn = h('input', { type: 'file', accept: '.zip,application/zip' });
@@ -194,10 +337,11 @@ async function importTab() {
     try { const r = await api('admin.import', fd); toast(T("Import kész: {0} személy, {1} család, {2} esemény{3}.", r.persons, r.families, r.events, r.skipped ? `, ${r.skipped} kihagyva` : '')); await loadTree(true); }
     catch (e) { fail(e); }
   };
-  return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Import és export')), h('p', null, T('GEDCOM 5.5 formátum – a legtöbb családfa-program (MyHeritage, Ancestry, Gramps, TribalPages) ezt használja.')))),
-    h('section', { class: 'section panel' }, h('h2', null, T('Export')), h('p', null, T('A teljes családfa letöltése GEDCOM fájlként, a fotók hivatkozásaival együtt.')),
+  return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Import és export')), h('p', null, T('Teljes mentés és visszaállítás, GEDCOM csere más családfa-programokkal, fotócsomagok, fordítás.')))),
+    backupSection(),
+    h('section', { class: 'section panel' }, h('h2', null, T('GEDCOM export')), h('p', null, T('A családfa letöltése GEDCOM 5.5 fájlként, a fotók hivatkozásaival – ezt a legtöbb családfa-program (MyHeritage, Ancestry, Gramps, TribalPages) be tudja olvasni. Ez nem teljes mentés: felhasználók, hozzászólások, beállítások nincsenek benne.')),
       h('a', { class: 'btn btn-primary', href: 'api.php?a=export' }, icon('download'), T('GEDCOM letöltése'))),
-    h('section', { class: 'section panel' }, h('h2', null, T('Import')), field(T('Mód'), mode),
+    h('section', { class: 'section panel' }, h('h2', null, T('GEDCOM import')), field(T('Mód'), mode),
       h('div', { class: 'row' }, file, h('button', { class: 'btn', onclick: () => run('upload') }, T('Feltöltött fájl importálása'))),
       h('p', { class: 'hint', style: 'margin-top:12px' }, T('Vagy a repo gyökerében lévő .ged fájl (pl. csurgay.ged):')),
       h('button', { class: 'btn', onclick: () => run('repo') }, T('Repo-beli GEDCOM importálása'))),
