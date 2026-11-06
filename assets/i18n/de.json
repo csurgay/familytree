@@ -1026,5 +1026,14 @@
 "{0} házastársai közül:": "Unter den Ehepartnern von {0}:",
 "Egyik sem / ismeretlen": "Keiner / unbekannt",
 "Ennek a személynek már megvan mindkét szülője.": "Diese Person hat bereits beide Elternteile.",
-"Közös gyermek csak olyan lehet, akinél eddig csak ez az egy szülő szerepelt.": "Gemeinsames Kind kann nur eines sein, bei dem bisher nur dieser eine Elternteil eingetragen war."
+"Közös gyermek csak olyan lehet, akinél eddig csak ez az egy szülő szerepelt.": "Gemeinsames Kind kann nur eines sein, bei dem bisher nur dieser eine Elternteil eingetragen war.",
+"kapcsolat": "Verbindung",
+"{0} úton is kapcsolódnak: ": "Auf {0} Wegen verbunden: ",
+"Közös gyermekük": "Gemeinsames Kind",
+"Csak {0} gyermeke": "Nur Kind von {0}",
+"{0} és {1} közös gyermeke": "Gemeinsames Kind von {0} und {1}",
+"Kivétel ebből a családból": "Aus dieser Familie entfernen",
+"Ha egy gyermek csak az egyik szülőé (pl. előző kapcsolatból), itt állíthatod át.": "Wenn ein Kind nur zu einem Elternteil gehört (z. B. aus einer früheren Beziehung), stelle es hier um.",
+"Ő nem szülő ebben a családban.": "Diese Person ist in dieser Familie kein Elternteil.",
+"Ez a gyermek nincs ebben a családban.": "Dieses Kind ist nicht in dieser Familie."
 }

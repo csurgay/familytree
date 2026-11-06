@@ -283,6 +283,27 @@ function ft_ops(): array
                 return ['id' => $to];
             },
         ],
+        // "only one of them is the parent": the child moves to a family with just that parent
+        // (an existing one-parent family of theirs, or a new one)
+        'family.child_single' => [
+            'kind' => 'update',
+            'targets' => fn($p) => [[(int)$p['person_id'], (int)$p['parent_id']], [(int)$p['family_id']]],
+            'summary' => fn($p) => 'Csak az egyik szülő gyermeke: ' . ft_name(ft_person_row((int)$p['person_id'])),
+            'apply' => function ($p) {
+                $db = App::$db;
+                $pid = (int)$p['person_id']; $fid = (int)$p['family_id']; $par = (int)$p['parent_id'];
+                $f = ft_family_row($fid);
+                if ($par !== (int)$f['husband_id'] && $par !== (int)$f['wife_id']) throw ft_err('Ő nem szülő ebben a családban.');
+                $row = $db->val('SELECT id FROM {children} WHERE family_id = ? AND person_id = ?', [$fid, $pid]);
+                if (!$row) throw ft_err('Ez a gyermek nincs ebben a családban.');
+                $to = (int)$db->val('SELECT id FROM {families} WHERE id <> ? AND ((husband_id = ? AND wife_id IS NULL) OR (wife_id = ? AND husband_id IS NULL)) ORDER BY id LIMIT 1', [$fid, $par, $par]);
+                if (!$to) $to = (int)$f['husband_id'] === $par ? ft_new_family($par, null) : ft_new_family(null, $par);
+                $db->delete('children', (int)$row);
+                ft_add_child($to, $pid);
+                ft_family_cleanup($fid);
+                return ['id' => $to];
+            },
+        ],
         'family.child_remove' => [
             'kind' => 'update',
             'targets' => fn($p) => [[], [(int)$p['family_id']]],

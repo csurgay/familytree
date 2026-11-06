@@ -1026,5 +1026,14 @@
 "{0} házastársai közül:": "Among the spouses of {0}:",
 "Egyik sem / ismeretlen": "None / unknown",
 "Ennek a személynek már megvan mindkét szülője.": "This person already has both parents.",
-"Közös gyermek csak olyan lehet, akinél eddig csak ez az egy szülő szerepelt.": "Only a child with just this one recorded parent can become a common child."
+"Közös gyermek csak olyan lehet, akinél eddig csak ez az egy szülő szerepelt.": "Only a child with just this one recorded parent can become a common child.",
+"kapcsolat": "connection",
+"{0} úton is kapcsolódnak: ": "Connected in {0} ways: ",
+"Közös gyermekük": "Their child together",
+"Csak {0} gyermeke": "Only {0}'s child",
+"{0} és {1} közös gyermeke": "Child of {0} and {1}",
+"Kivétel ebből a családból": "Remove from this family",
+"Ha egy gyermek csak az egyik szülőé (pl. előző kapcsolatból), itt állíthatod át.": "If a child belongs to only one of the parents (e.g. from an earlier relationship), change it here.",
+"Ő nem szülő ebben a családban.": "This person is not a parent in this family.",
+"Ez a gyermek nincs ebben a családban.": "This child is not in this family."
 }

@@ -660,3 +660,8 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .choice-list .choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .kid-pick { display: grid; gap: 4px; }
 .kid-pick .lbl { font-weight: 600; font-size: .92rem; }
+
+.kid-rows { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.kid-rows .lbl { font-weight: 600; font-size: .92rem; }
+.kid-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 8px; align-items: center; }
+@media (max-width: 640px) { .kid-row { grid-template-columns: 1fr; } }

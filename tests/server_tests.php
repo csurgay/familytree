@@ -843,6 +843,20 @@ function ft_server_tests(): array
             $pz = ft_run_op('family.create', ['husband_id' => $p, 'wife_id' => $z, 'children' => [$b]])['id'];
             t_eq($kids($pz), [$b], 'meglévő házastárs közös gyerekkel');
             t_eq($db->val('SELECT id FROM {families} WHERE id = ?', [$old]), null, 'kiürült egyszülős család törölve');
+            // "only the mother's child": out of the couple's family into a family with just her
+            $cp = ft_run_op('person.create', ['surname' => 'Cholnoky', 'given' => 'Péter', 'sex' => 'M'])['id'];
+            $fe = ft_run_op('person.create', ['surname' => 'Ferenczy', 'given' => 'Éva', 'sex' => 'F', 'rel' => ['type' => 'spouse', 'of' => $cp]])['id'];
+            $fam = (int)$db->val('SELECT id FROM {families} WHERE husband_id = ? AND wife_id = ?', [$cp, $fe]);
+            $zs = ft_run_op('person.create', ['surname' => 'Cholnoky', 'given' => 'Zsuzsa', 'sex' => 'F', 'rel' => ['type' => 'child', 'family_id' => $fam]])['id'];
+            $zo = ft_run_op('person.create', ['surname' => 'Zeke', 'given' => 'Zsófia', 'sex' => 'F', 'rel' => ['type' => 'child', 'family_id' => $fam]])['id'];
+            $only = ft_run_op('family.child_single', ['family_id' => $fam, 'person_id' => $zo, 'parent_id' => $fe])['id'];
+            t_eq($kids($fam), [$zs], 'Zsuzsa maradt közös');
+            t_eq([$kids($only), (int)$db->val('SELECT wife_id FROM {families} WHERE id = ?', [$only]), $db->val('SELECT husband_id FROM {families} WHERE id = ?', [$only])], [[$zo], $fe, null], 'Zsófia csak Éva gyermeke');
+            t_throws(fn() => ft_run_op('family.child_single', ['family_id' => $fam, 'person_id' => $zs, 'parent_id' => $p]), 'idegen szülő');
+            // and back: common child again
+            ft_run_op('family.child_move', ['person_id' => $zo, 'family_id' => $fam]);
+            t_eq($kids($fam), [$zs, $zo]);
+            t_eq($db->val('SELECT id FROM {families} WHERE id = ?', [$only]), null, 'az egyszülős család megszűnt');
         },
         'Elfelejtett jelszó: e-mailes link, lejárat, egyszeri használat' => function () {
             $db = t_fresh_db();

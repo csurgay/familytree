@@ -318,35 +318,56 @@ export function layoutFamily(rootId, o) {
 }
 
 // ------------------------------------------------------------- relationship path
-export function findPath(a, b) {
+/**
+ * Every shortest connection between two people (at most `max`), e.g. Baum Viktória → Csurgay Árpád both through
+ * her sister (his wife) and through her husband (his brother). Going up to a couple and down again through the
+ * father or through the mother is the same connection, so those count once.
+ */
+export function findPaths(a, b, max = 4) {
   a = +a; b = +b;
-  if (a === b) return [{ id: a }];
-  const prev = new Map([[a, null]]);
-  const q = [a];
+  if (a === b) return [[{ id: a }]];
   const nb = id => {
     const out = [];
     const p = P(id); if (!p) return out;
-    for (const fid of p.fc || []) { const f = F(fid); if (f?.h) out.push([f.h, 'up']); if (f?.w) out.push([f.w, 'up']); }
-    for (const fid of p.fs || []) { const f = F(fid); if (!f) continue; const sp = spouseIn(f, id); if (sp) out.push([sp, 'sp']); for (const c of f.c) out.push([c, 'down']); }
+    for (const fid of p.fc || []) { const f = F(fid); if (f?.h) out.push([f.h, 'up', fid]); if (f?.w) out.push([f.w, 'up', fid]); }
+    for (const fid of p.fs || []) { const f = F(fid); if (!f) continue; const sp = spouseIn(f, id); if (sp) out.push([sp, 'sp', fid]); for (const c of f.c) out.push([c, 'down', fid]); }
     return out;
   };
-  while (q.length) {
-    const id = q.shift();
-    for (const [n, how] of nb(id)) {
-      if (prev.has(n)) continue;
-      prev.set(n, { from: id, how });
-      if (n === b) {
-        const path = [{ id: b, how }];
-        let cur = prev.get(b);
-        while (cur) { path.unshift({ id: cur.from, how: prev.get(cur.from)?.how }); cur = prev.get(cur.from); }
-        path[0].how = null;
-        return path;
-      }
-      q.push(n);
+  // breadth-first distances from a, remembering every predecessor on a shortest route
+  const dist = new Map([[a, 0]]), pred = new Map();
+  let frontier = [a], found = false;
+  while (frontier.length && !found) {
+    const next = [];
+    for (const id of frontier) for (const [n, how, fid] of nb(id)) {
+      const d = dist.get(id) + 1;
+      if (!dist.has(n)) { dist.set(n, d); next.push(n); }
+      if (dist.get(n) === d) { if (!pred.has(n)) pred.set(n, []); pred.get(n).push({ from: id, how, fid }); }
+      if (n === b) found = true;
     }
+    frontier = next;
   }
-  return null;
+  if (!found) return [];
+  const out = [], seen = new Set();
+  let budget = 2000;                                // big trees: never enumerate forever
+  const walk = (id, tail) => {
+    if (out.length >= max * 3 || --budget < 0) return;
+    if (id === a) {
+      const path = [{ id: a, how: null }, ...tail];
+      // one key per connection: a pivot (up, then down) through either parent of the same family is the same
+      const key = path.map((s, i) => {
+        const nx = path[i + 1];
+        return s.how === 'up' && nx?.how === 'down' ? 'F' + nx.fid : s.id + (s.how || '');
+      }).join('>');
+      if (!seen.has(key)) { seen.add(key); out.push(path.map(({ id, how }) => ({ id, how }))); }
+      return;
+    }
+    for (const pr of pred.get(id) || []) walk(pr.from, [{ id, how: pr.how, fid: pr.fid }, ...tail]);
+  };
+  walk(b, []);
+  // the father's side first, like the single-path version did
+  return out.slice(0, max);
 }
+export function findPath(a, b) { const ps = findPaths(a, b, 1); return ps.length ? ps[0] : null; }
 const STEPS = {
   hu: { up: { M: 'apja', F: 'anyja', U: 'szülője' }, down: { M: 'fia', F: 'lánya', U: 'gyermeke' }, sp: { M: 'férje', F: 'felesége', U: 'házastársa' } },
   en: { up: { M: 'father', F: 'mother', U: 'parent' }, down: { M: 'son', F: 'daughter', U: 'child' }, sp: { M: 'husband', F: 'wife', U: 'spouse' } },
@@ -399,6 +420,41 @@ function kinTermDe(a, b, sx) {
   const c = Math.min(a, b) - 1, r = Math.abs(a - b);
   return `${pick('Cousin', 'Cousine', 'Cousin/Cousine')} ${c}. Grades${r ? ` (${r} Generation${r > 1 ? 'en' : ''} Unterschied)` : ''}`;
 }
+/**
+ * A path with marriages in it, told with kinship words: blood stretches (ups, then downs) become one word, marriages
+ * stay "férje / felesége". Common in-laws get their own name (sógor, após, vő…). Null if the path does not split cleanly.
+ */
+function inLaw(path, lang) {
+  const segs = []; let cur = [];
+  for (let i = 1; i < path.length; i++) {
+    const st = path[i];
+    if (st.how === 'sp') { if (cur.length) segs.push({ blood: cur }); segs.push({ sp: st }); cur = []; }
+    else cur.push(st);
+  }
+  if (cur.length) segs.push({ blood: cur });
+  if (segs.filter(x => x.sp).length > 2) return null;
+  const parts = [], shape = [];
+  for (const sg of segs) {
+    if (sg.sp) { parts.push(stepWord('sp', P(sg.sp.id)?.sx, lang)); shape.push('sp'); continue; }
+    let a = 0, b = 0;
+    for (const st of sg.blood) { if (st.how === 'up') { if (b) return null; a++; } else b++; }
+    const last = P(sg.blood[sg.blood.length - 1].id);
+    parts.push(kinTerm(a, b, last?.sx, lang)); shape.push(a + ':' + b);
+  }
+  const sx = P(path[path.length - 1].id)?.sx;
+  const pick = (m, f, u) => sx === 'M' ? m : sx === 'F' ? f : u;
+  const key = shape.join(' ');
+  const names = {
+    hu: { '1:1 sp': pick('sógora', 'sógornője', 'sógora vagy sógornője'), 'sp 1:1': pick('sógora', 'sógornője', 'sógora vagy sógornője'),
+      'sp 1:0': pick('apósa', 'anyósa', 'apósa vagy anyósa'), '0:1 sp': pick('veje', 'menye', 'veje vagy menye') },
+    en: { '1:1 sp': pick('brother-in-law', 'sister-in-law', 'sibling-in-law'), 'sp 1:1': pick('brother-in-law', 'sister-in-law', 'sibling-in-law'),
+      'sp 1:0': pick('father-in-law', 'mother-in-law', 'parent-in-law'), '0:1 sp': pick('son-in-law', 'daughter-in-law', 'child-in-law') },
+    de: { '1:1 sp': pick('Schwager', 'Schwägerin', 'Schwager oder Schwägerin'), 'sp 1:1': pick('Schwager', 'Schwägerin', 'Schwager oder Schwägerin'),
+      'sp 1:0': pick('Schwiegervater', 'Schwiegermutter', 'Schwiegerelternteil'), '0:1 sp': pick('Schwiegersohn', 'Schwiegertochter', 'Schwiegerkind') },
+  }[lang] || {};
+  const chain = lang === 'en' ? parts.join("'s ") : lang === 'de' ? parts.slice().reverse().join(' von ') : parts.join(' ');
+  return { name: names[key] || null, chain };
+}
 export function relationLabel(path, lang = S.lang) {
   const L = {
     hu: { none: 'A családfában nincs kimutatható kapcsolat kettejük között.', same: 'Ugyanazt a személyt választottad.' },
@@ -416,44 +472,68 @@ export function relationLabel(path, lang = S.lang) {
   if (lang === 'en') {
     if (blood) return `${tn} is ${fn}'s ${kinTerm(a, b, tgt?.sx, 'en')}.`;
     if (steps.length === 1) return `${tn} is ${fn}'s ${stepWord('sp', tgt?.sx, 'en')}.`;
+    const inl = inLaw(path, 'en');
+    if (inl) return `${tn} is ${fn}'s ${inl.name ? inl.name + ' (' + inl.chain + ')' : inl.chain}.`;
     return `${tn} and ${fn} are connected in ${steps.length} steps: ${chain}.`;
   }
   if (lang === 'de') {
     if (blood) return `${tn}: ${kinTerm(a, b, tgt?.sx, 'de')} von ${fn}.`;
     if (steps.length === 1) return `${tn}: ${stepWord('sp', tgt?.sx, 'de')} von ${fn}.`;
+    const inl = inLaw(path, 'de');
+    if (inl) return `${tn}: ${inl.name ? inl.name + ' (' + inl.chain + ')' : inl.chain} von ${fn}.`;
     return `${tn} und ${fn} sind über ${steps.length} Schritte verbunden: ${chain}.`;
   }
   if (blood) return `${tn} – ${fn} ${kinTerm(a, b, tgt?.sx, 'hu')}.`;
   if (steps.length === 1) return `${tn} – ${fn} ${stepWord('sp', tgt?.sx, 'hu')}.`;
+  const inl = inLaw(path, 'hu');
+  if (inl) return `${tn} – ${fn} ${inl.name ? inl.name + ' (' + inl.chain + ')' : inl.chain}.`;
   return `${tn} és ${fn} kapcsolata ${steps.length} lépésben: ${chain}.`;
 }
 export function layoutRelation(a, b, o) {
   const { w, h: hh } = boxSize(o);
-  const path = findPath(a, b);
+  const paths = findPaths(a, b, 4);
   const nodes = [], links = [], extra = [];
-  if (!path) return { nodes: [{ id: +a, x: 0, y: 0, w, h: hh, root: true }], links, extra, path };
-  let x = 0, y = 0;
-  path.forEach((s, i) => {
-    if (i > 0) {
-      if (s.how === 'up') { y -= hh + 56; x += w * 0.62; }
-      else if (s.how === 'down') { y += hh + 56; x += w * 0.62; }
-      else x += w + 60;
-    }
-    nodes.push({ id: s.id, x, y, w, h: hh, root: i === 0 || i === path.length - 1 });
-    if (i > 0) {
-      const p = nodes[i - 1], n = nodes[i];
-      const tgt = P(s.id);
-      const lab = stepWord(s.how, tgt?.sx);
-      if (s.how === 'sp') { links.push({ d: `M${p.x + w},${p.y + hh / 2}H${n.x}`, kind: 'marr' }); extra.push({ x: (p.x + w + n.x) / 2, y: p.y + hh / 2 - 8, t: lab }); }
-      else {
-        const up = s.how === 'up';
-        const x1 = p.x + w / 2, y1 = up ? p.y : p.y + hh, x2 = n.x + w / 2, y2 = up ? n.y + hh : n.y, my = (y1 + y2) / 2;
-        links.push({ d: `M${x1},${y1}V${my}H${x2}V${y2}` });
-        extra.push({ x: (x1 + x2) / 2, y: my - 7, t: lab });
+  if (!paths.length) return { nodes: [{ id: +a, x: 0, y: 0, w, h: hh, root: true }], links, extra, path: null, paths };
+  let laneTop = 0;
+  paths.forEach((path, li) => {
+    // draw the lane at y = 0, then move it below the previous one
+    const ln = [], ll = [], le = [];
+    let x = 0, y = 0;
+    path.forEach((s, i) => {
+      if (i > 0) {
+        if (s.how === 'up') { y -= hh + 56; x += w * 0.62; }
+        else if (s.how === 'down') { y += hh + 56; x += w * 0.62; }
+        else x += w + 60;
       }
+      ln.push({ id: s.id, x, y, w, h: hh, root: i === 0 || i === path.length - 1 });
+      if (i > 0) {
+        const p = ln[i - 1], n = ln[i];
+        const lab = stepWord(s.how, P(s.id)?.sx);
+        if (s.how === 'sp') { ll.push({ x1: p.x + w, y1: p.y + hh / 2, x2: n.x, y2: p.y + hh / 2, kind: 'marr' }); le.push({ x: (p.x + w + n.x) / 2, y: p.y + hh / 2 - 8, t: lab }); }
+        else {
+          const up = s.how === 'up';
+          const x1 = p.x + w / 2, y1 = up ? p.y : p.y + hh, x2 = n.x + w / 2, y2 = up ? n.y + hh : n.y;
+          ll.push({ x1, y1, x2, y2 });
+          le.push({ x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 7, t: lab });
+        }
+      }
+    });
+    const minY = Math.min(...ln.map(n => n.y)), maxY = Math.max(...ln.map(n => n.y + n.h));
+    const head = paths.length > 1 ? 34 : 0;                      // room for the lane's own caption
+    const dy = laneTop - minY + head;
+    for (const n of ln) { n.y += dy; nodes.push(n); }
+    for (const l of ll) {
+      if (l.kind === 'marr') links.push({ d: `M${l.x1},${l.y1 + dy}H${l.x2}`, kind: 'marr' });
+      else { const my = (l.y1 + l.y2) / 2 + dy; links.push({ d: `M${l.x1},${l.y1 + dy}V${my}H${l.x2}V${l.y2 + dy}` }); }
     }
+    for (const e of le) extra.push({ ...e, y: e.y + dy });
+    if (paths.length > 1) {
+      const x1 = Math.max(...ln.map(n => n.x + n.w));
+      extra.push({ x: 0, y: laneTop + 18, t: `${li + 1}. ${T('kapcsolat')}: ${relationLabel(path)}`, size: 14, ink: true, anchor: 'start' });
+    }
+    laneTop = maxY + dy + 70;
   });
-  return { nodes, links, extra, path };
+  return { nodes, links, extra, path: paths[0], paths };
 }
 
 // ======================================================================= rendering
@@ -689,12 +769,15 @@ export function renderChart(host, opts) {
     if (o.kind === 'ancestors') L = layoutAncestors(o.root, o, orient === 'v');
     else if (o.kind === 'descendants') L = orient === 'h' ? layoutDescendantsH(o.root, o) : layoutDescendants(o.root, o);
     else if (o.kind === 'family') L = layoutFamily(o.root, o);
-    else if (o.kind === 'relation') { L = layoutRelation(o.root, o.other || o.root, o); info.path = L.path; info.label = relationLabel(L.path); }
+    else if (o.kind === 'relation') {
+      L = layoutRelation(o.root, o.other || o.root, o); info.path = L.path; info.paths = L.paths;
+      info.label = L.paths?.length > 1 ? T('{0} úton is kapcsolódnak: ', L.paths.length) + L.paths.map((p, i) => `(${i + 1}) ${relationLabel(p)}`).join(' ') : relationLabel(L.path);
+    }
     else L = layoutHourglass(o.root, o, orient);
     const lg = sv('g', { fill: 'none', stroke: pal.muted, 'stroke-width': 1.4, 'stroke-linejoin': 'round', opacity: .75, 'pointer-events': 'none' });
     for (const l of L.links) lg.append(sv('path', { d: l.d, ...(l.kind === 'marr' ? { stroke: pal.accent, 'stroke-width': 2.2 } : {}), ...(l.kind === 'div' ? { stroke: pal.muted, 'stroke-dasharray': '5 4' } : {}) }));
     if (!L.linksOnTop) world.append(lg);
-    for (const e of L.extra || []) world.append(sv('text', { x: e.x, y: e.y, 'text-anchor': 'middle', 'font-size': 12, fill: pal.accent, 'font-family': '"Alegreya Sans", sans-serif', 'font-style': 'italic', 'paint-order': 'stroke', stroke: pal.paper, 'stroke-width': 4 }, e.t));
+    for (const e of L.extra || []) world.append(sv('text', { x: e.x, y: e.y, 'text-anchor': e.anchor || 'middle', 'font-size': e.size || 12, fill: e.ink ? pal.ink : pal.accent, 'font-family': '"Alegreya Sans", sans-serif', 'font-style': e.ink ? 'normal' : 'italic', 'font-weight': e.ink ? 600 : 400, 'paint-order': 'stroke', stroke: pal.paper, 'stroke-width': 4 }, e.t));
     // spouse cards first (deepest layer first) so their partner's card covers them
     const order = L.nodes.slice().sort((a, b) => (b.spouse ? b.layer : 0) - (a.spouse ? a.layer : 0));
     for (const n of order) world.append(personBox(n, o, pal, defs, uid));

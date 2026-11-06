@@ -198,18 +198,42 @@ export function linkExisting(id, preset = 'spouse') {
   } }] });
 }
 
+/**
+ * In the family dialog: for each child, whose child it is – both parents', only the father's / mother's, or (in a
+ * one-parent family) the common child of that parent and one of their spouses. Returns { el, changes() }.
+ */
+function familyKidRows(f) {
+  if (!f.c?.length) return { el: null, changes: () => [] };
+  const both = f.h && f.w;
+  const one = f.h || f.w;
+  const sels = f.c.map(cid => {
+    const opts = both
+      ? [['both', T('Közös gyermekük')], ['only:' + f.h, T('Csak {0} gyermeke', personName(P(f.h)))], ['only:' + f.w, T('Csak {0} gyermeke', personName(P(f.w)))]]
+      : [['both', T('Csak {0} gyermeke', personName(P(one)))],
+        ...famsAsSpouse(one).filter(x => x.sp && x.f.id !== f.id).map(x => ['move:' + x.f.id, T('{0} és {1} közös gyermeke', personName(P(one)), personName(P(x.sp)))])];
+    opts.push(['out', T('Kivétel ebből a családból')]);
+    return h('select', { name: 'kid_' + cid, 'data-cid': cid }, opts.map(([v, l]) => h('option', { value: v }, l)));
+  });
+  const el = h('div', { class: 'field kid-rows' }, h('span', { class: 'lbl' }, T('Gyermekek')),
+    f.c.map((cid, i) => h('div', { class: 'kid-row' }, h('span', null, personName(P(cid)), ' ', h('span', { class: 'hint' }, years(P(cid)))), sels[i])),
+    h('p', { class: 'hint' }, T('Ha egy gyermek csak az egyik szülőé (pl. előző kapcsolatból), itt állíthatod át.')));
+  return { el, changes: () => sels.filter(s => s.value !== 'both').map(s => [+s.dataset.cid, s.value]) };
+}
+
 export function editFamily(fid, detail = {}) {
   const f = F(fid);
   const marr = (detail.events || []).find(e => e.type === 'MARR');
   const div = (detail.events || []).find(e => e.type === 'DIV');
   const hp = personPicker({ value: f.h }), wp = personPicker({ value: f.w });
+  const kidRows = familyKidRows(f);
   const form = h('form', { onsubmit: e => e.preventDefault() },
     modeNote(detail.modes?.update),
     h('div', { class: 'grid2' }, field(T('Férj / apa'), hp.el), field(T('Feleség / anya'), wp.el)),
     h('div', { class: 'grid2' }, field(T('Házasságkötés'), dateInput('marriage_date', marr?.raw || '')), field(T('Helye'), h('input', { type: 'text', name: 'marriage_place', value: marr?.place || '' }))),
     h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'divorced', checked: !!div }), h('span', null, T('Elváltak'))),
     field(T('Válás dátuma'), dateInput('divorce_date', div?.raw || '')),
-    field(T('Jegyzet a családról'), h('textarea', { name: 'notes' }, detail.notes || '')));
+    field(T('Jegyzet a családról'), h('textarea', { name: 'notes' }, detail.notes || '')),
+    kidRows.el);
   modal({ title: T('Család szerkesztése'), body: form, actions: [
     { label: T('Család törlése'), cls: 'btn-danger left', onClick: async () => {
       if (!await confirmBox(T('Család törlése'), T('A család (házasság és a gyermekek hozzárendelése) megszűnik, a személyek megmaradnak.'), T('Törlés'))) return false;
@@ -217,7 +241,16 @@ export function editFamily(fid, detail = {}) {
     { label: T('Mégse') },
     { label: T('Mentés'), cls: 'btn-primary', onClick: async () => {
       const v = formData(form);
-      if (opDone(await op('family.update', { id: fid, husband_id: hp.get(), wife_id: wp.get(), ...v }))) await refresh();
+      for (const k of Object.keys(v)) if (k.startsWith('kid_')) delete v[k];
+      const r = await op('family.update', { id: fid, husband_id: hp.get(), wife_id: wp.get(), ...v });
+      if (!opDone(r)) return;
+      // children whose parents were set differently
+      for (const [cid, choice] of kidRows.changes()) {
+        if (choice === 'out') await op('family.child_remove', { family_id: fid, person_id: cid });
+        else if (choice.startsWith('only:')) await op('family.child_single', { family_id: fid, person_id: cid, parent_id: +choice.slice(5) });
+        else if (choice.startsWith('move:')) await op('family.child_move', { person_id: cid, family_id: +choice.slice(5) });
+      }
+      await refresh();
     } }] });
 }
 
