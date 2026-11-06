@@ -69,6 +69,13 @@ function ft_apply_vitals(int $pid, array $p): void
     }
 }
 
+/** The same two people may have only one family together (a second one would show the spouse twice). */
+function ft_no_double_marriage(?int $h, ?int $w, int $except = 0): void
+{
+    if (!$h || !$w) return;
+    $fid = App::$db->val('SELECT id FROM {families} WHERE id <> ? AND ((husband_id = ? AND wife_id = ?) OR (husband_id = ? AND wife_id = ?))', [$except, $h, $w, $w, $h]);
+    if ($fid) throw ft_err('Ők már házastársak, van közös családjuk. A gyermekeiket abban a családban add hozzá.', 409);
+}
 function ft_new_family(?int $h, ?int $w): int
 {
     return App::$db->insert('families', ['husband_id' => $h, 'wife_id' => $w, 'created_by' => App::uid(), 'created' => ft_now(), 'updated' => ft_now()]);
@@ -186,6 +193,7 @@ function ft_ops(): array
                 $h = ft_int($p['husband_id'] ?? null); $w = ft_int($p['wife_id'] ?? null);
                 if (!$h && !$w) throw ft_err('Legalább az egyik házastársat add meg.');
                 if ($h) ft_person_row($h); if ($w) ft_person_row($w);
+                ft_no_double_marriage($h, $w);
                 $fid = ft_new_family($h, $w);
                 ft_set_vital(null, $fid, 'MARR', $p['marriage_date'] ?? null, $p['marriage_place'] ?? null);
                 return ['id' => $fid];
@@ -200,6 +208,8 @@ function ft_ops(): array
                 $id = (int)$p['id']; ft_family_row($id);
                 $d = ['updated' => ft_now()];
                 foreach (['husband_id', 'wife_id'] as $k) if (array_key_exists($k, $p)) { $d[$k] = ft_int($p[$k]); if ($d[$k]) ft_person_row($d[$k]); }
+                $cur = ft_family_row($id);
+                ft_no_double_marriage(array_key_exists('husband_id', $d) ? $d['husband_id'] : ft_int($cur['husband_id']), array_key_exists('wife_id', $d) ? $d['wife_id'] : ft_int($cur['wife_id']), $id);
                 if (array_key_exists('notes', $p)) $d['notes'] = ft_str($p['notes'], 100000);
                 App::$db->update('families', $d, $id);
                 if (array_key_exists('marriage_date', $p) || array_key_exists('marriage_place', $p)) ft_set_vital(null, $id, 'MARR', $p['marriage_date'] ?? null, $p['marriage_place'] ?? null);

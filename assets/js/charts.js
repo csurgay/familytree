@@ -110,6 +110,24 @@ export function layoutAncestors(rootId, o, vertical = false, dir = 1) {
   return { nodes, links };
 }
 
+
+/**
+ * A person's families for drawing. Two families with the same spouse (a marriage entered twice) are drawn as one,
+ * with all their children – otherwise the spouse would appear twice and look like a different person.
+ */
+function famsOf(id) {
+  const out = [], bySp = new Map();
+  for (const fid of P(id)?.fs || []) {
+    const f = F(fid); if (!f) continue;
+    const sp = spouseIn(f, id);
+    if (sp && bySp.has(sp)) { const m = bySp.get(sp); for (const c of f.c || []) if (!m.c.includes(c)) m.c.push(c); continue; }
+    const m = sp ? { ...f, c: [...(f.c || [])] } : f;
+    if (sp) bySp.set(sp, m);
+    out.push(m);
+  }
+  return out;
+}
+
 export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
   const { w, h: hh } = boxSize(o);
   const G = o.down, kgap = 26, vgap = 64;
@@ -119,7 +137,7 @@ export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
   const measure = (id, d) => {
     const p = P(id);
     const showSp = o.spouses !== false && (d > 0 || withRootSpouses);
-    const fams0 = (p?.fs || []).map(F).filter(Boolean);
+    const fams0 = famsOf(id);
     const sps = showSp ? fams0.filter(f => spouseIn(f, id)) : [];
     // children of a relationship with no spouse card go first (leftmost): their line leaves on the far left
     const fams = sps.length ? [...fams0.filter(f => !sps.includes(f)), ...sps] : fams0;
@@ -184,7 +202,7 @@ export function layoutDescendantsH(rootId, o, { withRootSpouses = true } = {}) {
   const measure = (id, d) => {
     const p = P(id);
     const showSp = o.spouses !== false && (d > 0 || withRootSpouses);
-    const fams0 = (p?.fs || []).map(F).filter(Boolean);
+    const fams0 = famsOf(id);
     const sps = showSp ? fams0.filter(f => spouseIn(f, id)) : [];
     const fams = sps.length ? [...fams0.filter(f => !sps.includes(f)), ...sps] : fams0;
     maxSp = Math.max(maxSp, sps.length);
@@ -251,7 +269,7 @@ export function layoutFamily(rootId, o) {
   const bf = P(rootId)?.fc?.length ? F(P(rootId).fc[0]) : null;
   const sibs = bf ? bf.c.slice() : [rootId];
   if (!sibs.includes(rootId)) sibs.push(rootId);
-  const fams0 = (P(rootId)?.fs || []).map(F).filter(Boolean);
+  const fams0 = famsOf(rootId);
   const sps = o.spouses === false ? [] : fams0.filter(f => spouseIn(f, rootId));
   const fams = sps.length ? [...fams0.filter(f => !sps.includes(f)), ...sps] : fams0;
   // middle row: siblings in birth order; the root's spouses slide in behind the root card

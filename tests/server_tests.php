@@ -804,6 +804,18 @@ function ft_server_tests(): array
                 $_SESSION = $sess;
             }
         },
+        'Ugyanaz a pár nem lehet kétszer házas (dupla család ellen)' => function () {
+            $db = t_fresh_db(); t_as(t_user($db, 'admin'));
+            $a = ft_run_op('person.create', ['surname' => 'Csáki', 'given' => 'László', 'sex' => 'M'])['id'];
+            $i = ft_run_op('person.create', ['surname' => 'Csáki', 'given' => 'István', 'sex' => 'M', 'rel' => ['type' => 'parent', 'of' => $a]])['id'];
+            $g = ft_run_op('person.create', ['surname' => 'Kovács', 'given' => 'Ágnes', 'sex' => 'F', 'rel' => ['type' => 'parent', 'of' => $a]])['id'];
+            t_eq((int)$db->val('SELECT COUNT(*) FROM {families} WHERE husband_id = ? AND wife_id = ?', [$i, $g]), 1, 'a két szülő egy családban');
+            t_throws(fn() => ft_run_op('family.create', ['husband_id' => $i, 'wife_id' => $g]), 'második házasság ugyanazzal a párral');
+            t_throws(fn() => ft_run_op('family.create', ['husband_id' => $g, 'wife_id' => $i]), 'fordított sorrendben sem');
+            $solo = ft_run_op('family.create', ['husband_id' => $i])['id'];
+            t_throws(fn() => ft_run_op('family.update', ['id' => $solo, 'wife_id' => $g]), 'utólag sem tehető kettőbe');
+            t_eq((int)$db->val('SELECT COUNT(*) FROM {families} WHERE husband_id = ? AND wife_id = ?', [$i, $g]), 1);
+        },
         'Elfelejtett jelszó: e-mailes link, lejárat, egyszeri használat' => function () {
             $db = t_fresh_db();
             $db->insert('users', ['email' => 'a@b.hu', 'name' => 'Anna', 'pass_hash' => password_hash('regi-jelszo', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 3, 'locked_until' => date('Y-m-d H:i:s', time() + 600), 'lang' => 'en', 'created' => ft_now()]);
