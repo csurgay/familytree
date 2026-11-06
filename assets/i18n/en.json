@@ -1044,5 +1044,12 @@
 "Anya": "Mother",
 "A testvéreknek is szülője?": "Also the parent of the siblings?",
 "Akiket kiveszel, azoknál ez a szülő továbbra is ismeretlen marad.": "For those you untick, this parent stays unknown.",
-"Valaki, aki még senkihez sem kapcsolódik a fában – utána a személy oldalán kötheted hozzá a többiekhez.": "Someone not yet connected to anyone in the tree – afterwards you can link them to others on their page."
+"Valaki, aki még senkihez sem kapcsolódik a fában – utána a személy oldalán kötheted hozzá a többiekhez.": "Someone not yet connected to anyone in the tree – afterwards you can link them to others on their page.",
+"Fotók mérete a kártyákon": "Photo size on the cards",
+"A kártya magassága a fotóhoz igazodik. A „Nagyon nagy” kör kicsit kilóg a kártya széléből, az „Igazolványkép” lekerekített, álló téglalap. A házastársak csíkjában és a legyezőben a fotó mérete nem változik.": "The card height follows the photo. The “Extra large” circle overhangs the card edge a little; “ID photo” is a rounded upright rectangle. Photos in the spouse strips and in the fan chart keep their size.",
+"Normál": "Normal",
+"Nagy": "Large",
+"Nagyon nagy (kilóg a kártyából)": "Extra large (overhangs the card)",
+"Igazolványkép (álló téglalap)": "ID photo (upright rectangle)",
+"Fotók mérete": "Photo size"
 }

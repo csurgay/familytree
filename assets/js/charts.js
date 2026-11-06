@@ -36,10 +36,33 @@ let K = 1;
 // 'wide' = photo on the left, name beside it
 export const cardShape = o => ((o && o.card) || S.settings?.chart_card || 'tall') === 'wide' ? 'wide' : 'tall';
 /** Card size at 100% (before the chart_font scaling) and the visible strip of a tucked-in spouse card. */
+// photo size on the cards (chart_photo setting): normal, large (default), xl (the circle overhangs the
+// card edge a little), portrait (rounded ID-photo rectangle). The card grows with it, the text keeps its room.
+const PHOTO_SIZES = ['normal', 'large', 'xl', 'portrait'];
+export const photoSize = o => { const v = (o && o.photoSize) || S.settings?.chart_photo || 'large'; return PHOTO_SIZES.includes(v) ? v : 'large'; };
+// tall: circle centre cy / radius r (or a rect), where the name starts (ty), extra card height (dh)
+const TALL_PHOTO = {
+  normal: { cy: 42, r: 31, ty: 96, dh: 0 },
+  large: { cy: 50, r: 42, ty: 115, dh: 19 },
+  xl: { cy: 46, r: 56, ty: 124, dh: 28 },
+  portrait: { rect: [12, 12, 112, 132], ty: 166, dh: 70 },
+};
+// wide: circle centre cx / radius r (vertically centred) or a rect on the left; card height h, extra width dw
+const WIDE_PHOTO = {
+  normal: { r: 27, dw: 0 },
+  large: { cx: 48, r: 36, h: 88, dw: 18 },
+  xl: { cx: 34, r: 48, h: 92, dw: 16 },
+  portrait: { rect: [12, 8, 70, 88], h: 104, dw: 16 },
+};
 function baseSize(o) {
   // the strip is tall enough for a recognisable photo of the spouse (not just a dot)
-  if (cardShape(o) === 'wide') return { w: o.photos ? 224 : 196, h: o.places ? 90 : 76, sdx: 30, sdy: o.photos ? 42 : 30 };
-  return { w: 136, h: (o.photos ? 146 : 80) + (o.places ? 16 : 0), sdx: 20, sdy: o.photos ? 58 : 44 };
+  const ps = photoSize(o);
+  if (cardShape(o) === 'wide') {
+    const q = WIDE_PHOTO[ps], h0 = o.places ? 90 : 76;
+    if (!o.photos) return { w: 196, h: h0, sdx: 30, sdy: 30 };
+    return { w: 224 + q.dw, h: Math.max(h0, q.h || 0), sdx: 30, sdy: 42 };
+  }
+  return { w: 136, h: (o.photos ? 146 + TALL_PHOTO[ps].dh : 80) + (o.places ? 16 : 0), sdx: 20, sdy: o.photos ? 58 : 44 };
 }
 function scaleK(o = {}) {
   K = Math.min(2.2, Math.max(0.6, (+S.settings?.chart_font || 125) / 100 * 16 / 17));
@@ -570,6 +593,22 @@ function photoCircle(g, p, cx, cy, r, col, pal, defs, uid, n) {
   }
 }
 
+// a rounded-rectangle (ID-photo) portrait, the counterpart of photoCircle
+function photoRect(g, p, x, y, w, hh, col, pal, defs, uid, n) {
+  const rx = 10;
+  if (p.ph) {
+    const cid = `r${uid}_${n.id}_${Math.round(n.x)}_${Math.round(n.y)}_${w}`.replace(/[^\w]/g, '_');
+    defs.append(sv('clipPath', { id: cid }, sv('rect', { x, y, width: w, height: hh, rx })));
+    const fx = p.fx ?? .5, fy = p.fy ?? .35;
+    g.append(sv('image', { href: p.ph, x, y, width: w, height: hh, preserveAspectRatio: `x${fx < .34 ? 'Min' : fx > .66 ? 'Max' : 'Mid'}Y${fy < .34 ? 'Min' : fy > .66 ? 'Max' : 'Mid'} slice`, 'clip-path': `url(#${cid})` }));
+    g.append(sv('rect', { x, y, width: w, height: hh, rx, fill: 'none', stroke: col, 'stroke-width': 1.5 }));
+  } else {
+    g.append(sv('rect', { x, y, width: w, height: hh, rx, fill: pal.surface2, stroke: pal.line }));
+    const fs = Math.round(Math.min(w, hh) * 0.36);
+    g.append(sv('text', { x: x + w / 2, y: y + hh / 2 + fs * 0.35, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 700, fill: pal.muted, 'font-family': 'Alegreya, Georgia, serif' }, ((p.s || '')[0] || '') + ((p.g || '')[0] || '')));
+  }
+}
+
 function personBox(n, o, pal, defs, uid) {
   const p = P(n.id) || { g: '?', sx: 'U' };
   const st = o.style || 'album';
@@ -635,7 +674,12 @@ function personBox(n, o, pal, defs, uid) {
     else g.append(sv('rect', { x: st === 'classic' ? 0 : 10, y: 0, width: st === 'classic' ? n.w : n.w - 20, height: 4, rx: 2, fill: col }));
     const cx = n.w / 2;
     let y = 28;
-    if (o.photos) { photoCircle(g, p, cx, 42, 31, col, pal, defs, uid, n); y = 96; }
+    if (o.photos) {
+      const q = TALL_PHOTO[photoSize(o)];
+      if (q.rect) { const [rx0, ry0, rw, rh] = q.rect; photoRect(g, p, rx0, ry0, rw, rh, col, pal, defs, uid, n); }
+      else photoCircle(g, p, cx, q.cy, q.r, col, pal, defs, uid, n);
+      y = q.ty;
+    }
     const cwT = (caps ? 10.6 : ns === 'sans' ? 8.0 : 8.4) * 15.5 / 17;
     const maxT = Math.floor((n.w - 10) / cwT);
     const west = S.settings.name_order === 'west';
@@ -653,16 +697,22 @@ function personBox(n, o, pal, defs, uid) {
   g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke, 'stroke-width': n.root ? 2.6 : 1, ...(n.dup ? { 'stroke-dasharray': '4 3' } : {}) }));
   if (st !== 'minimal') g.append(sv('rect', { x: 0, y: st === 'classic' ? 0 : 8, width: 4, height: st === 'classic' ? n.h : n.h - 16, rx: 2, fill: col }));
   else g.append(sv('rect', { x: 0, y: n.h - 2, width: n.w, height: 2, fill: col }));
-  let tx = 14;
-  const r = Math.min(27, n.h / 2 - 8);
-  if (o.photos) { photoCircle(g, p, 12 + r, o.places ? 38 : n.h / 2, r, col, pal, defs, uid, n); tx = 12 + r * 2 + 10; }
+  let tx = 14, dy = 0;
+  if (o.photos) {
+    const ps = photoSize(o), q = WIDE_PHOTO[ps];
+    if (ps === 'normal') { const r = Math.min(27, n.h / 2 - 8); photoCircle(g, p, 12 + r, o.places ? 38 : n.h / 2, r, col, pal, defs, uid, n); tx = 12 + r * 2 + 10; }
+    else if (q.rect) { const [rx0, , rw] = q.rect; photoRect(g, p, rx0, 8, rw, n.h - 16, col, pal, defs, uid, n); tx = rx0 + rw + 10; }
+    else { photoCircle(g, p, q.cx, n.h / 2, q.r, col, pal, defs, uid, n); tx = q.cx + q.r + 10; }
+    // keep the text block vertically centred on the taller card
+    dy = Math.round((n.h - (o.places ? 90 : 76)) / 2);
+  }
   const maxC = Math.floor((n.w - tx - 6) / cw);
   const west = S.settings.name_order === 'west';
   const l1 = masked ? T('Élő személy') : up((west ? p.g : p.s) || '');
   const givenRaw = masked ? '' : ((west ? p.s : p.g) || '');
   const title = !masked && p.t ? p.t + ' ' : '';
   const l2 = givenRaw ? title + up(fitGiven(givenRaw, maxC + 1 - title.length)) : title.trim();
-  const top = o.places ? 22 : 26;
+  const top = (o.places ? 22 : 26) + dy;
   g.append(sv('text', { x: tx, y: top, 'font-size': 17, 'font-weight': 700, fill: pal.ink, 'font-family': font }, clip(l1 || l2 || '?', maxC)));
   if (l1 && l2) g.append(sv('text', { x: tx, y: top + 19, 'font-size': 16, fill: pal.ink, 'font-family': font }, clip(l2, maxC + 1)));
   const yr = years(p);

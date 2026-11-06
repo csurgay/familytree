@@ -438,7 +438,7 @@ export async function viewTree(id, qs) {
   let root = +(id || qs.get('root') || S.user?.person_id || S.tree.home || [...S.tree.P.keys()][0]);
   if (!P(root)) root = S.tree.home;
   const st = { kind: qs.get('kind') || 'hourglass', root, other: +(qs.get('other') || 0) || null, up: +(qs.get('up') || s.chart_gens_up), down: +(qs.get('down') || s.chart_gens_down),
-    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: qs.get('spouses') !== '0', style: qs.get('style') || s.chart_style, orient: qs.get('orient') || '', card: qs.get('card') || s.chart_card || 'tall' };
+    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: qs.get('spouses') !== '0', style: qs.get('style') || s.chart_style, orient: qs.get('orient') || '', card: qs.get('card') || s.chart_card || 'tall', photoSize: qs.get('photo') || s.chart_photo || 'large' };
   if (!P(st.root)) return h('div', null, emptyTree());
   setTitle(T('Családfa – ') + personName(P(st.root)));
   const host = h('div', { class: 'chart-host' });
@@ -454,6 +454,8 @@ export async function viewTree(id, qs) {
     h('option', { value: 'v' }, T('Függőlegesen (fentről lefelé)')), h('option', { value: 'h' }, T('Vízszintesen (balról jobbra)')));
   const cardSel = h('select', { onchange: e => { st.card = e.target.value; draw(); } },
     h('option', { value: 'tall', selected: st.card !== 'wide' }, T('Álló (keskeny, fotó felül)')), h('option', { value: 'wide', selected: st.card === 'wide' }, T('Fekvő (széles, fotó balra)')));
+  const photoSel = h('select', { onchange: e => { st.photoSize = e.target.value; draw(); } },
+    [['normal', T('Normál')], ['large', T('Nagy')], ['xl', T('Nagyon nagy (kilóg a kártyából)')], ['portrait', T('Igazolványkép (álló téglalap)')]].map(([k, l]) => h('option', { value: k, selected: st.photoSize === k }, l)));
   const style = h('select', { onchange: e => { st.style = e.target.value; draw(); } }, [['album', T('Album')], ['classic', T('Klasszikus')], ['minimal', T('Letisztult')]].map(([k, l]) => h('option', { value: k, selected: st.style === k }, l)));
   const title = h('input', { type: 'text', placeholder: T('Cím az exporthoz (nem kötelező)') });
   const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { btn.disabled = false; } };
@@ -468,6 +470,7 @@ export async function viewTree(id, qs) {
     h('div', { 'data-g': 'orient' }, field(T('Nemzedékek elrendezése'), orientSel)),
     tog('photos', T('Fotók')), tog('places', T('Születési hely')), tog('spouses', T('Házastársak')),
     h('div', { 'data-g': 'card' }, field(T('Kártyák formája'), cardSel)),
+    h('div', { 'data-g': 'photo' }, field(T('Fotók mérete'), photoSel)),
     field(T('Doboz stílus'), style),
     h('hr'),
     field(T('Export'), title),
@@ -488,10 +491,12 @@ export async function viewTree(id, qs) {
     side.querySelector('[data-rel]').hidden = st.kind !== 'relation';
     side.querySelector('[data-g=orient]').hidden = !k.orient;
     side.querySelector('[data-g=card]').hidden = st.kind === 'fan';
+    side.querySelector('[data-g=photo]').hidden = st.kind === 'fan' || !st.photos;
     if (k.orient) orientSel.value = chartOrient(st);
     const q = new URLSearchParams({ kind: st.kind, up: st.up, down: st.down, photos: st.photos ? 1 : 0, places: st.places ? 1 : 0, spouses: st.spouses ? 1 : 0, style: st.style });
     if (st.orient) q.set('orient', st.orient);
     if (st.card !== (s.chart_card || 'tall')) q.set('card', st.card);
+    if (st.photoSize !== (s.chart_photo || 'large')) q.set('photo', st.photoSize);
     if (st.other) q.set('other', st.other);
     const url = `#/tree/${st.root}?${q}`;
     if (pushNext) { history.pushState(null, '', url); pushNext = false; } else history.replaceState(null, '', url);

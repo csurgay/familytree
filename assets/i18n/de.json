@@ -1044,5 +1044,12 @@
 "Anya": "Mutter",
 "A testvéreknek is szülője?": "Auch Elternteil der Geschwister?",
 "Akiket kiveszel, azoknál ez a szülő továbbra is ismeretlen marad.": "Bei denen, die du abwählst, bleibt dieser Elternteil unbekannt.",
-"Valaki, aki még senkihez sem kapcsolódik a fában – utána a személy oldalán kötheted hozzá a többiekhez.": "Jemand, der im Stammbaum noch mit niemandem verbunden ist – danach kannst du ihn auf seiner Seite mit anderen verknüpfen."
+"Valaki, aki még senkihez sem kapcsolódik a fában – utána a személy oldalán kötheted hozzá a többiekhez.": "Jemand, der im Stammbaum noch mit niemandem verbunden ist – danach kannst du ihn auf seiner Seite mit anderen verknüpfen.",
+"Fotók mérete a kártyákon": "Fotogröße auf den Karten",
+"A kártya magassága a fotóhoz igazodik. A „Nagyon nagy” kör kicsit kilóg a kártya széléből, az „Igazolványkép” lekerekített, álló téglalap. A házastársak csíkjában és a legyezőben a fotó mérete nem változik.": "Die Kartenhöhe richtet sich nach dem Foto. Der Kreis „Sehr groß“ ragt etwas über den Kartenrand hinaus, „Passbild“ ist ein abgerundetes Hochformat-Rechteck. In den Ehepartner-Streifen und im Fächer bleibt die Fotogröße gleich.",
+"Normál": "Normal",
+"Nagy": "Groß",
+"Nagyon nagy (kilóg a kártyából)": "Sehr groß (ragt über die Karte)",
+"Igazolványkép (álló téglalap)": "Passbild (Hochformat-Rechteck)",
+"Fotók mérete": "Fotogröße"
 }

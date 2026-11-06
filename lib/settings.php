@@ -60,6 +60,7 @@ function ft_settings_def(): array
         ['Diagramok', 'chart_font', 'int', 125, 'Betűméret a kártyákon (%)', 'A fán és a diagramokon, a kezdő nagyításnál. 100% = a nevek akkorák, mint az oldal normál szövege (16 px); a kártyák arányosan nőnek.', [60, 220]],
         ['Diagramok', 'chart_name_style', 'select', 'serif', 'Nevek betűtípusa a kártyákon', '', ['serif' => 'Talpas (klasszikus)', 'sans' => 'Talpatlan', 'sans_caps' => 'Talpatlan, NAGYBETŰS nevek']],
         ['Diagramok', 'chart_card', 'select', 'tall', 'Kártyák formája', 'Álló: keskeny kártya, fotó felül, alatta a név – a sűrű nemzedékek (sok unoka, sok felmenő) így jóval keskenyebbek, a fát inkább fel-le kell görgetni. Fekvő: széles kártya, fotó balra, mellette a név.', ['tall' => 'Álló (keskeny, fotó felül)', 'wide' => 'Fekvő (széles, fotó balra)']],
+        ['Diagramok', 'chart_photo', 'select', 'large', 'Fotók mérete a kártyákon', 'A kártya magassága a fotóhoz igazodik. A „Nagyon nagy” kör kicsit kilóg a kártya széléből, az „Igazolványkép” lekerekített, álló téglalap. A házastársak csíkjában és a legyezőben a fotó mérete nem változik.', ['normal' => 'Normál', 'large' => 'Nagy', 'xl' => 'Nagyon nagy (kilóg a kártyából)', 'portrait' => 'Igazolványkép (álló téglalap)']],
         ['Diagramok', 'chart_style', 'select', 'album', 'Doboz stílus', '', ['album' => 'Album', 'classic' => 'Klasszikus', 'minimal' => 'Letisztult']],
         ['Diagramok', 'chart_png_scale', 'int', 2, 'PNG felbontás szorzó', '', [1, 4]],
 
