@@ -857,6 +857,14 @@ function ft_server_tests(): array
             ft_run_op('family.child_move', ['person_id' => $zo, 'family_id' => $fam]);
             t_eq($kids($fam), [$zs, $zo]);
             t_eq($db->val('SELECT id FROM {families} WHERE id = ?', [$only]), null, 'az egyszülős család megszűnt');
+            // a new father for one child of a single mother: the half-sibling keeps an unknown father
+            $mo = ft_run_op('person.create', ['surname' => 'Zeke', 'given' => 'Éva', 'sex' => 'F'])['id'];
+            $c1 = ft_run_op('person.create', ['surname' => 'Zeke', 'given' => 'Zsófia', 'sex' => 'F', 'rel' => ['type' => 'child', 'of' => $mo]])['id'];
+            $c2 = ft_run_op('person.create', ['surname' => 'Zeke', 'given' => 'Ákos', 'sex' => 'M', 'rel' => ['type' => 'child', 'of' => $mo]])['id'];
+            $c3 = ft_run_op('person.create', ['surname' => 'Zeke', 'given' => 'Bori', 'sex' => 'F', 'rel' => ['type' => 'child', 'of' => $mo]])['id'];
+            $fa = ft_run_op('person.create', ['surname' => 'Zeke', 'given' => 'Tamás', 'sex' => 'M', 'rel' => ['type' => 'parent', 'of' => $c1, 'siblings' => [$c3]]])['id'];
+            $par = fn($c) => array_map('intval', $db->col('SELECT x.pid FROM (SELECT f.husband_id pid FROM {children} c JOIN {families} f ON f.id = c.family_id WHERE c.person_id = ? UNION SELECT f.wife_id FROM {children} c JOIN {families} f ON f.id = c.family_id WHERE c.person_id = ?) x WHERE x.pid IS NOT NULL ORDER BY x.pid', [$c, $c]));
+            t_eq([$par($c1), $par($c2), $par($c3)], [[$mo, $fa], [$mo], [$mo, $fa]], 'Ákos apja ismeretlen maradt, Bori megkapta');
         },
         'Elfelejtett jelszó: e-mailes link, lejárat, egyszeri használat' => function () {
             $db = t_fresh_db();

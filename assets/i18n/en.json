@@ -1035,5 +1035,14 @@
 "Kivétel ebből a családból": "Remove from this family",
 "Ha egy gyermek csak az egyik szülőé (pl. előző kapcsolatból), itt állíthatod át.": "If a child belongs to only one of the parents (e.g. from an earlier relationship), change it here.",
 "Ő nem szülő ebben a családban.": "This person is not a parent in this family.",
-"Ez a gyermek nincs ebben a családban.": "This child is not in this family."
+"Ez a gyermek nincs ebben a családban.": "This child is not in this family.",
+"Hozzáadva: {0}": "Added: {0}",
+"megnyitás": "open",
+"Apa hozzáadása": "Add father",
+"Anya hozzáadása": "Add mother",
+"Apa": "Father",
+"Anya": "Mother",
+"A testvéreknek is szülője?": "Also the parent of the siblings?",
+"Akiket kiveszel, azoknál ez a szülő továbbra is ismeretlen marad.": "For those you untick, this parent stays unknown.",
+"Valaki, aki még senkihez sem kapcsolódik a fában – utána a személy oldalán kötheted hozzá a többiekhez.": "Someone not yet connected to anyone in the tree – afterwards you can link them to others on their page."
 }

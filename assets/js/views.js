@@ -218,7 +218,9 @@ export async function viewPerson(id) {
   const parents = parentsOf(id);
   fam.append(h('div', { class: 'fam-block' }, h('h4', null, T('Szülők'), bf && S.user ? h('a', { href: '#/family/' + bf.id, class: 'hint', style: 'margin-left:auto' }, T('család')) : null),
     parents.length ? parents.map(x => chip(x)) : h('p', { class: 'hint' }, T('Nincsenek rögzítve.')),
-    S.user && parents.length < 2 ? h('button', { class: 'btn btn-sm btn-ghost', onclick: () => addRelative(id, 'parent') }, icon('plus'), T('Szülő hozzáadása')) : null));
+    S.user && parents.length < 2 ? h('div', { class: 'row', style: 'gap:6px' },
+      parents.some(x => P(x)?.sx === 'M') ? null : h('button', { class: 'btn btn-sm btn-ghost', onclick: () => addRelative(id, 'parent', 'M') }, icon('plus'), T('Apa hozzáadása')),
+      parents.some(x => P(x)?.sx === 'F') ? null : h('button', { class: 'btn btn-sm btn-ghost', onclick: () => addRelative(id, 'parent', 'F') }, icon('plus'), T('Anya hozzáadása'))) : null));
   const sibs = siblingsOf(id);
   if (sibs.length) fam.append(h('div', { class: 'fam-block' }, h('h4', null, T('Testvérek')), sibs.map(x => chip(x))));
   for (const fid of p.fs || []) {
@@ -459,6 +461,7 @@ export async function viewTree(id, qs) {
   const side = h('aside', { class: 'chart-side' },
     h('h2', null, T('Családfa-böngésző')),
     field(T('Középpontban'), rootPk.el),
+    S.user ? h('button', { class: 'btn btn-sm', style: 'margin:-4px 0 12px', title: T('Valaki, aki még senkihez sem kapcsolódik a fában – utána a személy oldalán kötheted hozzá a többiekhez.'), onclick: () => editPerson(null) }, icon('plus'), T('Új személy')) : null,
     types,
     h('div', { 'data-rel': 1 }, field(T('Rokonság vele'), otherPk.el)),
     num('up', T('Felmenő nemzedékek'), 10), num('down', T('Leszármazott nemzedékek'), 10),

@@ -158,6 +158,19 @@ function ft_ops(): array
                     ft_person_row($child);
                     $slot = $sex === 'F' ? 'wife_id' : 'husband_id';
                     $fam = App::$db->row('SELECT f.* FROM {families} f JOIN {children} c ON c.family_id = f.id WHERE c.person_id = ? ORDER BY c.id LIMIT 1', [$child]);
+                    // siblings in the same one-parent family: only those listed get the new parent too,
+                    // the others stay with just the known parent (in a family of their own)
+                    if ($fam && isset($r['siblings']) && is_array($r['siblings']) && (!$fam['husband_id'] || !$fam['wife_id'])) {
+                        $keep = array_map('intval', $r['siblings']);
+                        $known = ft_int($fam['husband_id']) ?: ft_int($fam['wife_id']);
+                        $rest = null;
+                        foreach (App::$db->all('SELECT id, person_id FROM {children} WHERE family_id = ? AND person_id <> ?', [(int)$fam['id'], $child]) as $c) {
+                            if (in_array((int)$c['person_id'], $keep, true) || !$known) continue;
+                            if (!$rest) $rest = $fam['husband_id'] ? ft_new_family($known, null) : ft_new_family(null, $known);
+                            App::$db->delete('children', (int)$c['id']);
+                            ft_add_child($rest, (int)$c['person_id']);
+                        }
+                    }
                     if ($fam && !$fam[$slot]) App::$db->update('families', [$slot => $pid], (int)$fam['id']);
                     elseif ($fam && $fam[$slot] && !$fam[$slot === 'wife_id' ? 'husband_id' : 'wife_id'] && $sex === 'U') App::$db->update('families', [$slot === 'wife_id' ? 'husband_id' : 'wife_id' => $pid], (int)$fam['id']);
                     elseif ($fam) throw ft_err('Ennek a személynek már megvan ez a szülője. Új családot a házastárs hozzáadásával lehet kezdeni.');

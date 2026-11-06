@@ -14,6 +14,9 @@ export function editPerson(id, rel = null, detail = null) {
   const p = id ? P(id) : null;
   const d = detail || {};
   const spouseKids = rel?.type === 'spouse' ? kidPicker(singleParentKids(rel.of), T('Közös gyermekeik')) : { el: null, get: () => [] };
+  // a new parent of someone who has siblings with the same (single) known parent: theirs too? (ticked = yes)
+  const sibFam = rel?.type === 'parent' ? (P(rel.of)?.fc || []).map(F).find(f => f && (!!f.h !== !!f.w)) : null;
+  const sibKids = sibFam ? kidPicker(sibFam.c.filter(c => c !== rel.of), T('A testvéreknek is szülője?'), true, T('Akiket kiveszel, azoknál ez a szülő továbbra is ismeretlen marad.')) : { el: null, get: () => [] };
   const form = h('form', { onsubmit: e => e.preventDefault() },
     modeNote(id ? d.modes?.update : null),
     h('div', { class: 'grid2' },
@@ -22,7 +25,7 @@ export function editPerson(id, rel = null, detail = null) {
     h('div', { class: 'grid3' },
       field(T('Előtag'), h('input', { type: 'text', name: 'title', value: p?.t || '', placeholder: T('Dr., id., ifj.') })),
       field(T('Becenév'), h('input', { type: 'text', name: 'nickname', value: p?.n || '' })),
-      field(T('Nem'), sexSelect(p?.sx || (rel?.type === 'spouse' ? (P(rel.of)?.sx === 'M' ? 'F' : P(rel.of)?.sx === 'F' ? 'M' : 'U') : 'U')))),
+      field(T('Nem'), sexSelect(p?.sx || rel?.sex || (rel?.type === 'spouse' ? (P(rel.of)?.sx === 'M' ? 'F' : P(rel.of)?.sx === 'F' ? 'M' : 'U') : 'U')))),
     field(T('Asszonynév / más névváltozat'), h('input', { type: 'text', name: 'married_name', value: d.married_name || '' }), T('Pl. Csurgay Péterné')),
     h('div', { class: 'grid2' },
       field(T('Születés dátuma'), dateInput('birth_date', p ? findRaw(d, 'BIRT') : '')),
@@ -32,10 +35,10 @@ export function editPerson(id, rel = null, detail = null) {
       field(T('Halál dátuma'), dateInput('death_date', p ? findRaw(d, 'DEAT') : '')),
       field(T('Halál helye'), h('input', { type: 'text', name: 'death_place', value: p?.dp || '' }))),
     rel?.type === 'spouse' ? h('div', { class: 'grid2' }, field(T('Házasságkötés dátuma'), dateInput('marriage_date', '')), field(T('Helye'), h('input', { type: 'text', name: 'marriage_place' }))) : null,
-    spouseKids.el,
+    spouseKids.el, sibKids.el,
     field(T('Életrajz, jegyzetek'), h('textarea', { name: 'notes' }, d.notes || '')),
   );
-  const relTitle = rel ? { child: T('Új gyermek'), parent: T('Új szülő'), spouse: T('Új házastárs') }[rel.type] + ' – ' + personName(P(rel.of) || (rel.family_id ? P(F(rel.family_id)?.h || F(rel.family_id)?.w) : null), { short: true }) : T('Új személy');
+  const relTitle = rel ? { child: T('Új gyermek'), parent: rel.sex === 'M' ? T('Apa') : rel.sex === 'F' ? T('Anya') : T('Új szülő'), spouse: T('Új házastárs') }[rel.type] + ' – ' + personName(P(rel.of) || (rel.family_id ? P(F(rel.family_id)?.h || F(rel.family_id)?.w) : null), { short: true }) : T('Új személy');
   const actions = [{ label: T('Mégse') }];
   if (id) actions.unshift({ label: T('Törlés'), cls: 'btn-danger left', onClick: async () => {
     if (!await confirmBox(T('Személy törlése'), T("Biztosan törlöd: {0}? A kapcsolatai (családok, fotójelölések) is megszűnnek.", personName(p)), T('Törlés'))) return false;
@@ -46,9 +49,13 @@ export function editPerson(id, rel = null, detail = null) {
       const r = await op('person.update', { id, ...v });
       if (opDone(r)) await refresh();
     } else {
-      const payload = { ...v, rel: rel ? { ...rel, marriage_date: v.marriage_date, marriage_place: v.marriage_place, ...(rel.type === 'spouse' ? { children: spouseKids.get() } : {}) } : null };
+      const payload = { ...v, rel: rel ? { ...rel, marriage_date: v.marriage_date, marriage_place: v.marriage_place, ...(rel.type === 'spouse' ? { children: spouseKids.get() } : {}), ...(sibKids.el ? { siblings: sibKids.get() } : {}) } : null };
       const r = await op('person.create', payload);
-      if (opDone(r, T('Hozzáadva.'))) { await loadTree(true); location.hash = '#/person/' + r.id; }
+      if (!rel) { if (opDone(r, T('Hozzáadva.'))) { await loadTree(true); location.hash = '#/person/' + r.id; } return; }
+      // a relative: stay where you are (the next parent / child is added from here too), offer a link to the new one
+      if (r?.queued) return opDone(r);
+      await refresh();
+      toast(h('span', null, T('Hozzáadva: {0}', P(r.id) ? personName(P(r.id)) : [v.surname, v.given].join(' ')), ' · ', h('a', { href: '#/person/' + r.id }, T('megnyitás'))));
     }
   } });
   modal({ title: id ? T('Személy szerkesztése') : relTitle, body: form, actions });
@@ -65,12 +72,12 @@ function singleParentKids(id) {
   return out;
 }
 /** Checkbox list of children; returns { el, get() }. */
-function kidPicker(kids, label) {
+function kidPicker(kids, label, checked = false, hint = null) {
   if (!kids.length) return { el: null, get: () => [] };
-  const boxes = kids.map(c => h('input', { type: 'checkbox', value: c }));
+  const boxes = kids.map(c => h('input', { type: 'checkbox', value: c, checked }));
   const el = h('div', { class: 'field kid-pick' }, h('span', { class: 'lbl' }, label),
     kids.map((c, i) => h('label', { class: 'check' }, boxes[i], h('span', null, personName(P(c)), ' ', h('span', { class: 'hint' }, years(P(c)))))),
-    h('p', { class: 'hint' }, T('Akiket bejelölsz, azoknál ő lesz a másik szülő.')));
+    h('p', { class: 'hint' }, hint || T('Akiket bejelölsz, azoknál ő lesz a másik szülő.')));
   return { el, get: () => boxes.filter(b => b.checked).map(b => +b.value) };
 }
 /** A one-question dialog with a list of choices; resolves to the chosen value or null (cancelled). */
@@ -89,11 +96,11 @@ function choose(title, text, options, okLabel = T('Tovább')) {
 const NEW = '__new', EXISTING = '__existing', NONE = '__none';
 
 /** Which of the parent's spouses is the other parent? Offered when the child has exactly one recorded parent. */
-async function otherParentChoice(childId) {
+async function otherParentChoice(childId, sex = null) {
   const fam = (P(childId)?.fc || []).map(F).find(f => f && (!!f.h !== !!f.w));
   if (!fam) return { fam: null };
   const known = fam.h || fam.w;
-  const spouses = famsAsSpouse(known).filter(x => x.sp && x.f.id !== fam.id);
+  const spouses = famsAsSpouse(known).filter(x => x.sp && x.f.id !== fam.id && (!sex || !P(x.sp)?.sx || P(x.sp).sx === 'U' || P(x.sp).sx === sex));
   if (!spouses.length) return { fam };
   const v = await choose(T('Ki a másik szülő?'), T('{0} szülője eddig csak {1}. {1} házastársai közül:', personName(P(childId)), personName(P(known))),
     [...spouses.map(x => ({ value: x.f.id, label: personName(P(x.sp)), hint: years(P(x.sp)) })),
@@ -101,7 +108,7 @@ async function otherParentChoice(childId) {
   return { fam, choice: v };
 }
 
-export async function addRelative(id, type) {
+export async function addRelative(id, type, sex = null) {
   if (type === 'child') {
     const fams = famsAsSpouse(id);
     if (fams.some(x => x.sp)) {
@@ -114,9 +121,10 @@ export async function addRelative(id, type) {
     return editPerson(null, fams.length ? { type: 'child', family_id: fams[0].f.id, of: id } : { type: 'child', of: id });
   }
   if (type === 'parent') {
-    const { choice } = await otherParentChoice(id);
+    const { choice } = await otherParentChoice(id, sex);
     if (choice === null) return;
     if (choice === EXISTING) return linkExisting(id, 'parent');
+    if (!choice || choice === NEW) return editPerson(null, { type, of: id, ...(sex ? { sex } : {}) });
     if (choice && choice !== NEW) {
       const r = await op('family.child_move', { person_id: id, family_id: choice });
       if (opDone(r, T('Kész: a szülők most egy családban vannak.'))) await refresh();

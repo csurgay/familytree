@@ -1035,5 +1035,14 @@
 "Kivétel ebből a családból": "Aus dieser Familie entfernen",
 "Ha egy gyermek csak az egyik szülőé (pl. előző kapcsolatból), itt állíthatod át.": "Wenn ein Kind nur zu einem Elternteil gehört (z. B. aus einer früheren Beziehung), stelle es hier um.",
 "Ő nem szülő ebben a családban.": "Diese Person ist in dieser Familie kein Elternteil.",
-"Ez a gyermek nincs ebben a családban.": "Dieses Kind ist nicht in dieser Familie."
+"Ez a gyermek nincs ebben a családban.": "Dieses Kind ist nicht in dieser Familie.",
+"Hozzáadva: {0}": "Hinzugefügt: {0}",
+"megnyitás": "öffnen",
+"Apa hozzáadása": "Vater hinzufügen",
+"Anya hozzáadása": "Mutter hinzufügen",
+"Apa": "Vater",
+"Anya": "Mutter",
+"A testvéreknek is szülője?": "Auch Elternteil der Geschwister?",
+"Akiket kiveszel, azoknál ez a szülő továbbra is ismeretlen marad.": "Bei denen, die du abwählst, bleibt dieser Elternteil unbekannt.",
+"Valaki, aki még senkihez sem kapcsolódik a fában – utána a személy oldalán kötheted hozzá a többiekhez.": "Jemand, der im Stammbaum noch mit niemandem verbunden ist – danach kannst du ihn auf seiner Seite mit anderen verknüpfen."
 }

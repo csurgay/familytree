@@ -322,6 +322,7 @@ export function md(src) {
 }
 
 // ------------------------------------------------------------------ toasts & modals
+/** msg: text or a node (e.g. with a link). */
 export function toast(msg, kind = '') {
   const t = h('div', { class: 'toast ' + kind, role: 'status' }, msg);
   $('#toasts').append(t);
