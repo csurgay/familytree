@@ -194,6 +194,7 @@ function ft_handlers(): array
             $installed = (int)$db->val('SELECT COUNT(*) FROM {users}') > 0;
             $u = App::$user;
             $out = ['installed' => $installed, 'version' => FT_VERSION, 'csrf' => $_SESSION['csrf'] ?? '',
+                'sf' => substr(hash('sha256', session_id() . '|ft'), 0, 10),  // session fingerprint: tells the browser whether its cookie sticks
                 'user' => $u ? ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'person_id' => ft_int($u['person_id']), 'hasPassword' => (string)$u['pass_hash'] !== ''] : null,
                 'oauth' => ft_oauth_enabled(), 'oauthNew' => ft_oauth_pending_info(),
                 'settings' => array_filter(App::$s, fn($k) => $k[0] !== '_', ARRAY_FILTER_USE_KEY),
@@ -272,7 +273,8 @@ function ft_handlers(): array
         'register' => function ($in) {
             $db = App::$db;
             if (!App::$s['allow_register']) throw ft_err('A regisztráció jelenleg nincs engedélyezve.', 403);
-            if (!empty($in['website'])) return ['ok' => true]; // honeypot: bots fill every field
+            // honeypot: bots fill every field (old pages send "website", new ones a name no autofill knows)
+            if (!empty($in['hp_x7']) || (!empty($in['website']) && !isset($in['hp_x7']))) return ['ok' => true];
             $now = time();
             $_SESSION['reg'] = array_values(array_filter($_SESSION['reg'] ?? [], fn($t) => $t > $now - 3600));
             if (count($_SESSION['reg']) >= 3) throw ft_err('Túl sok regisztrációs próbálkozás. Próbáld újra egy óra múlva.', 429);

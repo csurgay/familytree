@@ -661,7 +661,8 @@ export function viewRegister(qs) {
     field(T('Jelszó'), pwInput({ name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), T('Legalább 8 karakter.')),
     field(T('Jelszó még egyszer'), pwInput({ name: 'password2', required: true, minlength: 8, autocomplete: 'new-password' })),
     field(T('Ki vagy a családban?'), h('textarea', { name: 'intro', rows: 3, placeholder: T('Pl. Csurgay Péter fia, Bence (2006). Anyám Cholnoky Viktória.') }), T('Ebből tudja az admin, ki vagy a fában.')),
-    h('div', { class: 'hp', 'aria-hidden': 'true' }, h('label', null, T('Weboldal'), h('input', { type: 'text', name: 'website', tabindex: -1, autocomplete: 'off' }))),
+    // hidden trap for bots; no label and an odd name, so phone autofill does not fill it in
+    h('div', { class: 'hp', 'aria-hidden': 'true' }, h('input', { type: 'text', name: 'hp_x7', tabindex: -1, autocomplete: 'off', 'data-lpignore': 'true', 'data-1p-ignore': '' })),
     h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%' }, T('Regisztráció elküldése')),
     h('p', { style: 'margin:16px 0 0;text-align:center' }, T('Van már fiókod? '), h('a', { href: '#/login' }, T('Belépés'))));
   form.addEventListener('submit', async e => {

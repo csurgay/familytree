@@ -1010,5 +1010,7 @@
 "Csak élők": "Living only",
 "Hozzám legközelebbiek elöl": "Closest to me first",
 "A kezdőlap gyökeréhez legközelebbiek elöl": "Closest to the home page root first",
-"Születési év szerint": "By year of birth"
+"Születési év szerint": "By year of birth",
+"A böngésző nem őrzi meg a munkamenetet. Nyisd meg az oldalt https:// kezdetű címmel, és próbáld újra.": "Your browser does not keep the session. Open the site with an address starting with https:// and try again.",
+"A böngésző nem őrzi meg a munkamenetet (sütik). Engedélyezd a sütiket ennek az oldalnak, vagy nyisd meg egy rendes böngészőben (Safari, Chrome) – a Facebook / Messenger beépített böngészője gyakran tiltja őket.": "Your browser does not keep the session (cookies). Allow cookies for this site, or open it in a normal browser (Safari, Chrome) – the built-in browser of Facebook / Messenger often blocks them."
 }

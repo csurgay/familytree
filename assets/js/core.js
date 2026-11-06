@@ -32,8 +32,22 @@ export async function api(action, data = null, opts = {}) {
   try { j = await res.json(); } catch (e) { throw new Error(T('A szerver nem JSON-t küldött (') + res.status + ').'); }
   // stale or lost session token (e.g. the session expired in another tab): fetch a fresh one and retry once
   if (!j.ok && res.status === 419 && !opts.retried && action !== 'boot') {
-    try { const b = await api('boot'); S.csrf = b.csrf; } catch (e) { /* fall through */ }
-    return api(action, data, { ...opts, retried: true });
+    let sf = null;
+    try { const b = await api('boot'); S.csrf = b.csrf; sf = b.sf; } catch (e) { /* fall through */ }
+    try { return await api(action, data, { ...opts, retried: true }); }
+    catch (e) {
+      if (e.status !== 419) throw e;
+      // still refused: is the browser keeping the session cookie at all? (two boots, two different sessions = no)
+      let sf2 = null;
+      try { sf2 = (await api('boot')).sf; } catch (x) { /* ignore */ }
+      if (sf && sf2 && sf !== sf2) {
+        const err = new Error(location.protocol === 'http:'
+          ? T('A böngésző nem őrzi meg a munkamenetet. Nyisd meg az oldalt https:// kezdetű címmel, és próbáld újra.')
+          : T('A böngésző nem őrzi meg a munkamenetet (sütik). Engedélyezd a sütiket ennek az oldalnak, vagy nyisd meg egy rendes böngészőben (Safari, Chrome) – a Facebook / Messenger beépített böngészője gyakran tiltja őket.'));
+        err.status = 419; throw err;
+      }
+      throw e;
+    }
   }
   if (!j.ok) { const err = new Error(j.error || T('Hiba')); err.status = res.status; throw err; }
   return j.data;

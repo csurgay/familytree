@@ -493,6 +493,8 @@ function ft_server_tests(): array
             catch (ApiError $e) { t_ok(str_contains($e->getMessage(), 'jóváhagyásra vár'), 'érthető üzenet: ' . $e->getMessage()); }
             t_throws(fn() => $H['register'](['name' => 'X', 'email' => 'uj@rokon.hu', 'password' => 'titkos-123']), 'dupla e-mail');
             t_eq($H['register'](['name' => 'Bot', 'email' => 'bot@x.hu', 'password' => 'titkos-123', 'website' => 'spam'])['ok'], true);
+            t_eq($H['register'](['name' => 'Bot2', 'email' => 'bot2@x.hu', 'password' => 'titkos-123', 'hp_x7' => 'spam'])['ok'], true);
+            t_eq($db->val('SELECT id FROM {users} WHERE email IN (?, ?)', ['bot@x.hu', 'bot2@x.hu']), null, 'a csapdába esett robot nem regisztrál');
             t_eq($db->val('SELECT id FROM {users} WHERE email = ?', ['bot@x.hu']), null, 'csapda mező: nem jön létre');
             App::$s['allow_register'] = false;
             t_throws(fn() => $H['register'](['name' => 'Y', 'email' => 'y@x.hu', 'password' => 'titkos-123']), 'kikapcsolt regisztráció');

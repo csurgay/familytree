@@ -3,7 +3,24 @@ import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, v
 import { viewQuiz } from './quiz.js';
 import { viewAdmin } from './admin.js';
 
+/**
+ * Opened over plain http (a typed address on a phone often is) while the site also answers on https: switch over.
+ * Otherwise the session cookie set under https is not sent back over http, and every form says "a munkamenet lejárt".
+ */
+async function upgradeToHttps() {
+  if (location.protocol !== 'http:' || /^(localhost|127\.|\[::1\]|.*\.(localhost|test|local)$)/.test(location.hostname)) return false;
+  const target = 'https://' + location.host + location.pathname + location.search + location.hash;
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500);
+    await fetch('https://' + location.host + location.pathname.replace(/[^/]*$/, '') + 'api.php?a=boot', { mode: 'no-cors', cache: 'no-store', signal: ctl.signal });
+    clearTimeout(t);
+  } catch (e) { return false; }                    // no https on this host: stay
+  location.replace(target);
+  return true;
+}
+
 async function boot() {
+  if (await upgradeToHttps()) return;
   let b;
   try { b = await api('boot'); }
   catch (e) { $('#main').replaceChildren(h('div', { class: 'empty' }, h('h2', null, T('A szerver nem érhető el')), h('p', null, e.message))); return; }
