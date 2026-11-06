@@ -13,6 +13,7 @@ const sexSelect = v => h('select', { name: 'sex' }, [['U', T('Ismeretlen')], ['M
 export function editPerson(id, rel = null, detail = null) {
   const p = id ? P(id) : null;
   const d = detail || {};
+  const spouseKids = rel?.type === 'spouse' ? kidPicker(singleParentKids(rel.of), T('Közös gyermekeik')) : { el: null, get: () => [] };
   const form = h('form', { onsubmit: e => e.preventDefault() },
     modeNote(id ? d.modes?.update : null),
     h('div', { class: 'grid2' },
@@ -31,6 +32,7 @@ export function editPerson(id, rel = null, detail = null) {
       field(T('Halál dátuma'), dateInput('death_date', p ? findRaw(d, 'DEAT') : '')),
       field(T('Halál helye'), h('input', { type: 'text', name: 'death_place', value: p?.dp || '' }))),
     rel?.type === 'spouse' ? h('div', { class: 'grid2' }, field(T('Házasságkötés dátuma'), dateInput('marriage_date', '')), field(T('Helye'), h('input', { type: 'text', name: 'marriage_place' }))) : null,
+    spouseKids.el,
     field(T('Életrajz, jegyzetek'), h('textarea', { name: 'notes' }, d.notes || '')),
   );
   const relTitle = rel ? { child: T('Új gyermek'), parent: T('Új szülő'), spouse: T('Új házastárs') }[rel.type] + ' – ' + personName(P(rel.of) || (rel.family_id ? P(F(rel.family_id)?.h || F(rel.family_id)?.w) : null), { short: true }) : T('Új személy');
@@ -44,7 +46,7 @@ export function editPerson(id, rel = null, detail = null) {
       const r = await op('person.update', { id, ...v });
       if (opDone(r)) await refresh();
     } else {
-      const payload = { ...v, rel: rel ? { ...rel, marriage_date: v.marriage_date, marriage_place: v.marriage_place } : null };
+      const payload = { ...v, rel: rel ? { ...rel, marriage_date: v.marriage_date, marriage_place: v.marriage_place, ...(rel.type === 'spouse' ? { children: spouseKids.get() } : {}) } : null };
       const r = await op('person.create', payload);
       if (opDone(r, T('Hozzáadva.'))) { await loadTree(true); location.hash = '#/person/' + r.id; }
     }
@@ -53,39 +55,141 @@ export function editPerson(id, rel = null, detail = null) {
 }
 function findRaw(d, type) { return (d.events || []).find(e => e.type === type)?.raw || ''; }
 
-export function addRelative(id, type) {
+// ---------------------------------------------------------------- adding relatives: ask how they belong together
+/** A person's families (as spouse), each with the spouse id (null = unknown other parent). */
+const famsAsSpouse = id => (P(id)?.fs || []).map(F).filter(Boolean).map(f => ({ f, sp: spouseIn(f, id) }));
+/** Children of `id` for whom so far only `id` is recorded as parent – candidates for "common child" with a new spouse. */
+function singleParentKids(id) {
+  const out = [];
+  for (const { f, sp } of famsAsSpouse(id)) if (!sp) for (const c of f.c || []) if (!out.includes(c)) out.push(c);
+  return out;
+}
+/** Checkbox list of children; returns { el, get() }. */
+function kidPicker(kids, label) {
+  if (!kids.length) return { el: null, get: () => [] };
+  const boxes = kids.map(c => h('input', { type: 'checkbox', value: c }));
+  const el = h('div', { class: 'field kid-pick' }, h('span', { class: 'lbl' }, label),
+    kids.map((c, i) => h('label', { class: 'check' }, boxes[i], h('span', null, personName(P(c)), ' ', h('span', { class: 'hint' }, years(P(c)))))),
+    h('p', { class: 'hint' }, T('Akiket bejelölsz, azoknál ő lesz a másik szülő.')));
+  return { el, get: () => boxes.filter(b => b.checked).map(b => +b.value) };
+}
+/** A one-question dialog with a list of choices; resolves to the chosen value or null (cancelled). */
+function choose(title, text, options, okLabel = T('Tovább')) {
+  return new Promise(res => {
+    let val = null, done = false;
+    const name = 'ch' + Math.random().toString(36).slice(2);
+    const list = h('div', { class: 'choice-list' }, options.map((o, i) => h('label', { class: 'check choice' },
+      h('input', { type: 'radio', name, checked: i === 0, onchange: () => { val = o.value; } }), h('span', null, o.label, o.hint ? h('span', { class: 'hint' }, ' ' + o.hint) : null))));
+    val = options[0]?.value ?? null;
+    modal({ title, body: h('div', null, text ? h('p', { class: 'muted' }, text) : null, list),
+      actions: [{ label: T('Mégse') }, { label: okLabel, cls: 'btn-primary', onClick: () => { done = true; setTimeout(() => res(val), 30); } }],
+      onClose: () => { if (!done) res(null); } });
+  });
+}
+const NEW = '__new', EXISTING = '__existing', NONE = '__none';
+
+/** Which of the parent's spouses is the other parent? Offered when the child has exactly one recorded parent. */
+async function otherParentChoice(childId) {
+  const fam = (P(childId)?.fc || []).map(F).find(f => f && (!!f.h !== !!f.w));
+  if (!fam) return { fam: null };
+  const known = fam.h || fam.w;
+  const spouses = famsAsSpouse(known).filter(x => x.sp && x.f.id !== fam.id);
+  if (!spouses.length) return { fam };
+  const v = await choose(T('Ki a másik szülő?'), T('{0} szülője eddig csak {1}. {1} házastársai közül:', personName(P(childId)), personName(P(known))),
+    [...spouses.map(x => ({ value: x.f.id, label: personName(P(x.sp)), hint: years(P(x.sp)) })),
+      { value: NEW, label: T('Egyik sem – új személyt veszek fel') }, { value: EXISTING, label: T('Egyik sem – meglévő személyt választok') }]);
+  return { fam, choice: v };
+}
+
+export async function addRelative(id, type) {
   if (type === 'child') {
-    const fams = (P(id)?.fs || []).map(F).filter(Boolean);
-    if (fams.length > 1) {
-      const sel = h('select', null, fams.map(f => h('option', { value: f.id }, T('Közös gyermek: ') + (spouseIn(f, id) ? personName(P(spouseIn(f, id))) : T('ismeretlen másik szülő')))), h('option', { value: '' }, T('Más / ismeretlen másik szülővel')));
-      return modal({ title: T('Melyik családba?'), body: field(T('Szülők'), sel), actions: [{ label: T('Mégse') }, { label: T('Tovább'), cls: 'btn-primary', onClick: () => { setTimeout(() => editPerson(null, sel.value ? { type: 'child', family_id: +sel.value, of: id } : { type: 'child', of: id }), 50); } }] });
+    const fams = famsAsSpouse(id);
+    if (fams.some(x => x.sp)) {
+      const v = await choose(T('Melyik házastárssal közös gyermek?'), null,
+        [...fams.map(x => ({ value: x.f.id, label: x.sp ? personName(P(x.sp)) : T('Ismeretlen másik szülő'), hint: x.sp ? years(P(x.sp)) : '' })),
+          ...(fams.some(x => !x.sp) ? [] : [{ value: NONE, label: T('Más / ismeretlen másik szülővel') }])]);
+      if (v === null) return;
+      return editPerson(null, v === NONE ? { type: 'child', of: id } : { type: 'child', family_id: v, of: id });
     }
-    return editPerson(null, fams.length ? { type: 'child', family_id: fams[0].id, of: id } : { type: 'child', of: id });
+    return editPerson(null, fams.length ? { type: 'child', family_id: fams[0].f.id, of: id } : { type: 'child', of: id });
+  }
+  if (type === 'parent') {
+    const { choice } = await otherParentChoice(id);
+    if (choice === null) return;
+    if (choice === EXISTING) return linkExisting(id, 'parent');
+    if (choice && choice !== NEW) {
+      const r = await op('family.child_move', { person_id: id, family_id: choice });
+      if (opDone(r, T('Kész: a szülők most egy családban vannak.'))) await refresh();
+      return;
+    }
   }
   editPerson(null, { type, of: id });
 }
 
 /** Link two existing persons (spouse / child / parent). */
-export function linkExisting(id) {
+export function linkExisting(id, preset = 'spouse') {
   const kind = h('select', null, h('option', { value: 'spouse' }, T('házastársa')), h('option', { value: 'child' }, T('gyermeke')), h('option', { value: 'parent' }, T('szülője')));
+  kind.value = preset;
   const pk = personPicker({ filter: p => p.id !== id });
-  const body = h('div', null, h('p', { class: 'muted' }, T("Már szereplő személy kapcsolása ehhez: {0}", personName(P(id)))), field(T('Kapcsolat'), kind), field(T('Személy'), pk.el));
+  const kids = kidPicker(singleParentKids(id), T('Közös gyermekeik'));
+  const kidWrap = h('div', null, kids.el);
+  const sync = () => { kidWrap.hidden = kind.value !== 'spouse'; };
+  kind.addEventListener('change', sync); sync();
+  const body = h('div', null, h('p', { class: 'muted' }, T("Már szereplő személy kapcsolása ehhez: {0}", personName(P(id)))), field(T('Kapcsolat'), kind), field(T('Személy'), pk.el), kidWrap);
   modal({ title: T('Meglévő személy kapcsolása'), body, actions: [{ label: T('Mégse') }, { label: T('Kapcsolás'), cls: 'btn-primary', onClick: async () => {
     const other = pk.get(); if (!other) throw new Error(T('Válassz személyt.'));
-    let r;
     const me = P(id), o = P(other);
-    if (kind.value === 'spouse') r = await op('family.create', me.sx === 'F' || o.sx === 'M' ? { husband_id: other, wife_id: id } : { husband_id: id, wife_id: other });
-    else if (kind.value === 'child') {
-      let fid = me.fs?.[0];
+    let r;
+    if (kind.value === 'spouse') {
+      r = await op('family.create', { ...(me.sx === 'F' || o.sx === 'M' ? { husband_id: other, wife_id: id } : { husband_id: id, wife_id: other }), children: kids.get() });
+    } else if (kind.value === 'child') {
+      // which of my families: ask when I have a known spouse
+      const fams = famsAsSpouse(id);
+      let fid = fams.length === 1 && !fams[0].sp ? fams[0].f.id : null;
+      if (fams.some(x => x.sp)) {
+        setTimeout(async () => {
+          const v = await choose(T('Melyik házastárssal közös gyermek?'), personName(o),
+            [...fams.map(x => ({ value: x.f.id, label: x.sp ? personName(P(x.sp)) : T('Ismeretlen másik szülő') })), ...(fams.some(x => !x.sp) ? [] : [{ value: NONE, label: T('Más / ismeretlen másik szülővel') }])]);
+          if (v === null) return;
+          try {
+            let f2 = v === NONE ? null : v;
+            if (!f2) { const c = await op('family.create', me.sx === 'F' ? { wife_id: id } : { husband_id: id }); if (c.queued) return opDone(c); f2 = c.id; }
+            const rr = await op('family.child_add', { family_id: f2, person_id: other });
+            if (opDone(rr, T('Összekapcsolva.'))) await refresh();
+          } catch (e) { fail(e); }
+        }, 50);
+        return;
+      }
       if (!fid) { const c = await op('family.create', me.sx === 'F' ? { wife_id: id } : { husband_id: id }); if (c.queued) return opDone(c); fid = c.id; }
       r = await op('family.child_add', { family_id: fid, person_id: other });
     } else {
-      let fid = me.fc?.[0];
-      if (fid) {
-        const f = F(fid); const slot = o.sx === 'F' ? 'wife_id' : 'husband_id';
-        if ((slot === 'wife_id' ? f.w : f.h)) throw new Error(T('Ennek a személynek már megvan ez a szülője.'));
-        r = await op('family.update', { id: fid, [slot]: other });
+      // `other` becomes a parent of me
+      const fam = (me.fc || []).map(F).find(Boolean);
+      if (fam) {
+        const known = fam.h || fam.w;
+        const slot = o.sx === 'F' ? 'wife_id' : o.sx === 'M' ? 'husband_id' : (fam.h ? 'wife_id' : 'husband_id');
+        if (fam.h && fam.w) throw new Error(T('Ennek a személynek már megvan mindkét szülője.'));
+        if ((slot === 'wife_id' ? fam.w : fam.h)) throw new Error(T('Ennek a személynek már megvan ez a szülője.'));
+        // the two parents may already be a couple: then the child simply moves into their family
+        const shared = famsAsSpouse(known).find(x => x.sp === other);
+        r = shared ? await op('family.child_move', { person_id: id, family_id: shared.f.id }) : await op('family.update', { id: fam.id, [slot]: other });
       } else {
+        // no parent yet: is one of the new parent's spouses the other parent?
+        const sps = famsAsSpouse(other);
+        if (sps.length) {
+          setTimeout(async () => {
+            const v = await choose(T('Ki a másik szülő?'), T('{0} házastársai közül:', personName(o)),
+              [...sps.map(x => ({ value: x.f.id, label: x.sp ? personName(P(x.sp)) : T('Ismeretlen másik szülő') })), ...(sps.some(x => !x.sp) ? [] : [{ value: NONE, label: T('Egyik sem / ismeretlen') }])]);
+            if (v === null) return;
+            try {
+              let f2 = v === NONE ? null : v;
+              if (!f2) { const c = await op('family.create', o.sx === 'F' ? { wife_id: other } : { husband_id: other }); if (c.queued) return opDone(c); f2 = c.id; }
+              const rr = await op('family.child_add', { family_id: f2, person_id: id });
+              if (opDone(rr, T('Összekapcsolva.'))) await refresh();
+            } catch (e) { fail(e); }
+          }, 50);
+          return;
+        }
         const c = await op('family.create', o.sx === 'F' ? { wife_id: other } : { husband_id: other }); if (c.queued) return opDone(c);
         r = await op('family.child_add', { family_id: c.id, person_id: id });
       }

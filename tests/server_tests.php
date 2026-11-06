@@ -816,6 +816,34 @@ function ft_server_tests(): array
             t_throws(fn() => ft_run_op('family.update', ['id' => $solo, 'wife_id' => $g]), 'utólag sem tehető kettőbe');
             t_eq((int)$db->val('SELECT COUNT(*) FROM {families} WHERE husband_id = ? AND wife_id = ?', [$i, $g]), 1);
         },
+        'Rokon hozzáadása: másik szülő a házastársak közül, közös gyerekek új házastársnál' => function () {
+            $db = t_fresh_db(); t_as(t_user($db, 'admin'));
+            $kids = fn($fid) => array_map('intval', $db->col('SELECT person_id FROM {children} WHERE family_id = ? ORDER BY person_id', [$fid]));
+            // László has only his father; the father already has a wife → "the other parent is her"
+            $l = ft_run_op('person.create', ['surname' => 'Csáki', 'given' => 'László', 'sex' => 'M'])['id'];
+            $i = ft_run_op('person.create', ['surname' => 'Csáki', 'given' => 'István', 'sex' => 'M', 'rel' => ['type' => 'parent', 'of' => $l]])['id'];
+            $single = (int)$db->val('SELECT family_id FROM {children} WHERE person_id = ?', [$l]);
+            $g = ft_run_op('person.create', ['surname' => 'Kovács', 'given' => 'Ágnes', 'sex' => 'F', 'rel' => ['type' => 'spouse', 'of' => $i]])['id'];
+            $couple = (int)$db->val('SELECT id FROM {families} WHERE husband_id = ? AND wife_id = ?', [$i, $g]);
+            ft_run_op('family.child_move', ['person_id' => $l, 'family_id' => $couple]);
+            t_eq($kids($couple), [$l], 'László a közös családban');
+            t_eq($db->val('SELECT id FROM {families} WHERE id = ?', [$single]), null, 'az egyszülős család megszűnt');
+            // a new spouse with "common children": only children who had just this one parent move
+            $p = ft_run_op('person.create', ['surname' => 'Nagy', 'given' => 'Péter', 'sex' => 'M'])['id'];
+            $a = ft_run_op('person.create', ['surname' => 'Nagy', 'given' => 'Anna', 'sex' => 'F', 'rel' => ['type' => 'child', 'of' => $p]])['id'];
+            $b = ft_run_op('person.create', ['surname' => 'Nagy', 'given' => 'Béla', 'sex' => 'M', 'rel' => ['type' => 'child', 'of' => $p]])['id'];
+            $old = (int)$db->val('SELECT family_id FROM {children} WHERE person_id = ?', [$a]);
+            $w = ft_run_op('person.create', ['surname' => 'Kis', 'given' => 'Éva', 'sex' => 'F', 'rel' => ['type' => 'spouse', 'of' => $p, 'children' => [$a]]])['id'];
+            $pw = (int)$db->val('SELECT id FROM {families} WHERE husband_id = ? AND wife_id = ?', [$p, $w]);
+            t_eq($kids($pw), [$a], 'Anna közös gyerek lett');
+            t_eq($kids($old), [$b], 'Béla maradt egyszülős');
+            t_throws(fn() => ft_run_op('person.create', ['surname' => 'X', 'given' => 'Y', 'sex' => 'F', 'rel' => ['type' => 'spouse', 'of' => $p, 'children' => [$l]]]), 'idegen gyerek nem lehet közös');
+            // linking an existing spouse with common children
+            $z = ft_run_op('person.create', ['surname' => 'Tóth', 'given' => 'Zita', 'sex' => 'F'])['id'];
+            $pz = ft_run_op('family.create', ['husband_id' => $p, 'wife_id' => $z, 'children' => [$b]])['id'];
+            t_eq($kids($pz), [$b], 'meglévő házastárs közös gyerekkel');
+            t_eq($db->val('SELECT id FROM {families} WHERE id = ?', [$old]), null, 'kiürült egyszülős család törölve');
+        },
         'Elfelejtett jelszó: e-mailes link, lejárat, egyszeri használat' => function () {
             $db = t_fresh_db();
             $db->insert('users', ['email' => 'a@b.hu', 'name' => 'Anna', 'pass_hash' => password_hash('regi-jelszo', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 3, 'locked_until' => date('Y-m-d H:i:s', time() + 600), 'lang' => 'en', 'created' => ft_now()]);

@@ -1013,5 +1013,18 @@
 "Születési év szerint": "By year of birth",
 "A böngésző nem őrzi meg a munkamenetet. Nyisd meg az oldalt https:// kezdetű címmel, és próbáld újra.": "Your browser does not keep the session. Open the site with an address starting with https:// and try again.",
 "A böngésző nem őrzi meg a munkamenetet (sütik). Engedélyezd a sütiket ennek az oldalnak, vagy nyisd meg egy rendes böngészőben (Safari, Chrome) – a Facebook / Messenger beépített böngészője gyakran tiltja őket.": "Your browser does not keep the session (cookies). Allow cookies for this site, or open it in a normal browser (Safari, Chrome) – the built-in browser of Facebook / Messenger often blocks them.",
-"Ők már házastársak, van közös családjuk. A gyermekeiket abban a családban add hozzá.": "They are already married and have a family together. Add their children to that family."
+"Ők már házastársak, van közös családjuk. A gyermekeiket abban a családban add hozzá.": "They are already married and have a family together. Add their children to that family.",
+"Akiket bejelölsz, azoknál ő lesz a másik szülő.": "For those you tick, this person becomes the other parent.",
+"Közös gyermekeik": "Their children together",
+"Ki a másik szülő?": "Who is the other parent?",
+"{0} szülője eddig csak {1}. {1} házastársai közül:": "So far {1} is the only recorded parent of {0}. Among {1}'s spouses:",
+"Egyik sem – új személyt veszek fel": "None – I'll add a new person",
+"Egyik sem – meglévő személyt választok": "None – I'll pick an existing person",
+"Melyik házastárssal közös gyermek?": "A child with which spouse?",
+"Ismeretlen másik szülő": "Unknown other parent",
+"Kész: a szülők most egy családban vannak.": "Done: the parents are now one family.",
+"{0} házastársai közül:": "Among the spouses of {0}:",
+"Egyik sem / ismeretlen": "None / unknown",
+"Ennek a személynek már megvan mindkét szülője.": "This person already has both parents.",
+"Közös gyermek csak olyan lehet, akinél eddig csak ez az egy szülő szerepelt.": "Only a child with just this one recorded parent can become a common child."
 }

@@ -653,3 +653,10 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .nophoto td { vertical-align: middle; }
 .np-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 640px) { .nophoto, .nophoto tbody, .nophoto tr, .nophoto td { display: block; width: 100%; } .nophoto tr { border-bottom: 1px solid var(--line); padding: 8px 0; } .nophoto td { border: 0; padding: 2px 0; } .np-act { justify-content: flex-start; } }
+
+/* adding relatives: choices */
+.choice-list { display: grid; gap: 6px; margin-top: 6px; }
+.choice-list .choice { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.choice-list .choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.kid-pick { display: grid; gap: 4px; }
+.kid-pick .lbl { font-weight: 600; font-size: .92rem; }

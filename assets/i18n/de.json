@@ -1013,5 +1013,18 @@
 "Születési év szerint": "Nach Geburtsjahr",
 "A böngésző nem őrzi meg a munkamenetet. Nyisd meg az oldalt https:// kezdetű címmel, és próbáld újra.": "Dein Browser behält die Sitzung nicht. Öffne die Seite mit einer Adresse, die mit https:// beginnt, und versuche es erneut.",
 "A böngésző nem őrzi meg a munkamenetet (sütik). Engedélyezd a sütiket ennek az oldalnak, vagy nyisd meg egy rendes böngészőben (Safari, Chrome) – a Facebook / Messenger beépített böngészője gyakran tiltja őket.": "Dein Browser behält die Sitzung nicht (Cookies). Erlaube Cookies für diese Seite oder öffne sie in einem normalen Browser (Safari, Chrome) – der eingebaute Browser von Facebook / Messenger blockiert sie oft.",
-"Ők már házastársak, van közös családjuk. A gyermekeiket abban a családban add hozzá.": "Sie sind bereits verheiratet und haben eine gemeinsame Familie. Füge ihre Kinder dieser Familie hinzu."
+"Ők már házastársak, van közös családjuk. A gyermekeiket abban a családban add hozzá.": "Sie sind bereits verheiratet und haben eine gemeinsame Familie. Füge ihre Kinder dieser Familie hinzu.",
+"Akiket bejelölsz, azoknál ő lesz a másik szülő.": "Bei den angekreuzten Kindern wird diese Person der andere Elternteil.",
+"Közös gyermekeik": "Gemeinsame Kinder",
+"Ki a másik szülő?": "Wer ist der andere Elternteil?",
+"{0} szülője eddig csak {1}. {1} házastársai közül:": "Bisher ist nur {1} als Elternteil von {0} eingetragen. Unter den Ehepartnern von {1}:",
+"Egyik sem – új személyt veszek fel": "Keiner – ich lege eine neue Person an",
+"Egyik sem – meglévő személyt választok": "Keiner – ich wähle eine vorhandene Person",
+"Melyik házastárssal közös gyermek?": "Ein Kind mit welchem Ehepartner?",
+"Ismeretlen másik szülő": "Unbekannter anderer Elternteil",
+"Kész: a szülők most egy családban vannak.": "Fertig: die Eltern sind jetzt eine Familie.",
+"{0} házastársai közül:": "Unter den Ehepartnern von {0}:",
+"Egyik sem / ismeretlen": "Keiner / unbekannt",
+"Ennek a személynek már megvan mindkét szülője.": "Diese Person hat bereits beide Elternteile.",
+"Közös gyermek csak olyan lehet, akinél eddig csak ez az egy szülő szerepelt.": "Gemeinsames Kind kann nur eines sein, bei dem bisher nur dieser eine Elternteil eingetragen war."
 }

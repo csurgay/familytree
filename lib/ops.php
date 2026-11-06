@@ -69,6 +69,34 @@ function ft_apply_vitals(int $pid, array $p): void
     }
 }
 
+/** A family left with no children and at most one spouse means nothing any more: remove it. */
+function ft_family_cleanup(int $fid): void
+{
+    $f = App::$db->row('SELECT * FROM {families} WHERE id = ?', [$fid]);
+    if (!$f) return;
+    if (!App::$db->val('SELECT COUNT(*) FROM {children} WHERE family_id = ?', [$fid]) && (!$f['husband_id'] || !$f['wife_id'])) ft_family_purge($fid);
+}
+
+/**
+ * Children of $parent who so far had only that one parent recorded become children of family $to
+ * (e.g. a spouse is added and some of the children turn out to be theirs together).
+ */
+function ft_adopt_single_parent_children(int $to, array $childIds, array $parents): void
+{
+    $db = App::$db;
+    foreach (array_unique(array_filter(array_map('intval', $childIds))) as $c) {
+        $moved = false;
+        foreach ($parents as $par) {
+            if (!$par) continue;
+            $rows = $db->all('SELECT c.id, c.family_id FROM {children} c JOIN {families} f ON f.id = c.family_id
+                              WHERE c.person_id = ? AND f.id <> ? AND ((f.husband_id = ? AND f.wife_id IS NULL) OR (f.wife_id = ? AND f.husband_id IS NULL))', [$c, $to, $par, $par]);
+            foreach ($rows as $r) { $db->delete('children', (int)$r['id']); ft_family_cleanup((int)$r['family_id']); $moved = true; }
+        }
+        if (!$moved) throw ft_err('Közös gyermek csak olyan lehet, akinél eddig csak ez az egy szülő szerepelt.');
+        ft_add_child($to, $c);
+    }
+}
+
 /** The same two people may have only one family together (a second one would show the spouse twice). */
 function ft_no_double_marriage(?int $h, ?int $w, int $except = 0): void
 {
@@ -140,6 +168,7 @@ function ft_ops(): array
                     $husbandIsNew = $sex === 'M' || ($sex === 'U' && $o['sex'] === 'F');
                     $fid = $husbandIsNew ? ft_new_family($pid, $of) : ft_new_family($of, $pid);
                     if (!empty($r['marriage_date']) || !empty($r['marriage_place'])) ft_set_vital(null, $fid, 'MARR', $r['marriage_date'] ?? null, $r['marriage_place'] ?? null);
+                    if (!empty($r['children']) && is_array($r['children'])) ft_adopt_single_parent_children($fid, $r['children'], [$of]);
                 }
                 return ['id' => $pid];
             },
@@ -195,6 +224,7 @@ function ft_ops(): array
                 if ($h) ft_person_row($h); if ($w) ft_person_row($w);
                 ft_no_double_marriage($h, $w);
                 $fid = ft_new_family($h, $w);
+                if (!empty($p['children']) && is_array($p['children'])) ft_adopt_single_parent_children($fid, $p['children'], [$h, $w]);
                 ft_set_vital(null, $fid, 'MARR', $p['marriage_date'] ?? null, $p['marriage_place'] ?? null);
                 return ['id' => $fid];
             },
@@ -232,6 +262,26 @@ function ft_ops(): array
             'targets' => fn($p) => [[], [(int)$p['family_id']]],
             'summary' => fn($p) => 'Gyermek hozzárendelése: ' . ft_name(ft_person_row((int)$p['person_id'])),
             'apply' => function ($p) { ft_family_row((int)$p['family_id']); ft_person_row((int)$p['person_id']); ft_add_child((int)$p['family_id'], (int)$p['person_id'], $p['rel'] ?? 'birth'); return ['id' => (int)$p['family_id']]; },
+        ],
+        // "the other parent is this spouse": the child moves into the parents' common family;
+        // the family where only one of them was recorded disappears if it is left empty
+        'family.child_move' => [
+            'kind' => 'update',
+            'targets' => fn($p) => [[(int)$p['person_id']], [(int)$p['family_id']]],
+            'summary' => fn($p) => 'Szülők pontosítása: ' . ft_name(ft_person_row((int)$p['person_id'])),
+            'apply' => function ($p) {
+                $db = App::$db;
+                $pid = (int)$p['person_id']; $to = (int)$p['family_id'];
+                ft_person_row($pid);
+                $tf = ft_family_row($to);
+                $sp = array_filter([ft_int($tf['husband_id']), ft_int($tf['wife_id'])]);
+                foreach ($db->all('SELECT c.id, c.family_id, f.husband_id, f.wife_id FROM {children} c JOIN {families} f ON f.id = c.family_id WHERE c.person_id = ? AND f.id <> ?', [$pid, $to]) as $r) {
+                    $fs = array_filter([ft_int($r['husband_id']), ft_int($r['wife_id'])]);
+                    if (count($fs) <= 1 && !array_diff($fs, $sp)) { $db->delete('children', (int)$r['id']); ft_family_cleanup((int)$r['family_id']); }
+                }
+                ft_add_child($to, $pid);
+                return ['id' => $to];
+            },
         ],
         'family.child_remove' => [
             'kind' => 'update',
