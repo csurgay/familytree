@@ -16,7 +16,7 @@ function ft_json($data, int $code = 200): void
 }
 
 $err = App::init(__DIR__);
-if ($err) ft_json(['ok' => false, 'error' => $err['error'], 'setup' => $err], 503);
+if ($err) ft_json(['ok' => false, 'error' => $err['error']], 503);
 App::startSession();
 App::$lang = ft_lang($_SERVER['HTTP_X_LANG'] ?? $_GET['lang'] ?? 'hu');
 

@@ -3,6 +3,8 @@
  * Comments (hozzászólások) under persons, families, stories and photos.
  * Only logged-in members read and write them; one level of replies; the author edits their own,
  * the admin may remove any. A removed comment that has replies stays as a "törölt" placeholder.
+ * A comment that tells a story (a memory, not just a data fix) can be marked as one: it then shows up
+ * on the Stories page too (the same comment, not a copy).
  */
 const FT_COMMENT_ENTITIES = ['person', 'family', 'story', 'photo'];
 
@@ -32,7 +34,8 @@ function ft_comment_json(array $c, array $names): array
         'author' => $del ? null : ($names[$uid] ?? null), 'author_id' => $del ? null : $uid,
         'body' => $del ? null : $c['body'], 'deleted' => $del, 'created' => $c['created'],
         'edited' => !$del && $c['updated'] && $c['updated'] !== $c['created'],
-        'mine' => !$del && $uid === App::uid(), 'can_delete' => !$del && ($uid === App::uid() || App::isAdmin())];
+        'mine' => !$del && $uid === App::uid(), 'can_delete' => !$del && ($uid === App::uid() || App::isAdmin()),
+        'story' => !$del && !empty($c['story']), 'can_story' => !$del && ($uid === App::uid() || App::isAdmin())];
 }
 
 function ft_user_names(array $ids): array
@@ -77,7 +80,7 @@ function ft_comment_add(array $in): array
     if ($recent >= 30) throw ft_err('Túl sok hozzászólás rövid idő alatt. Próbáld újra pár perc múlva.', 429);
     $now = ft_now();
     $cid = App::$db->insert('comments', ['entity' => $entity, 'entity_id' => $id, 'parent_id' => $parent, 'user_id' => App::uid(),
-        'body' => $body, 'status' => 'ok', 'created' => $now, 'updated' => $now]);
+        'body' => $body, 'status' => 'ok', 'story' => empty($in['story']) ? 0 : 1, 'created' => $now, 'updated' => $now]);
     App::audit('comment.add', $entity, $id, mb_substr($body, 0, 120));
     return ['id' => $cid];
 }
@@ -110,6 +113,18 @@ function ft_comment_delete(array $in): array
     else App::$db->delete('comments', (int)$c['id']);
     App::audit('comment.delete', $c['entity'], (int)$c['entity_id'], mb_substr((string)$c['body'], 0, 120));
     return ['id' => (int)$c['id']];
+}
+
+/** Mark / unmark a comment as a story (memory): the author or the admin. */
+function ft_comment_story(array $in): array
+{
+    ft_comments_guard();
+    $c = ft_comment_own((int)($in['id'] ?? 0));
+    if ((int)$c['user_id'] !== App::uid() && !App::isAdmin()) throw ft_err('Ehhez nincs jogosultságod.', 403);
+    $on = !empty($in['on']) ? 1 : 0;
+    App::$db->update('comments', ['story' => $on], (int)$c['id']);
+    App::audit('comment.story', $c['entity'], (int)$c['entity_id'], ($on ? 'történet: ' : 'nem történet: ') . mb_substr((string)$c['body'], 0, 100));
+    return ['id' => (int)$c['id'], 'story' => (bool)$on];
 }
 
 /** Latest comments for the home page, with a label for what they are about. */

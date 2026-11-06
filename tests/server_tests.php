@@ -512,18 +512,51 @@ function ft_server_tests(): array
             t_eq((int)$db->val('SELECT COUNT(*) FROM {branches} WHERE user_id = ?', [(int)$u['id']]), 0);
             $_SESSION = $sess;
         },
-        'Életrajzok → sztorik: névvel, évekkel, személyhez kötve, ismételhetően' => function () {
+        'Történetek: életrajzok és emlék-hozzászólások is megjelennek, másolat nélkül' => function () {
             $db = t_fresh_db(); $ids = t_import($db);
+            $admin = t_user($db, 'admin'); $a = t_user($db, 'member', 'sa@x.hu'); $b = t_user($db, 'member', 'sb@x.hu');
             $db->update('persons', ['notes' => str_repeat('Hosszú életrajz. ', 10)], $ids['I3']);
-            $r = ft_notes_to_stories(80);
-            t_eq([$r['created'], $r['short']], [1, 1], 'a rövid jegyzet (I1) nem lesz sztori');
-            $st = $db->row("SELECT * FROM {stories} WHERE source = 'note:I3'");
-            t_eq($st['title'], 'Nagy Péter (sz. 1930)');
-            t_eq((int)$st['y'], 1930);
-            t_eq((int)$db->val('SELECT person_id FROM {story_links} WHERE story_id = ?', [(int)$st['id']]), $ids['I3']);
-            t_eq(ft_notes_to_stories(80)['created'], 0, 'második futás');
-            t_eq(ft_notes_to_stories(10)['created'], 1, 'alacsonyabb határral a rövidebb is');
-            t_eq($db->val("SELECT title FROM {stories} WHERE source = 'note:I1'"), 'Dr. Nagy János (1900–1970)');
+            t_as($admin);
+            $kinds = fn() => array_map(fn($x) => $x['kind'] . ':' . $x['id'], ft_story_feed('hu'));
+            $bio = array_values(array_filter(ft_story_feed('hu'), fn($x) => $x['kind'] === 'bio'));
+            t_eq(count($bio), 1, 'a rövid jegyzet (I1) nem jelenik meg');
+            t_eq([$bio[0]['id'], $bio[0]['title'], $bio[0]['y']], [$ids['I3'], 'Nagy Péter (sz. 1930)', 1930]);
+            t_eq((int)$db->val('SELECT COUNT(*) FROM {stories}'), 0, 'nem készül másolat');
+            App::$s['notes_story_min'] = 10;
+            t_ok(in_array('bio:' . $ids['I1'], $kinds(), true), 'alacsonyabb határral a rövidebb is');
+            $x = ft_story_extra('bio', $ids['I3']);
+            t_eq($x['body'], trim(str_repeat('Hosszú életrajz. ', 10)), 'ugyanaz a szöveg, ami a személy lapján');
+            App::$s['bios_in_stories'] = false;
+            t_ok(!array_filter(ft_story_feed('hu'), fn($x) => $x['kind'] === 'bio'), 'kikapcsolható');
+            App::$s['bios_in_stories'] = true;
+            // an old copy (earlier import) of the biography: no second entry
+            $sid = $db->insert('stories', ['title' => 'Nagy Péter', 'body' => 'x', 'status' => 'ok', 'source' => 'note:I3', 'lang' => 'hu', 'created' => ft_now(), 'updated' => ft_now()]);
+            $db->insert('story_links', ['story_id' => $sid, 'person_id' => $ids['I3']]);
+            t_ok(!in_array('bio:' . $ids['I3'], $kinds(), true) && in_array('story:' . $sid, $kinds(), true), 'régi másolatnál csak egyszer');
+            // comments marked as a memory
+            t_as($a);
+            $c1 = ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'body' => 'Nagyapa mindig a kertben fütyörészett.', 'story' => true])['id'];
+            $c2 = ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'body' => 'Szerintem 1902-ben született.'])['id'];
+            ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'parent_id' => $c1, 'body' => 'Igen, a Kék Duna keringőt!']);
+            $ks = $kinds();
+            t_ok(in_array('comment:' . $c1, $ks, true) && !in_array('comment:' . $c2, $ks, true), 'csak a megjelölt hozzászólás');
+            $it = array_values(array_filter(ft_story_feed('hu'), fn($x) => $x['kind'] === 'comment'))[0];
+            t_eq([$it['title'], $it['author'], $it['person_ids']], ['Dr. Nagy János', 'Member', [$ids['I1']]]);
+            $x = ft_story_extra('comment', $c1);
+            t_eq([count($x['replies']), $x['replies'][0]['body']], [1, 'Igen, a Kék Duna keringőt!'], 'a válaszok is látszanak');
+            t_as($b);
+            t_throws(fn() => ft_comment_story(['id' => $c1, 'on' => false]), 'más nem veheti ki');
+            t_as($admin);
+            ft_comment_story(['id' => $c2, 'on' => true]);
+            t_ok(in_array('comment:' . $c2, $kinds(), true), 'az admin megjelölheti');
+            t_as($a);
+            ft_comment_story(['id' => $c1, 'on' => false]);
+            t_ok(!in_array('comment:' . $c1, $kinds(), true), 'a szerző kiveheti');
+            t_eq(array_column(ft_comments_list('person', $ids['I1']), 'story'), [false, true, false], 'a hozzászólásoknál is látszik');
+            t_as(null);
+            t_ok(!array_filter(ft_story_feed('hu'), fn($x) => $x['kind'] === 'comment'), 'vendég nem látja a hozzászólásokat');
+            t_throws(fn() => ft_story_extra('comment', $c2), 'vendég a hozzászólást sem');
+            App::$s['notes_story_min'] = 80;
         },
         'Fordítás: minden nyelvre, változatlan szöveget nem küld újra, nyelv szerint mutatja' => function () {
             $db = t_fresh_db(); t_import($db); t_as(t_user($db, 'admin'));

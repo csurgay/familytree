@@ -9,10 +9,9 @@ arcképcsarnokkal és „Ki kicsoda?” kvízzel. Build-lépés nincs: a mappa e
 ## Telepítés
 
 1. Töltsd fel a mappát a tárhelyre (pl. `csurgay.com/familytree`).
-2. Tedd mellé – vagy eggyel feljebb, a repón kívülre – a `config.php`-t az adatbázis adataival. Bármelyik szokásos forma működik:
-   `define('DB_HOST', …)` konstansok, `$servername / $username / $password / $dbname` változók,
-   vagy `return ['db' => ['host'=>…, 'name'=>…, 'user'=>…, 'pass'=>…]]`. Minta: `config.sample.php`. Tábla-előtag: `DB_PREFIX` (alapból `ft_`),
-   így közös adatbázisban is elfér más appok mellett.
+2. Tedd mellé – vagy eggyel feljebb, a repón kívülre – a `config.php`-t az adatbázis adataival
+   (a szokásos PHP-s írásmódok mind működnek). A táblák előtaggal készülnek, így közös adatbázisban
+   is elférnek más appok mellett.
 3. Az `uploads/` mappa legyen írható a webszerver számára.
 4. Nyisd meg az oldalt: az első indításkor létrehozod az admin fiókot, és egy pipával betöltöd a
    `.ged` fájlt (`csurgay.ged` – az app mappájában vagy eggyel feljebb keresi). A táblák maguktól létrejönnek.
@@ -28,14 +27,15 @@ Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`
   küldeni, e-mail is megy). Jóváhagyáskor az admin megadhatja, ki ő a fában, és szerkeszthető ágat rendelhet
   hozzá – ezzel lesz valaki **családfő**. Később a Felhasználók lapon bármikor módosítható.
 - **Fordítás:** a sztorik a bekapcsolt nyelvekre (alapból magyar, angol, német) DeepL-lel fordulnak mentéskor.
-  A kulcs a `config.php`-ben van: `'deepl_key' => '…'` (a `:fx` végű ingyenes kulcs is működik); az
+  A kulcs a `config.php`-ben van (a `:fx` végű ingyenes kulcs is működik); az
   adatbázisba és a böngészőbe nem kerül. A fejlécben választható a nyelv; a fordított sztori alatt
   egy kattintással látszik az eredeti. A már lefordított, változatlan szöveget nem küldi el újra.
   A teljes felület (menük, gombok, beállítások, dátumok, rokonsági elnevezések) magyarul, angolul és
   németül is elérhető; a nyelvválasztó a jobb felső sarokban van, a választás megmarad. A szótárak:
   `assets/i18n/en.json`, `de.json` (kulcs = a magyar szöveg).
-- **Életrajzok sztoriként:** a GEDCOM-ban a személyekhez írt hosszabb jegyzetekből (alapból 80 karakter
-  felett) sztori lesz a személy nevével és életéveivel; a személy lapján is megmaradnak.
+- **Életrajzok a Történetek között:** a személyek és családok hosszabb életrajza (alapból 80 karakter
+  felett) a Történetek menüpontban is megjelenik a nevével és életéveivel. Nem másolat: ugyanaz a szöveg,
+  a személy (család) lapján kell szerkeszteni. A fogaskerék alatt kikapcsolható.
 
 ## Navigáció
 
@@ -61,6 +61,8 @@ A szabályok (pl. hogy a családfő módosítása is jóváhagyást kér-e, felv
 **Hozzászólások:** személy, család, sztori és fotó alatt a bejelentkezett tagok írhatnak – pontosítást,
 kérdést, emléket, érdekességet –, és válaszolhatnak egymásnak (egy szint mélyen). A saját hozzászólás
 javítható és törölhető, az admin bármelyiket törölheti. A legfrissebbek a kezdőlapon is látszanak.
+Az emléket, anekdotát mesélő hozzászólást írója (vagy az admin) megjelölheti „Történet”-nek: akkor a
+Történetek menüpontban is megjelenik (ugyanaz a hozzászólás, nem másolat).
 Vendégek nem látják őket; a fogaskerék alatt ki is kapcsolhatók.
 
 ## Funkciók
@@ -103,18 +105,18 @@ Vendégek nem látják őket; a fogaskerék alatt ki is kapcsolhatók.
 A családtagok jelszó nélkül, a Google- vagy Facebook-fiókjukkal is beléphetnek.
 - **Meglévő tag:** ha a Google / Facebook ugyanazt az (általa igazolt) e-mail címet adja, ami a tag fiókjában van, a két fiók magától összekapcsolódik. Más címmel a Fiókom oldalon kapcsolható össze (és ott választható le).
 - **Új családtag:** a gomb után megírja, ki ő a családban, és az admin ugyanúgy jóváhagyja, mint a sima regisztrációt. Jelszava nincs; később a Fiókom oldalon beállíthat egyet.
-- A titkos kulcsok csak a `config.php`-ben vannak (lásd `config.sample.php`); a gombok csak akkor jelennek meg, ha ott vannak, és a fogaskerék alatt (Hozzáférés) kikapcsolhatók.
+- A titkos kulcsok csak a `config.php`-ben vannak; a gombok csak akkor jelennek meg, ha ott vannak, és a fogaskerék alatt (Hozzáférés) kikapcsolhatók.
 
 **Google-kulcs** (console.cloud.google.com):
 1. Új projekt → *APIs & Services* → *OAuth consent screen*: User type **External**, alkalmazás neve (pl. „A Csurgay család”), támogatási e-mail; scope-nak elég az alap (`openid`, `email`, `profile`). Végül **Publish app** („In production”) – különben csak a felvett tesztfelhasználók léphetnek be. Ezekhez a scope-okhoz nem kell Google-ellenőrzés (logót ne tölts fel, az ellenőrzést indít).
 2. *Credentials* → *Create credentials* → *OAuth client ID* → *Web application*. **Authorized redirect URI:** `https://csurgay.com/family/oauth.php` (pontosan így; próbapéldánynál annak a címe is).
-3. A kapott *Client ID* és *Client secret* → `config.php`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+3. A kapott *Client ID* és *Client secret* → `config.php`.
 
 **Facebook-kulcs** (developers.facebook.com):
 1. *My Apps* → *Create App* → „Authenticate and request data from users with Facebook Login” (Consumer).
 2. *Facebook Login* → *Settings*: **Valid OAuth Redirect URIs:** `https://csurgay.com/family/oauth.php`.
 3. *App settings* → *Basic*: kell egy **adatvédelmi tájékoztató** URL-je és az adattörlési útmutató URL-je, utána az alkalmazás **Live** módba kapcsolható (addig csak a fejlesztők léphetnek be). Az `email` és `public_profile` engedélyhez nem kell App Review.
-4. *App ID* és *App secret* → `config.php`: `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`.
+4. *App ID* és *App secret* → `config.php`.
 
 Biztonság: egyszer használható, munkamenethez kötött `state`, 10 perces korlát, Google-nél PKCE és `nonce`, a Google-azonosító kibocsátójának és címzettjének ellenőrzése, Facebooknál `appsecret_proof`. A tokeneket a szerver közvetlenül kéri le és nem tárolja; csak a szolgáltatói azonosító kerül az adatbázisba (`user_identities` tábla, a teljes mentésben benne van).
 

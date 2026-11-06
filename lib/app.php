@@ -55,8 +55,30 @@ final class App
     public static string $lang = 'hu';     // UI language of the current request (X-Lang header)
     private static array $cache = [];
 
-    /** Connects and migrates. Returns null on success or an error array for the setup page. */
+    /**
+     * Connects and migrates. Returns null on success or an error array for the setup page.
+     * The details (database error text, user / host names, the names found in config.php, its path)
+     * only go to the server's error_log – a visitor sees a general message, except on localhost.
+     */
     public static function init(string $root): ?array
+    {
+        $err = self::connect($root);
+        if (!$err) return null;
+        error_log('[familytree] setup: ' . $err['error'] . (!empty($err['seen']) ? ' | config names: ' . implode(', ', $err['seen']) : '') . ' | ' . ($err['source'] ?? ''));
+        if (self::isLocal()) return $err;
+        return ['error' => !empty($err['migrate'])
+            ? 'Az adatbázis-táblák létrehozása nem sikerült. A részletek a szerver hibanaplójában (error_log) vannak.'
+            : 'Az adatbázis még nem érhető el. A részletek a szerver hibanaplójában (error_log) vannak.', 'migrate' => !empty($err['migrate'])];
+    }
+
+    /** Request from the same machine (or the command line): setup details may be shown. */
+    public static function isLocal(): bool
+    {
+        if (PHP_SAPI === 'cli') return true;
+        return in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
+    }
+
+    private static function connect(string $root): ?array
     {
         self::$root = $root;
         self::$cfg = ft_load_config($root);

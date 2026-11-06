@@ -390,21 +390,85 @@ export async function viewSurname(name) {
 }
 
 // ======================================================================= STORIES
-export async function viewStories() {
+// the Stories page lists the stories plus – the same texts, not copies – the longer biographies and the
+// comments marked as memories; kinds: story | bio | fbio | comment
+const STORY_KINDS = { story: 'Sztorik', bio: 'Életrajzok', comment: 'Emlékek a hozzászólásokból' };
+const storyHref = s => '#/story/' + (s.kind === 'bio' ? 'bio-' : s.kind === 'fbio' ? 'fam-' : s.kind === 'comment' ? 'c-' : '') + s.id;
+function storyMeta(s) {
+  const who = [...s.person_ids.slice(0, 3).map(id => personName(P(id), { short: true })), ...(s.family_ids || []).slice(0, 2).map(fid => F(fid) ? familyLabel(F(fid)) : '')].filter(Boolean).join(', ');
+  if (s.kind === 'bio') return [T('Életrajz'), s.person_ids.length ? null : who].filter(Boolean).join(' · ');
+  if (s.kind === 'fbio') return T('A családról');
+  if (s.kind === 'comment') return [T('Emlék') + (s.author ? ' – ' + s.author : ''), who && who !== s.title ? who : null].filter(Boolean).join(' · ');
+  return [s.date, who].filter(Boolean).join(' · ');
+}
+export async function viewStories(qs) {
   setTitle(T('Történetek'));
   await loadTree();
   const list = await api('stories', null, { query: { lang: S.lang } });
+  const kindOf = s => (s.kind === 'fbio' ? 'bio' : s.kind || 'story');
+  const counts = {}; list.forEach(s => { counts[kindOf(s)] = (counts[kindOf(s)] || 0) + 1; });
+  let cur = qs?.get?.('k') || 'all';
+  if (cur !== 'all' && !counts[cur]) cur = 'all';
+  const grid = h('div', { class: 'story-list' });
+  const card = s => h('a', { class: 'story-card' + (s.kind && s.kind !== 'story' ? ' sc-' + kindOf(s) : ''), href: storyHref(s) },
+    h('div', { class: 'cover' + (s.cover?.portrait ? ' portrait-cover' : '') }, s.cover ? h('img', { src: s.cover.thumb, alt: '' }) : h('span', { class: 'q' }, '„')),
+    h('h3', null, s.title), h('div', { class: 'meta' }, storyMeta(s)),
+    h('p', null, s.excerpt));
+  const tabs = Object.keys(counts).length > 1 ? h('div', { class: 'tabs story-tabs' },
+    [['all', T('Mind'), list.length], ...Object.entries(STORY_KINDS).filter(([k]) => counts[k]).map(([k, l]) => [k, T(l), counts[k]])].map(([k, l, n]) =>
+      h('button', { type: 'button', class: k === cur ? 'on' : '', 'data-k': k, onclick: () => { cur = k; draw(); history.replaceState(null, '', '#/stories' + (k === 'all' ? '' : '?k=' + k)); } }, l, h('span', { class: 'c-count' }, n)))) : null;
+  const draw = () => {
+    grid.replaceChildren(...list.filter(s => cur === 'all' || kindOf(s) === cur).map(card));
+    tabs?.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === cur));
+  };
+  draw();
   return h('div', null,
     h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Családi történetek')), h('p', null, T('Anekdoták, emlékek, levelek – amit a dátumok nem mesélnek el.'))),
       S.user ? h('button', { class: 'btn btn-primary', onclick: () => editStory() }, icon('plus'), T('Új sztori')) : null),
-    list.length ? h('div', { class: 'story-list' }, list.map(s => h('a', { class: 'story-card', href: '#/story/' + s.id },
-      h('div', { class: 'cover' + (s.cover?.portrait ? ' portrait-cover' : '') }, s.cover ? h('img', { src: s.cover.thumb, alt: '' }) : h('span', { class: 'q' }, '„')),
-      h('h3', null, s.title), h('div', { class: 'meta' }, [s.date, s.person_ids.slice(0, 3).map(id => personName(P(id), { short: true })).join(', ')].filter(Boolean).join(' · ')),
-      h('p', null, s.excerpt))))
+    list.length ? [tabs, grid]
       : h('div', { class: 'empty' }, h('p', null, T('Még egy sztori sincs. Az első lehet egy nagymama-recept, egy háborús levél vagy egy nyaralás.')), S.user ? h('button', { class: 'btn btn-primary', onclick: () => editStory() }, T('Az első sztori megírása')) : null));
+}
+/** A biography or a comment-memory, read like a story. The text lives on the person/family page or in the comment. */
+async function viewStoryExtra(kind, id) {
+  const s = await api('story.extra', null, { query: { kind, id } });
+  setTitle(s.title);
+  const back = h('p', null, h('a', { href: '#/stories' }, T('← Minden történet')));
+  const people = s.person_ids.length || s.family_ids.length ? h('section', { class: 'section' }, h('h2', null, T('Szereplők')),
+    h('div', { class: 'plist' }, s.person_ids.map(x => chip(x)), s.family_ids.map(fid => h('a', { class: 'pchip', href: '#/family/' + fid }, familyLabel(F(fid)))))) : null;
+  if (kind !== 'comment') {
+    const home = kind === 'bio' ? '#/person/' + id : '#/family/' + id;
+    return h('article', { class: 'story-page' }, back,
+      h('h1', null, s.title),
+      h('div', { class: 'meta' }, kind === 'bio' ? T('Életrajz – a személy lapjáról') : T('A családról – a család lapjáról')),
+      S.lang !== 'hu' && (S.boot.langs || []).length > 1 ? h('p', { class: 'tr-note' }, T('Az életrajzok eredeti (magyar) nyelven látszanak.')) : null,
+      s.cover ? h('img', { class: 'story-portrait', src: s.cover.file, alt: '' }) : null,
+      h('div', { class: 'bio' }, s.body),
+      kind === 'fbio' ? people : null,
+      h('div', { class: 'row', style: 'margin-top:20px' },
+        h('a', { class: 'btn', href: home }, icon(kind === 'bio' ? 'user' : 'family'), kind === 'bio' ? T('A személy lapja') : T('A család lapja')),
+        S.user ? h('span', { class: 'hint' }, kind === 'bio' ? T('Az életrajzot a személy lapján, az Adatok szerkesztésével lehet javítani.') : T('A szöveget a család lapján lehet javítani.')) : null));
+  }
+  const tgtHref = { person: '#/person/', family: '#/family/', story: '#/story/' }[s.entity];
+  const tgt = tgtHref ? h('a', { href: tgtHref + s.entity_id }, s.title) : h('span', null, s.title);
+  return h('article', { class: 'story-page' }, back,
+    h('h1', null, s.title),
+    h('div', { class: 'meta' }, T('Emlék – lejegyezte: '), h('b', null, s.author || T('ismeretlen')), ' · ', fmtWhen(s.created)),
+    s.photo ? h('div', { style: 'margin:14px 0' }, photoGrid([s.photo])) : s.cover?.portrait ? h('img', { class: 'story-portrait', src: s.cover.file, alt: '' }) : null,
+    h('div', { class: 'bio' }, s.body),
+    s.replies.length ? h('section', { class: 'section comments' }, h('h2', null, T('Válaszok')),
+      s.replies.map(r => h('div', { class: 'c-item' }, h('div', { class: 'c-meta' }, h('b', null, r.author || T('ismeretlen')), h('span', null, fmtWhen(r.created))), h('div', { class: 'c-body' }, r.body)))) : null,
+    h('p', { class: 'hint', style: 'margin-top:18px' }, T('Hozzászólásként született itt: '), tgt, T('. Válaszolni ott lehet.')),
+    people);
+}
+function fmtWhen(ts) {
+  if (!ts) return '';
+  const d = new Date(String(ts).replace(' ', 'T'));
+  return isNaN(d) ? ts : d.toLocaleDateString({ hu: 'hu-HU', en: 'en-GB', de: 'de-DE' }[S.lang] || 'hu-HU', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 export async function viewStory(id) {
   await loadTree();
+  const xm = /^(bio|fam|c)-(\d+)$/.exec(String(id));
+  if (xm) return viewStoryExtra({ bio: 'bio', fam: 'fbio', c: 'comment' }[xm[1]], +xm[2]);
   const s = await api('story', null, { query: { id, lang: S.lang } });
   setTitle(s.title);
   let showOrig = false;

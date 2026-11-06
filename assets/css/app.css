@@ -665,3 +665,14 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .kid-rows .lbl { font-weight: 600; font-size: .92rem; }
 .kid-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 8px; align-items: center; }
 @media (max-width: 640px) { .kid-row { grid-template-columns: 1fr; } }
+
+/* Stories page: kind filter, biography / memory cards */
+.story-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
+.story-tabs button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .92rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.story-tabs button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.story-tabs .c-count { font-size: .78rem; opacity: .75; }
+.story-card.sc-bio .meta::before, .story-card.sc-comment .meta::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--accent); }
+.story-card.sc-comment .meta::before { background: var(--muted); }
+.c-story-check { margin: 6px 0 2px; font-size: .9rem; }
+.c-story-check svg, .c-story-badge svg { width: 15px; height: 15px; vertical-align: -3px; }
+.c-story-badge { display: inline-flex; align-items: center; gap: 3px; font-size: .78rem; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); text-decoration: none; }

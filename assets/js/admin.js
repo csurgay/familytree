@@ -410,7 +410,6 @@ async function importTab() {
   const file = h('input', { type: 'file', accept: '.ged,text/plain' });
   const zipIn = h('input', { type: 'file', accept: '.zip,application/zip' });
   const zipOut = h('div', { style: 'margin-top:10px' });
-  const minIn = h('input', { type: 'number', min: 1, max: 5000, value: S.settings.notes_story_min || 80, style: 'width:90px;display:inline-block' });
   const forceIn = h('input', { type: 'checkbox' });
   const mode = h('select', null, h('option', { value: 'add' }, T('Hozzáadás – a már meglévő GEDCOM-azonosítókat kihagyja')), h('option', { value: 'replace' }, T('Csere – a teljes családfát lecseréli')));
   const run = async source => {
@@ -429,15 +428,8 @@ async function importTab() {
       h('div', { class: 'row' }, file, h('button', { class: 'btn', onclick: () => run('upload') }, T('Feltöltött fájl importálása'))),
       h('p', { class: 'hint', style: 'margin-top:12px' }, T('Vagy a repo gyökerében lévő .ged fájl (pl. csurgay.ged):')),
       h('button', { class: 'btn', onclick: () => run('repo') }, T('Repo-beli GEDCOM importálása'))),
-    h('section', { class: 'section panel' }, h('h2', null, T('Életrajzok átvétele sztorinak')),
-      h('p', null, T('A személyekhez írt hosszabb életrajzi jegyzetekből (GEDCOM NOTE) külön sztori lesz a személy nevével és életéveivel, hozzá kötve. Az életrajz a személy lapján is megmarad; ami már átkerült, azt nem hozza létre újra.')),
-      h('div', { class: 'row' }, h('label', null, T('Legalább '), minIn, T(' karakteres jegyzetekből ')), h('button', { class: 'btn btn-primary', onclick: async e => {
-        const b = e.currentTarget; b.disabled = true;
-        try { const r = await api('admin.notes2stories', { min: +minIn.value }); toast(T("{0} új sztori, {1} már megvolt, {2} jegyzet rövidebb a határnál.", r.created, r.skipped, r.short)); } catch (er) { fail(er); }
-        b.disabled = false;
-      } }, T('Sztorik létrehozása')))),
     h('section', { class: 'section panel' }, h('h2', null, T('Sztorik fordítása')),
-      h('p', null, S.boot.translator ? T("Minden sztorit lefordít a bekapcsolt nyelvekre ({0}) a DeepL-lel. A már lefordított és azóta nem változott szövegeket nem küldi el újra.", (S.boot.langs || []).map(l => l.name).join(', ')) : T('A fordításhoz DeepL kulcs kell a config.php-be: \'deepl_key\' => \'…\'. Most nincs beállítva.')),
+      h('p', null, S.boot.translator ? T("Minden sztorit lefordít a bekapcsolt nyelvekre ({0}) a DeepL-lel. A már lefordított és azóta nem változott szövegeket nem küldi el újra.", (S.boot.langs || []).map(l => l.name).join(', ')) : T('A fordításhoz DeepL kulcs kell a config.php-be. Most nincs beállítva.')),
       h('div', { class: 'row' }, h('label', { class: 'check', style: 'margin:0' }, forceIn, h('span', null, T('Mindent újrafordít'))), h('button', { class: 'btn btn-primary', disabled: !S.boot.translator, onclick: async e => {
         const b = e.currentTarget; b.disabled = true; let tot = 0;
         try {

@@ -2,9 +2,7 @@
 /**
  * Log in with Google or Facebook ("Belépés Google-fiókkal").
  *
- * The keys live in config.php only (never in the database or the browser):
- *   define('GOOGLE_CLIENT_ID', '…apps.googleusercontent.com');  define('GOOGLE_CLIENT_SECRET', '…');
- *   define('FACEBOOK_APP_ID', '…');                              define('FACEBOOK_APP_SECRET', '…');
+ * The keys live in config.php only (never in the database or the browser).
  * Redirect URI to register at both: <site>/oauth.php
  *
  * Rules

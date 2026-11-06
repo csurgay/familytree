@@ -1,7 +1,7 @@
 <?php
 /**
  * Story content helpers:
- *  - person biographies (GEDCOM notes) → stories
+ *  - the Stories feed: stories + longer biographies + comments marked as memories (no copies)
  *  - machine translation of stories with DeepL (hu / en / de)
  */
 
@@ -20,35 +20,161 @@ function ft_lang($x): string
 }
 
 // ------------------------------------------------------------------ biographies → stories
-/** Creates one story per person whose note is at least $minLen characters. Re-running skips what exists. */
-function ft_notes_to_stories(int $minLen = 80): array
+/** "1894–1960", "sz. 1936", "1864–?" for a graph person. */
+function ft_life_years(?array $gp): string
 {
-    $db = App::$db;
-    $g = ft_graph();
-    $have = array_flip(array_filter($db->col("SELECT source FROM {stories} WHERE source LIKE 'note:%'")));
-    $st = ['created' => 0, 'skipped' => 0, 'short' => 0];
-    foreach ($db->all('SELECT id, xref, given, surname, title, suffix, notes FROM {persons} WHERE notes IS NOT NULL ORDER BY id') as $p) {
-        $notes = trim((string)$p['notes']);
-        if (mb_strlen($notes) < $minLen) { $st['short']++; continue; }
-        $key = 'note:' . ($p['xref'] ?: 'p' . $p['id']);
-        if (isset($have[$key])) { $st['skipped']++; continue; }
-        $gp = $g['P'][(int)$p['id']] ?? null;
-        $years = '';
-        if ($gp) {
-            $b = $gp['by'] ? (string)$gp['by'] : ($gp['deceased'] ? '?' : '');
-            $years = $gp['dy'] ? "{$b}–{$gp['dy']}" : ($b ? ($gp['deceased'] ? "{$b}–?" : "sz. {$b}") : '');
-        }
-        $title = ft_name($p) . ($years ? " ($years)" : '');
-        $now = ft_now();
-        $sid = $db->insert('stories', ['title' => mb_substr($title, 0, 255), 'body' => $notes,
-            'date_raw' => $gp['bdate'] ?? null, 'y' => $gp['by'] ?? null, 'status' => 'ok', 'source' => $key, 'lang' => 'hu',
-            'created_by' => null, 'created' => $now, 'updated' => $now]);
-        $db->insert('story_links', ['story_id' => $sid, 'person_id' => (int)$p['id']]);
-        $have[$key] = true;
-        $st['created']++;
+    if (!$gp) return '';
+    $b = $gp['by'] ? (string)$gp['by'] : ($gp['deceased'] ? '?' : '');
+    return $gp['dy'] ? "{$b}–{$gp['dy']}" : ($b ? ($gp['deceased'] ? "{$b}–?" : "sz. {$b}") : '');
+}
+
+function ft_excerpt(string $t, int $n = 260): string
+{
+    return mb_substr(trim(preg_replace('/\s+/u', ' ', preg_replace('/[#*_>\[\]]/u', '', $t))), 0, $n);
+}
+
+/** Portrait thumb/file of a person (null when hidden or missing). */
+function ft_portrait(?int $pid): ?array
+{
+    if (!$pid) return null;
+    if (ft_mask_living() && ft_is_living(ft_graph(), $pid)) return null;
+    $ph = App::$db->row("SELECT p.thumb, p.file FROM {persons} x JOIN {photos} p ON p.id = x.photo_id WHERE x.id = ? AND p.status = 'ok'", [$pid]);
+    return $ph ? $ph + ['portrait' => true] : null;
+}
+
+function ft_family_title(array $g, int $fid): string
+{
+    $f = $g['F'][$fid] ?? null;
+    if (!$f) return '';
+    $n = [];
+    foreach (['husband_id', 'wife_id'] as $k) if ($f[$k] && isset($g['P'][$f[$k]])) $n[] = ft_name($g['P'][$f[$k]]);
+    return implode(' és ', $n);
+}
+
+/**
+ * What a comment is about: label, year (for ordering), cover, the people/families it concerns.
+ * Used for comments marked as a story (memory) – they show up among the stories too.
+ */
+function ft_comment_about(array $c): array
+{
+    $g = ft_graph(); $id = (int)$c['entity_id'];
+    $o = ['label' => '', 'y' => null, 'cover' => null, 'person_ids' => [], 'family_ids' => [], 'photo' => null];
+    switch ($c['entity']) {
+        case 'person':
+            $gp = $g['P'][$id] ?? null;
+            if ($gp) { $o['label'] = ft_name($gp); $o['y'] = $gp['by']; $o['person_ids'] = [$id]; $o['cover'] = ft_portrait($id); }
+            break;
+        case 'family':
+            $f = $g['F'][$id] ?? null;
+            if ($f) { $o['label'] = ft_family_title($g, $id); $o['y'] = $f['my']; $o['family_ids'] = [$id]; $o['cover'] = ft_portrait($f['husband_id'] ?: $f['wife_id']); }
+            break;
+        case 'story':
+            $st = App::$db->row('SELECT * FROM {stories} WHERE id = ?', [$id]);
+            if ($st) { $sj = ft_story_json($st); $o['label'] = $st['title']; $o['y'] = ft_int($st['y']); $o['person_ids'] = $sj['person_ids']; $o['family_ids'] = $sj['family_ids']; $o['cover'] = $sj['cover']; }
+            break;
+        case 'photo':
+            $ph = App::$db->row("SELECT * FROM {photos} WHERE id = ? AND status = 'ok'", [$id]);
+            if ($ph) {
+                $j = ft_photo_json($ph);
+                $o['label'] = $ph['title'] ?: 'fotó'; $o['y'] = ft_int($ph['y'] ?? null);
+                $o['person_ids'] = array_values(array_filter(array_map(fn($l) => $l['person_id'], $j['links'] ?? [])));
+                $o['family_ids'] = array_values(array_filter(array_map(fn($l) => $l['family_id'], $j['links'] ?? [])));
+                $o['cover'] = ['thumb' => $ph['thumb'], 'file' => $ph['file']];
+                $o['photo'] = ft_photo_visible($j, $g) ? $j : null;
+                if (!$o['photo']) $o['cover'] = null;
+            }
+            break;
     }
-    if ($st['created']) App::audit('notes2stories', 'story', null, $st);
-    return $st;
+    return $o;
+}
+
+/**
+ * The Stories page: the stories themselves, plus – without copying them – the longer biographies of
+ * persons and families (setting bios_in_stories, length ≥ notes_story_min) and the comments marked as a
+ * story/memory. Every item has a kind: story | bio | fbio | comment.
+ */
+function ft_story_feed(string $lang): array
+{
+    $db = App::$db; $g = ft_graph();
+    $rows = $db->all('SELECT * FROM {stories} ORDER BY y IS NULL, y DESC, created DESC');
+    $out = array_map(fn($x) => $x + ['kind' => 'story'], ft_story_list($rows, $lang));
+    // persons that still have an old copy of their biography as a story (earlier imports): no second entry
+    $copied = [];
+    foreach ($db->all("SELECT l.person_id FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE s.source LIKE 'note:%'") as $r) $copied[(int)$r['person_id']] = true;
+    if (App::$s['bios_in_stories'] ?? true) {
+        $min = max(1, (int)(App::$s['notes_story_min'] ?? 80));
+        foreach ($db->all('SELECT id, notes FROM {persons} WHERE notes IS NOT NULL') as $p) {
+            $pid = (int)$p['id']; $notes = trim((string)$p['notes']);
+            if (mb_strlen($notes) < $min || isset($copied[$pid]) || !isset($g['P'][$pid])) continue;
+            $it = ft_bio_item('bio', $pid, $notes, $g);
+            if (ft_story_visible($it)) $out[] = $it;
+        }
+        foreach ($db->all('SELECT id, notes FROM {families} WHERE notes IS NOT NULL') as $f) {
+            $fid = (int)$f['id']; $notes = trim((string)$f['notes']);
+            if (mb_strlen($notes) < $min || !isset($g['F'][$fid])) continue;
+            $it = ft_bio_item('fbio', $fid, $notes, $g);
+            if (ft_story_visible($it)) $out[] = $it;
+        }
+    }
+    if (ft_comments_on() && App::loggedIn()) {
+        $rows = $db->all("SELECT * FROM {comments} WHERE story = 1 AND status = 'ok' ORDER BY created DESC");
+        $names = ft_user_names(array_column($rows, 'user_id'));
+        foreach ($rows as $c) $out[] = ft_comment_story_item($c, $names);
+    }
+    // by year, newest first; undated ones at the end
+    usort($out, fn($a, $b) => [($a['y'] ?? null) === null, -($a['y'] ?? 0)] <=> [($b['y'] ?? null) === null, -($b['y'] ?? 0)]);
+    return $out;
+}
+
+function ft_bio_item(string $kind, int $id, string $notes, array $g): array
+{
+    if ($kind === 'bio') {
+        $gp = $g['P'][$id]; $yrs = ft_life_years($gp);
+        return ['kind' => 'bio', 'id' => $id, 'title' => ft_name($gp) . ($yrs ? " ($yrs)" : ''), 'y' => $gp['by'], 'date' => null,
+            'excerpt' => ft_excerpt($notes), 'cover' => ft_portrait($id), 'person_ids' => [$id], 'family_ids' => []];
+    }
+    $f = $g['F'][$id];
+    return ['kind' => 'fbio', 'id' => $id, 'title' => ft_family_title($g, $id), 'y' => $f['my'], 'date' => null,
+        'excerpt' => ft_excerpt($notes), 'cover' => ft_portrait($f['husband_id'] ?: $f['wife_id']), 'person_ids' => [], 'family_ids' => [$id]];
+}
+
+function ft_comment_story_item(array $c, array $names): array
+{
+    $a = ft_comment_about($c);
+    return ['kind' => 'comment', 'id' => (int)$c['id'], 'title' => $a['label'], 'y' => $a['y'], 'date' => null,
+        'excerpt' => ft_excerpt((string)$c['body']), 'cover' => $a['cover'], 'person_ids' => $a['person_ids'], 'family_ids' => $a['family_ids'],
+        'author' => $names[(int)$c['user_id']] ?? null, 'created' => $c['created'], 'entity' => $c['entity'], 'entity_id' => (int)$c['entity_id']];
+}
+
+/** One biography or comment-memory, read like a story (kind: bio | fbio | comment). */
+function ft_story_extra(string $kind, int $id): array
+{
+    $db = App::$db; $g = ft_graph();
+    if ($kind === 'bio' || $kind === 'fbio') {
+        $table = $kind === 'bio' ? 'persons' : 'families';
+        $notes = trim((string)$db->val("SELECT notes FROM {{$table}} WHERE id = ?", [$id]));
+        if ($notes === '' || ($kind === 'bio' ? !isset($g['P'][$id]) : !isset($g['F'][$id]))) throw ft_err('Nincs ilyen életrajz.', 404);
+        $o = ft_bio_item($kind, $id, $notes, $g);
+        if (!ft_story_visible($o)) throw ft_err('Ez az életrajz élő családtagról szól, ezért csak bejelentkezve olvasható.', 401);
+        $o['body'] = $notes;
+        return $o;
+    }
+    if ($kind === 'comment') {
+        ft_comments_guard();
+        $c = $db->row("SELECT * FROM {comments} WHERE id = ? AND status = 'ok'", [$id]);
+        if (!$c) throw ft_err('Nincs ilyen hozzászólás.', 404);
+        $names = ft_user_names([$c['user_id']]);
+        $o = ft_comment_story_item($c, $names);
+        $o['body'] = $c['body'];
+        $o['story'] = (bool)$c['story'];
+        $a = ft_comment_about($c);
+        $o['photo'] = $a['photo'];
+        $rows = $db->all("SELECT * FROM {comments} WHERE parent_id = ? AND status = 'ok' ORDER BY created, id", [$id]);
+        $rn = ft_user_names(array_column($rows, 'user_id'));
+        $o['replies'] = array_map(fn($r) => ft_comment_json($r, $rn), $rows);
+        return $o;
+    }
+    throw ft_err('Ismeretlen elem.', 400);
 }
 
 // ------------------------------------------------------------------ translation
@@ -72,7 +198,7 @@ function ft_translate(array $texts, string $target, ?string $source = null): arr
 {
     if (isset($GLOBALS['ft_translate_mock'])) return ($GLOBALS['ft_translate_mock'])($texts, $target, $source);
     $key = ft_deepl_key();
-    if (!$key) throw ft_err('Nincs DeepL kulcs (config.php: deepl_key).', 500);
+    if (!$key) throw ft_err('Nincs DeepL kulcs a config.php-ben.', 500);
     $url = (str_ends_with($key, ':fx') ? 'https://api-free.deepl.com' : 'https://api.deepl.com') . '/v2/translate';
     $body = ['text' => array_values($texts), 'target_lang' => FT_DEEPL_TARGET[$target] ?? strtoupper($target), 'preserve_formatting' => true];
     if ($source) $body['source_lang'] = strtoupper($source);

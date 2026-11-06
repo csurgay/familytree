@@ -14,18 +14,23 @@ function when(ts) {
 }
 
 /** A text box with a send button; resolves the text through onSend (which may throw). */
-function composer({ placeholder, label, value = '', onSend, onCancel }) {
+function composer({ placeholder, label, value = '', onSend, onCancel, storyBox = false }) {
   const ta = h('textarea', { rows: 3, maxlength: 5000, placeholder }, value);
+  // a memory / anecdote (not a data fix): it is listed on the Stories page too
+  const sb = storyBox ? h('input', { type: 'checkbox' }) : null;
   const send = h('button', { class: 'btn btn-sm btn-primary', type: 'button' }, icon('chat'), label);
   const go = async () => {
     const v = ta.value.trim();
     if (!v) { ta.focus(); return; }
     send.disabled = true;
-    try { await onSend(v); ta.value = ''; } catch (e) { fail(e); } finally { send.disabled = false; }
+    try { await onSend(v, !!sb?.checked); ta.value = ''; if (sb) sb.checked = false; } catch (e) { fail(e); } finally { send.disabled = false; }
   };
   send.addEventListener('click', go);
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); go(); } });
-  return h('div', { class: 'c-compose' }, ta, h('div', { class: 'row' }, send,
+  return h('div', { class: 'c-compose' }, ta,
+    sb ? h('label', { class: 'check c-story-check', title: T('Nem adat-pontosítás, hanem egy emlék, anekdota, történet: a Történetek menüpontban is megjelenik (ugyanez a hozzászólás, nem másolat).') },
+      sb, h('span', null, icon('book'), ' ', T('Ez egy történet, emlék – a Történetek között is jelenjen meg'))) : null,
+    h('div', { class: 'row' }, send,
     onCancel ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: onCancel }, T('Mégse')) : null,
     h('span', { class: 'hint' }, T('Ctrl+Enter: küldés'))));
 }
@@ -56,11 +61,15 @@ export function commentsBox(entity, id, { compact = false } = {}) {
           onSend: async v => { await api('comment.edit', { id: c.id, body: v }); editing = null; await load(); } })
       : h('div', { class: 'c-body' }, c.body);
     return h('div', { class: 'c-item', id: 'c' + c.id },
-      h('div', { class: 'c-meta' }, h('b', null, c.author || T('ismeretlen')), h('span', null, when(c.created)), c.edited ? h('span', null, T('(javítva)')) : null),
+      h('div', { class: 'c-meta' }, h('b', null, c.author || T('ismeretlen')), h('span', null, when(c.created)), c.edited ? h('span', null, T('(javítva)')) : null,
+        c.story ? h('a', { class: 'c-story-badge', href: '#/story/c-' + c.id, title: T('A Történetek között is megjelenik') }, icon('book'), T('Történet')) : null),
       body,
       editing === c.id ? null : h('div', { class: 'c-act' },
         h('button', { class: 'linkbtn', onclick: () => { replyTo = c.parent_id || c.id; editing = null; draw(); } }, T('Válasz')),
         c.mine ? h('button', { class: 'linkbtn', onclick: () => { editing = c.id; replyTo = null; draw(); } }, T('Javítás')) : null,
+        c.can_story ? h('button', { class: 'linkbtn', title: T('Emlék, anekdota, történet: a Történetek menüpontban is megjelenik (ugyanez a hozzászólás, nem másolat).'), onclick: async () => {
+          try { await api('comment.story', { id: c.id, on: !c.story }); toast(c.story ? T('Már nem látszik a Történetek között.') : T('Megjelenik a Történetek között is.')); await load(); } catch (e) { fail(e); }
+        } }, c.story ? T('Kivétel a Történetek közül') : T('Történetek közé')) : null,
         c.can_delete ? h('button', { class: 'linkbtn', onclick: async () => {
           if (!await confirmBox(T('Hozzászólás törlése'), T('Biztosan törlöd ezt a hozzászólást?'), T('Törlés'))) return;
           try { await api('comment.delete', { id: c.id }); await load(); } catch (e) { fail(e); }
@@ -78,7 +87,8 @@ export function commentsBox(entity, id, { compact = false } = {}) {
     if (replyTo) list.querySelector('.c-replies textarea')?.focus();
   };
   box.append(list, composer({ placeholder: T('Pontosítás, kérdés, emlék, érdekesség…'), label: T('Hozzászólás küldése'),
-    onSend: async v => { await api('comment.add', { entity, entity_id: id, body: v }); toast(T('Hozzászólás elküldve.')); await load(); } }));
+    storyBox: true,
+    onSend: async (v, story) => { await api('comment.add', { entity, entity_id: id, body: v, story }); toast(story ? T('Hozzászólás elküldve – a Történetek között is megjelenik.') : T('Hozzászólás elküldve.')); await load(); } }));
   load();
   return box;
 }

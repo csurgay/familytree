@@ -14,20 +14,13 @@ if ($err) {
 <body class="setup"><main class="setup-card">
 <?php if (!empty($err['migrate'])): ?>
 <h1>Nem sikerült létrehozni a táblákat</h1>
-<p>A kapcsolat rendben van, de a MySQL ezt válaszolta:</p>
-<pre><?= $e($err['error']) ?></pre>
+<p><?= $e($err['error']) ?></p>
 <p>Ellenőrizd, hogy az adatbázis-felhasználónak van-e <b>CREATE</b> és <b>ALTER</b> joga ehhez az adatbázishoz (cPanelben: MySQL adatbázisok → felhasználó hozzáadása → „Minden jogosultság”). Utána frissítsd az oldalt: a már elkészült táblákat nem hozza létre újra.</p>
 </main></body></html><?php exit; endif; ?>
 <h1>Az adatbázis még nem érhető el</h1>
 <p><?= $e($err['error']) ?></p>
 <?php if (!empty($err['seen'])): ?><p>A config.php-ben ezeket a neveket láttam: <code><?= $e(implode(', ', $err['seen'])) ?></code></p><?php endif; ?>
-<p>A <code>config.php</code> így nézzen ki (bármelyik szokásos írásmód működik, a <code>config.sample.php</code>-ben van minta):</p>
-<pre>&lt;?php
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'csurgay_familytree');
-define('DB_USER', 'felhasznalo');
-define('DB_PASS', 'jelszo');
-define('DB_PREFIX', 'ft_');   // nem kötelező</pre>
+<p>Ellenőrizd az adatbázis-beállításokat a <code>config.php</code>-ben.</p>
 </main></body></html><?php
     exit;
 }

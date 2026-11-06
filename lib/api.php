@@ -130,7 +130,7 @@ function ft_story_json(array $s, bool $full = false): array
 {
     $body = (string)$s['body'];
     $o = ['id' => (int)$s['id'], 'title' => $s['title'], 'raw' => $s['date_raw'], 'date' => ft_format_date($s['date_raw']), 'y' => ft_int($s['y']),
-        'excerpt' => mb_substr(trim(preg_replace('/\s+/u', ' ', preg_replace('/[#*_>\[\]]/u', '', $body))), 0, 260),
+        'excerpt' => ft_excerpt($body),
         'created' => $s['created'], 'updated' => $s['updated'], 'author_id' => ft_int($s['created_by']),
         'imported' => str_starts_with((string)($s['source'] ?? ''), 'note:'),
         'author' => $s['created_by'] ? App::$db->val('SELECT name FROM {users} WHERE id = ?', [(int)$s['created_by']]) : null];
@@ -237,7 +237,6 @@ function ft_handlers(): array
                     App::flush();
                     $hp = ft_pick_home_person(ft_graph());
                     if ($hp) ft_setting_set($db, 'home_person', $hp);
-                    if (App::$s['notes_to_stories']) $stats['stories'] = ft_notes_to_stories((int)App::$s['notes_story_min'])['created'];
                 }
             }
             if (!empty($in['title'])) ft_setting_set($db, 'site_title', ft_str($in['title']));
@@ -500,6 +499,8 @@ function ft_handlers(): array
         'comment.add' => fn($in) => ft_comment_add($in),
         'comment.edit' => fn($in) => ft_comment_edit($in),
         'comment.delete' => fn($in) => ft_comment_delete($in),
+        'comment.story' => fn($in) => ft_comment_story($in),
+        'story.extra' => fn($in) => ft_story_extra((string)($in['kind'] ?? ''), (int)($in['id'] ?? 0)),
 
         'events' => function ($in) {
             $g = ft_graph();
@@ -534,8 +535,7 @@ function ft_handlers(): array
 
         'stories' => function ($in) {
             $lang = ft_lang($in['lang'] ?? 'hu');
-            $rows = App::$db->all('SELECT * FROM {stories} ORDER BY y IS NULL, y DESC, created DESC');
-            return ft_story_list($rows, $lang);
+            return ft_story_feed($lang);
         },
         'story' => function ($in) {
             $s = ft_story_row((int)($in['id'] ?? 0));
@@ -769,17 +769,12 @@ function ft_handlers(): array
             $stats = ft_gedcom_import(App::$db, $recs, $mode, App::uid());
             App::flush();
             if ($mode === 'replace' || !(int)App::$s['home_person']) { $hp = ft_pick_home_person(ft_graph()); if ($hp) ft_setting_set(App::$db, 'home_person', $hp); }
-            if (App::$s['notes_to_stories']) $stats['stories'] = ft_notes_to_stories((int)App::$s['notes_story_min'])['created'];
             App::audit('gedcom.import', 'app', null, $stats);
             return $stats;
         },
-        'admin.notes2stories' => function ($in) {
-            ft_require_admin();
-            return ft_notes_to_stories(max(1, (int)($in['min'] ?? App::$s['notes_story_min'])));
-        },
         'admin.translate' => function ($in) {
             ft_require_admin();
-            if (!ft_translator_ready()) throw ft_err('A fordításhoz DeepL kulcs kell a config.php-ben (deepl_key), és a szervernek el kell érnie az internetet.');
+            if (!ft_translator_ready()) throw ft_err('A fordításhoz DeepL kulcs kell a config.php-ben, és a szervernek el kell érnie az internetet.');
             @set_time_limit(120);
             $t0 = microtime(true); $done = 0; $calls = 0; $left = 0;
             foreach (App::$db->col('SELECT id FROM {stories} ORDER BY id') as $sid) {
