@@ -549,11 +549,24 @@ export async function viewCharts() {
 }
 
 // ======================================================================= AUTH
+const OAUTH_NAMES = { google: 'Google', facebook: 'Facebook' };
+/** "Belépés Google-fiókkal" / "Facebookkal" buttons; nothing when no provider is set up. */
+function oauthButtons(verb, next = '') {
+  const ps = S.boot.oauth || [];
+  if (!ps.length) return null;
+  return h('div', { class: 'oauth-box' },
+    ps.map(p => h('a', { class: 'btn oauth-btn oauth-' + p, href: 'oauth.php?start=' + p + (next ? '&next=' + encodeURIComponent(next) : '') },
+      h('span', { class: 'oauth-mark', 'aria-hidden': 'true' }, p === 'google' ? 'G' : 'f'), T(verb, OAUTH_NAMES[p]))),
+    h('div', { class: 'oauth-or' }, h('span', null, T('vagy e-mail címmel és jelszóval'))));
+}
 export function viewLogin(qs) {
   setTitle(T('Belépés'));
   const form = h('form', { class: 'auth-card' },
     h('h1', null, T('Belépés')),
     h('p', { class: 'muted' }, S.settings.public_access === 'login' ? T('A családfa csak a család tagjainak látható. Hozzáférést az admintól kérhetsz.') : T('Szerkesztéshez jelentkezz be.')),
+    qs?.get('oauth') === 'pending' ? h('div', { class: 'auth-note' }, T('A regisztrációd jóváhagyásra vár. Amint az admin elfogadja, ugyanezzel a gombbal be tudsz lépni.')) : null,
+    qs?.get('oauth') === 'error' && S.boot.oauthError ? h('div', { class: 'auth-note bad' }, S.boot.oauthError) : null,
+    oauthButtons('Belépés {0}-fiókkal', qs?.get('next') || ''),
     field(T('E-mail cím'), h('input', { type: 'email', name: 'email', autocomplete: 'username', required: true })),
     field(T('Jelszó'), pwInput({ name: 'password', autocomplete: 'current-password', required: true })),
     S.boot.pwReset ? h('a', { class: 'auth-forgot', href: '#/forgot' }, T('Elfelejtetted a jelszavad?')) : null,
@@ -616,12 +629,33 @@ export async function viewReset(token) {
   wrap.append(form);
   return wrap;
 }
-export function viewRegister() {
+function viewRegisterOauth(o) {
+  const form = h('form', { class: 'auth-card' },
+    h('h1', null, T('Regisztráció')),
+    h('p', { class: 'muted' }, T('A {0}-fiókoddal léptél be, de még nincs fiókod a családfán. Írd meg, ki vagy a családban – az admin jóváhagyása után ugyanezzel a gombbal tudsz belépni, jelszó nélkül.', o.providerName)),
+    field(T('A neved'), h('input', { type: 'text', name: 'name', required: true, autocomplete: 'name', value: o.name || '' })),
+    o.email ? h('p', null, T('E-mail cím: '), h('b', null, o.email)) : field(T('E-mail cím'), h('input', { type: 'email', name: 'email', required: true, autocomplete: 'email' }), T('A {0} nem adott e-mail címet; erre kapod az értesítéseket.', o.providerName)),
+    field(T('Ki vagy a családban?'), h('textarea', { name: 'intro', rows: 3, placeholder: T('Pl. Csurgay Péter fia, Bence (2006). Anyám Cholnoky Viktória.') }), T('Ebből tudja az admin, ki vagy a fában.')),
+    h('button', { class: 'btn btn-primary', type: 'submit', style: 'width:100%' }, T('Regisztráció elküldése')));
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const b = form.querySelector('button[type=submit]'); b.disabled = true;
+    try {
+      await api('register.oauth', { ...formData(form), lang: S.lang });
+      S.boot.oauthNew = null;
+      form.replaceChildren(h('h1', null, T('Köszönjük!')), h('p', null, T('A regisztrációdat megkaptuk. Amint az admin jóváhagyja, a {0} gombbal be tudsz lépni.', o.providerName)), h('a', { class: 'btn', href: '#/' }, T('Vissza a kezdőlapra')));
+    } catch (er) { fail(er); b.disabled = false; }
+  });
+  return h('div', { class: 'auth-wrap' }, form);
+}
+export function viewRegister(qs) {
   setTitle(T('Regisztráció'));
   if (!S.boot.allowRegister) return h('div', { class: 'auth-wrap' }, h('div', { class: 'auth-card' }, h('h1', null, T('Regisztráció')), h('p', null, T('A regisztráció jelenleg nincs engedélyezve. Hozzáférést az admintól kérhetsz.'))));
+  if (qs?.get('oauth') && S.boot.oauthNew) return viewRegisterOauth(S.boot.oauthNew);
   const form = h('form', { class: 'auth-card' },
     h('h1', null, T('Regisztráció')),
     h('p', { class: 'muted' }, T('Add meg az adataidat. Az admin jóváhagyása után tudsz belépni; ha a családfa egy ágát te gondozod, ő rendeli hozzád szerkesztésre.')),
+    oauthButtons('Regisztráció {0}-fiókkal'),
     field(T('A neved'), h('input', { type: 'text', name: 'name', required: true, autocomplete: 'name' })),
     field(T('E-mail cím'), h('input', { type: 'email', name: 'email', required: true, autocomplete: 'email' })),
     field(T('Jelszó'), pwInput({ name: 'password', required: true, minlength: 8, autocomplete: 'new-password' }), T('Legalább 8 karakter.')),
@@ -663,16 +697,42 @@ export function viewInstall() {
   });
   return h('div', { class: 'auth-wrap' }, form);
 }
-export async function viewAccount() {
+function loginMethods() {
+  const box = h('div', { class: 'panel', style: 'max-width:420px;margin-top:16px' });
+  const draw = async () => {
+    let m;
+    try { m = await api('oauth.mine'); } catch (e) { box.replaceChildren(h('p', { class: 'hint' }, e.message)); return; }
+    const all = [...new Set([...m.enabled, ...m.linked.map(l => l.provider)])];
+    if (!all.length) { box.remove(); return; }
+    box.replaceChildren(h('h2', null, T('Belépés Google- vagy Facebook-fiókkal')),
+      h('p', { class: 'hint' }, T('Ha összekapcsolod, jelszó nélkül, egy kattintással léphetsz be.')),
+      all.map(p => {
+        const l = m.linked.find(x => x.provider === p);
+        return h('div', { class: 'oauth-row' }, h('span', { class: 'oauth-mark oauth-' + p, 'aria-hidden': 'true' }, p === 'google' ? 'G' : 'f'),
+          h('div', null, h('b', null, OAUTH_NAMES[p] || p), h('div', { class: 'hint' }, l ? T('Kapcsolva') + (l.email ? ' · ' + l.email : '') : T('Nincs kapcsolva'))),
+          l ? h('button', { class: 'btn btn-sm', onclick: async () => {
+                if (!await confirmBox(T('Leválasztás'), T('Leválasztod a {0}-fiókodat? Utána azzal nem tudsz belépni.', OAUTH_NAMES[p]), T('Leválasztás'))) return;
+                try { await api('oauth.unlink', { provider: p }); toast(T('Leválasztva.')); draw(); } catch (e) { fail(e); }
+              } }, T('Leválasztás'))
+            : m.enabled.includes(p) ? h('a', { class: 'btn btn-sm btn-primary', href: 'oauth.php?start=' + p + '&mode=link&csrf=' + encodeURIComponent(S.csrf) }, T('Kapcsolás')) : null);
+      }));
+  };
+  draw();
+  return box;
+}
+export async function viewAccount(qs) {
   if (!S.user) { go('#/login'); return null; }
   setTitle(T('Fiókom'));
   await loadTree();
   const mine = await api('changes.mine');
-  const pw = h('form', { class: 'panel', style: 'max-width:420px' }, h('h2', null, T('Jelszócsere')),
-    field(T('Jelenlegi jelszó'), pwInput({ name: 'old', autocomplete: 'current-password' })),
+  if (qs?.get('linked')) setTimeout(() => toast(T('A {0}-fiókod összekapcsolva. Mostantól azzal is beléphetsz.', OAUTH_NAMES[qs.get('linked')] || qs.get('linked'))), 50);
+  if (qs?.get('oauth') === 'error' && S.boot.oauthError) setTimeout(() => toast(S.boot.oauthError, 'bad'), 50);
+  const hasPw = S.user.hasPassword !== false;
+  const pw = h('form', { class: 'panel', style: 'max-width:420px' }, h('h2', null, hasPw ? T('Jelszócsere') : T('Jelszó beállítása')),
+    hasPw ? field(T('Jelenlegi jelszó'), pwInput({ name: 'old', autocomplete: 'current-password' })) : h('p', { class: 'hint' }, T('Most Google- vagy Facebook-fiókkal lépsz be. Ha jelszót is beállítasz, e-mail címmel is be tudsz lépni.')),
     field(T('Új jelszó'), pwInput({ name: 'new', autocomplete: 'new-password', minlength: 8 })),
-    h('button', { class: 'btn btn-primary', type: 'submit' }, T('Jelszó módosítása')));
-  pw.addEventListener('submit', async e => { e.preventDefault(); try { await api('password', formData(pw)); toast(T('Jelszó módosítva.')); pw.reset(); } catch (er) { fail(er); } });
+    h('button', { class: 'btn btn-primary', type: 'submit' }, hasPw ? T('Jelszó módosítása') : T('Jelszó beállítása')));
+  pw.addEventListener('submit', async e => { e.preventDefault(); try { await api('password', formData(pw)); toast(hasPw ? T('Jelszó módosítva.') : T('Jelszó beállítva.')); pw.reset(); if (!hasPw) { S.user.hasPassword = true; render(); } } catch (er) { fail(er); } });
   const roleTxt = { admin: T('Admin – mindent szerkeszthetsz.'), head: T('Családfő – a saját ágadon új adatot azonnal felvehetsz, módosítás és törlés admin jóváhagyással.'), member: T('Családtag – javaslataidat az admin hagyja jóvá.') }[S.user.role];
   return h('div', null,
     h('div', { class: 'page-head' }, h('div', null, h('h1', null, S.user.name), h('p', null, roleTxt)), h('button', { class: 'btn', onclick: async () => { await api('logout', {}); location.hash = '#/'; location.reload(); } }, T('Kilépés'))),
@@ -683,5 +743,5 @@ export async function viewAccount() {
             h('td', null, h('span', { class: 'badge ' + ({ pending: 'pend', approved: 'ok', rejected: 'bad' }[c.status]) }, { pending: T('várakozik'), approved: T('elfogadva'), rejected: T('elutasítva') }[c.status])))))
           : h('p', { class: 'empty' }, T('Még nem küldtél be jóváhagyandó módosítást.')),
         S.boot.branchRoots?.length ? h('div', { style: 'margin-top:24px' }, h('h2', null, T('Az én ágam')), h('div', { class: 'plist' }, S.boot.branchRoots.map(id => chip(id, T('ág kezdete'))))) : null),
-      h('div', null, pw)));
+      h('div', null, pw, loginMethods())));
 }

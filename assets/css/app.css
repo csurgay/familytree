@@ -434,7 +434,7 @@ input[type=color] { width: 54px; height: 36px; padding: 2px; border: 1px solid v
 .test-row .ms { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------------------------------------------------------------- modal, toast, lightbox */
-.modal-wrap { position: fixed; inset: 0; z-index: 60; background: rgba(12, 22, 18, .55); display: grid; place-items: center; padding: 16px; animation: fade .15s ease-out; }
+.modal-wrap { position: fixed; inset: 0; z-index: 70; background: rgba(12, 22, 18, .55); display: grid; place-items: center; padding: 16px; animation: fade .15s ease-out; }
 .modal { background: var(--surface); border-radius: var(--r-lg); width: min(640px, 100%); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
 .modal.wide { width: min(980px, 100%); }
 .modal-h { display: flex; align-items: center; gap: 10px; padding: 18px 22px 0; }
@@ -635,3 +635,21 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
   .bk-list td { border: 0; padding: 2px 0; }
   .bk-act { justify-content: flex-start; margin-top: 6px; }
 }
+
+/* sign-in with Google / Facebook */
+.oauth-box { display: grid; gap: 8px; margin: 6px 0 16px; }
+.oauth-btn { justify-content: center; gap: 10px; padding: 10px 14px; font-weight: 500; }
+.oauth-mark { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font: 700 15px/1 Arial, sans-serif; color: #fff; background: #5f6368; flex: none; }
+.oauth-google .oauth-mark, .oauth-mark.oauth-google { background: #4285f4; }
+.oauth-facebook .oauth-mark, .oauth-mark.oauth-facebook { background: #1877f2; font-size: 17px; }
+.oauth-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .88rem; margin-top: 6px; }
+.oauth-or::before, .oauth-or::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.oauth-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.oauth-row > div { flex: 1; }
+.auth-note { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 8px 12px; margin: 0 0 14px; }
+.auth-note.bad { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); color: var(--bad); }
+
+/* photo hunting */
+.nophoto td { vertical-align: middle; }
+.np-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 640px) { .nophoto, .nophoto tbody, .nophoto tr, .nophoto td { display: block; width: 100%; } .nophoto tr { border-bottom: 1px solid var(--line); padding: 8px 0; } .nophoto td { border: 0; padding: 2px 0; } .np-act { justify-content: flex-start; } }

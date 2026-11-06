@@ -37,8 +37,9 @@ let K = 1;
 export const cardShape = o => ((o && o.card) || S.settings?.chart_card || 'tall') === 'wide' ? 'wide' : 'tall';
 /** Card size at 100% (before the chart_font scaling) and the visible strip of a tucked-in spouse card. */
 function baseSize(o) {
-  if (cardShape(o) === 'wide') return { w: o.photos ? 224 : 196, h: o.places ? 90 : 76, sdx: 30, sdy: 30 };
-  return { w: 136, h: (o.photos ? 146 : 80) + (o.places ? 16 : 0), sdx: 20, sdy: 40 };
+  // the strip is tall enough for a recognisable photo of the spouse (not just a dot)
+  if (cardShape(o) === 'wide') return { w: o.photos ? 224 : 196, h: o.places ? 90 : 76, sdx: 30, sdy: o.photos ? 42 : 30 };
+  return { w: 136, h: (o.photos ? 146 : 80) + (o.places ? 16 : 0), sdx: 20, sdy: o.photos ? 58 : 44 };
 }
 function scaleK(o = {}) {
   K = Math.min(2.2, Math.max(0.6, (+S.settings?.chart_font || 125) / 100 * 16 / 17));
@@ -496,17 +497,18 @@ function personBox(n, o, pal, defs, uid) {
     const fill = st === 'minimal' ? pal.paper : pal.surface2;
     g.append(sv('rect', { width: n.w, height: n.h, rx: st === 'classic' ? 3 : 9, fill, stroke: n.div ? pal.muted : pal.line, 'stroke-width': 1, ...(n.div ? { 'stroke-dasharray': '4 3' } : {}) }));
     g.append(sv('rect', { x: 0, y: n.h - SDY + 6, width: 4, height: SDY - 12, rx: 2, fill: col }));
-    let tx = 10;
-    if (o.photos) { photoCircle(g, p, 10 + 10, n.h - SDY / 2, 10, col, pal, defs, uid, n); tx = 35; }
+    // a real photo on the left, then three short lines: surname / given name / years
+    const mid = n.h - SDY / 2;
+    let tx = 12;
+    if (o.photos) { const r = Math.min(21, SDY / 2 - 6); photoCircle(g, p, 9 + r, mid, r, col, pal, defs, uid, n); tx = 9 + 2 * r + 7; }
     const west = S.settings.name_order === 'west';
     const room = Math.floor((n.w - tx - 5) / (caps ? 7.4 : 6.1));
     const a = masked ? T('Élő személy') : up((west ? p.g : p.s) || '');
     const b = masked ? '' : up(fitGiven((west ? p.s : p.g) || '', room));
-    const yr = years(p);
-    g.append(sv('text', { x: tx, y: n.h - SDY / 2 - 3, 'font-size': 12, 'font-weight': 700, fill: pal.ink, 'font-family': sans }, (n.div ? '⚮ ' : '⚭ ') + clip(a || b, room - 2)));
-    const t2 = sv('text', { x: tx, y: n.h - SDY / 2 + 11, 'font-size': 11.5, fill: pal.ink, 'font-family': sans }, a ? clip(b, room) : '');
-    if (yr && (b.length + yr.length + 1 <= room || !a)) t2.append(sv('tspan', { fill: pal.muted, dx: a ? 5 : 0, 'font-size': 10.5 }, yr));
-    g.append(t2);
+    const yr = masked ? '' : years(p);
+    const lines = [[(n.div ? '⚮ ' : '⚭ ') + clip(a || b, room - 2), 12.5, 700, pal.ink], a && b ? [clip(b, room), 12, 400, pal.ink] : null, yr ? [yr, 11, 400, pal.muted] : null].filter(Boolean);
+    const lh = 14, y0 = mid - (lines.length - 1) * lh / 2 + 4;
+    lines.forEach(([t, fs, fw, fill], i) => g.append(sv('text', { x: tx, y: y0 + i * lh, 'font-size': fs, 'font-weight': fw, fill, 'font-family': sans }, t)));
     return outer;
   }
   if (n.spouse) {
@@ -516,7 +518,7 @@ function personBox(n, o, pal, defs, uid) {
     g.append(sv('rect', { x: 0, y: n.h - SDY + 6, width: 4, height: SDY - 12, rx: 2, fill: col }));
     const sy = n.h - SDY / 2;
     let tx = 12;
-    if (o.photos) { photoCircle(g, p, 12 + 10, sy, 10, col, pal, defs, uid, n); tx = 38; }
+    if (o.photos) { const r = Math.min(16, SDY / 2 - 5); photoCircle(g, p, 10 + r, sy, r, col, pal, defs, uid, n); tx = 10 + 2 * r + 9; }
     const nm = masked ? T('Élő személy') : up(personName(p, { short: true, withTitle: false }));
     const yr = years(p);
     const room = Math.floor((n.w - tx - 8) / (caps ? 8.6 : 6.6));

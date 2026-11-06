@@ -325,7 +325,7 @@ export function opDone(res, okMsg) {
 export function modal({ title, body, actions = [], wide = false, onClose }) {
   const wrap = h('div', { class: 'modal-wrap', role: 'dialog', 'aria-modal': 'true', 'aria-label': title });
   const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); onClose && onClose(); };
-  const onKey = e => { if (e.key === 'Escape') close(); };
+  const onKey = e => { if (e.key === 'Escape' && !wrap.nextElementSibling) close(); }; // only the topmost layer closes
   const foot = actions.length ? h('div', { class: 'modal-f' }, actions.map(a => {
     const b = h('button', { class: 'btn ' + (a.cls || ''), type: a.submit ? 'submit' : 'button' }, a.label);
     b.addEventListener('click', async ev => {

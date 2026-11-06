@@ -16,6 +16,7 @@ require_once __DIR__ . '/zipimport.php';
 require_once __DIR__ . '/content.php';
 require_once __DIR__ . '/comments.php';
 require_once __DIR__ . '/backup.php';
+require_once __DIR__ . '/oauth.php';
 
 const FT_VERSION = '1.0.0';
 

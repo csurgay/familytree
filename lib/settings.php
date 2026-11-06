@@ -14,6 +14,8 @@ function ft_settings_def(): array
 
         ['Hozzáférés', 'public_access', 'select', 'login', 'Ki láthatja az oldalt?', '', ['public' => 'Bárki, bejelentkezés nélkül', 'login' => 'Csak bejelentkezett családtagok']],
         ['Hozzáférés', 'allow_register', 'bool', true, 'Bárki regisztrálhat saját jelszóval', 'A regisztráció az admin jóváhagyása után lesz aktív.'],
+        ['Hozzáférés', 'oauth_google', 'bool', true, 'Belépés és regisztráció Google-fiókkal', 'Csak akkor jelenik meg, ha a config.php-ben ott a GOOGLE_CLIENT_ID és a GOOGLE_CLIENT_SECRET. Új családtag ezzel is admin-jóváhagyással kerül be.'],
+        ['Hozzáférés', 'oauth_facebook', 'bool', true, 'Belépés és regisztráció Facebook-fiókkal', 'Csak akkor jelenik meg, ha a config.php-ben ott a FACEBOOK_APP_ID és a FACEBOOK_APP_SECRET.'],
         ['Hozzáférés', 'pw_reset', 'bool', true, 'Elfelejtett jelszó: új jelszó e-mailben küldött linkkel', 'A link egy óráig érvényes, egyszer használható. A szerver mail() funkciójával megy; ha a tárhely nem küld levelet, az admin a felhasználók között adhat új jelszót.'],
         ['Hozzáférés', 'register_notify', 'bool', true, 'E-mail az adminoknak új regisztrációról', 'A szerver mail() funkciójával; ha a tárhely nem küld levelet, a gombnál akkor is látszik a szám.'],
         ['Hozzáférés', 'living_years', 'int', 100, 'Élőnek tekintjük, ha ennél kevesebb éve született', 'Halálozási adat nélkül. Nyilvános módban az élők adatai rejtve maradnak.', [20, 150]],

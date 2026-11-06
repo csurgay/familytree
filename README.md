@@ -98,6 +98,26 @@ Vendégek nem látják őket; a fogaskerék alatt ki is kapcsolhatók.
 - **Admin (fogaskerék):** minden paraméter, felhasználók, családfők és ágak, jóváhagyások,
   import/export, napló, autotesztek, rendszerinfó.
 
+## Belépés Google- vagy Facebook-fiókkal
+
+A családtagok jelszó nélkül, a Google- vagy Facebook-fiókjukkal is beléphetnek.
+- **Meglévő tag:** ha a Google / Facebook ugyanazt az (általa igazolt) e-mail címet adja, ami a tag fiókjában van, a két fiók magától összekapcsolódik. Más címmel a Fiókom oldalon kapcsolható össze (és ott választható le).
+- **Új családtag:** a gomb után megírja, ki ő a családban, és az admin ugyanúgy jóváhagyja, mint a sima regisztrációt. Jelszava nincs; később a Fiókom oldalon beállíthat egyet.
+- A titkos kulcsok csak a `config.php`-ben vannak (lásd `config.sample.php`); a gombok csak akkor jelennek meg, ha ott vannak, és a fogaskerék alatt (Hozzáférés) kikapcsolhatók.
+
+**Google-kulcs** (console.cloud.google.com):
+1. Új projekt → *APIs & Services* → *OAuth consent screen*: User type **External**, alkalmazás neve (pl. „A Csurgay család”), támogatási e-mail; scope-nak elég az alap (`openid`, `email`, `profile`). Végül **Publish app** („In production”) – különben csak a felvett tesztfelhasználók léphetnek be. Ezekhez a scope-okhoz nem kell Google-ellenőrzés (logót ne tölts fel, az ellenőrzést indít).
+2. *Credentials* → *Create credentials* → *OAuth client ID* → *Web application*. **Authorized redirect URI:** `https://csurgay.com/family/oauth.php` (pontosan így; próbapéldánynál annak a címe is).
+3. A kapott *Client ID* és *Client secret* → `config.php`: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+
+**Facebook-kulcs** (developers.facebook.com):
+1. *My Apps* → *Create App* → „Authenticate and request data from users with Facebook Login” (Consumer).
+2. *Facebook Login* → *Settings*: **Valid OAuth Redirect URIs:** `https://csurgay.com/family/oauth.php`.
+3. *App settings* → *Basic*: kell egy **adatvédelmi tájékoztató** URL-je és az adattörlési útmutató URL-je, utána az alkalmazás **Live** módba kapcsolható (addig csak a fejlesztők léphetnek be). Az `email` és `public_profile` engedélyhez nem kell App Review.
+4. *App ID* és *App secret* → `config.php`: `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`.
+
+Biztonság: egyszer használható, munkamenethez kötött `state`, 10 perces korlát, Google-nél PKCE és `nonce`, a Google-azonosító kibocsátójának és címzettjének ellenőrzése, Facebooknál `appsecret_proof`. A tokeneket a szerver közvetlenül kéri le és nem tárolja; csak a szolgáltatói azonosító kerül az adatbázisba (`user_identities` tábla, a teljes mentésben benne van).
+
 ## Teljes mentés és visszaállítás
 
 Fogaskerék → Import / export → **Teljes mentés és visszaállítás**.

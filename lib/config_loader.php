@@ -75,6 +75,13 @@ function ft_load_config(string $root): array
     $deepl = null;
     foreach (array_merge(is_array($ret) ? [$ret] : [], [$consts, $scalars]) as $s) { $deepl = $deepl ?? $pick($s, ['deepl_key', 'DEEPL_KEY', 'DEEPL_AUTH_KEY', 'deepl']); }
     $extra = ['deepl' => $deepl];
+    // sign-in with Google / Facebook (lib/oauth.php)
+    $oauthK = ['google_id' => ['GOOGLE_CLIENT_ID', 'google_client_id'], 'google_secret' => ['GOOGLE_CLIENT_SECRET', 'google_client_secret'],
+        'facebook_id' => ['FACEBOOK_APP_ID', 'facebook_app_id', 'FB_APP_ID'], 'facebook_secret' => ['FACEBOOK_APP_SECRET', 'facebook_app_secret', 'FB_APP_SECRET']];
+    foreach ($oauthK as $f => $keys) {
+        $extra[$f] = null;
+        foreach (array_merge(is_array($ret) ? [$ret] : [], [$consts, $scalars]) as $s) { $extra[$f] = $extra[$f] ?? $pick($s, $keys); }
+    }
 
     if (isset($vars['pdo']) && $vars['pdo'] instanceof PDO) {
         return ['driver' => 'pdo', 'pdo' => $vars['pdo'], 'prefix' => $found['prefix'] ?? 'ft_', 'source' => $srcName . ' ($pdo)'] + $extra;

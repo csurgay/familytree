@@ -692,6 +692,116 @@ function ft_server_tests(): array
                 App::$root = $oldRoot;
             }
         },
+        'Google / Facebook belépés: kapcsolás e-mail alapján, új tag jóváhagyással, hamisítás ellen' => function () {
+            $db = t_fresh_db();
+            $cfg = App::$cfg;
+            App::$cfg = array_merge($cfg, ['google_id' => 'gid.apps', 'google_secret' => 'gsec', 'facebook_id' => 'fbid', 'facebook_secret' => 'fbsec']);
+            $anna = t_user($db, 'member', 'anna@x.hu');
+            $db->insert('users', ['email' => 'tilt@x.hu', 'name' => 'Tiltott', 'pass_hash' => 'x', 'role' => 'member', 'active' => 0, 'status' => 'disabled', 'failed' => 0, 'created' => ft_now()]);
+            $sess = $_SESSION ?? [];
+            $H = ft_handlers();
+            $claims = []; $fbMe = []; $seen = [];
+            $GLOBALS['ft_oauth_mock'] = function ($m, $url, $p) use (&$claims, &$fbMe, &$seen) {
+                $seen[] = [$url, $p];
+                if (str_contains($url, 'googleapis')) return ['id_token' => 'x.' . ft_b64url(json_encode($claims)) . '.sig', 'access_token' => 'at'];
+                if (str_contains($url, 'oauth/access_token')) return ['access_token' => 'fbtok'];
+                return $fbMe;
+            };
+            // one round trip: start → provider → callback; $mut may spoil the claims
+            $google = function (array $c, ?callable $mut = null) use (&$claims) {
+                $u = ft_oauth_start('google', App::loggedIn() ? 'link' : 'login', '#/person/5');
+                parse_str((string)parse_url($u, PHP_URL_QUERY), $q);
+                $claims = $c + ['iss' => 'https://accounts.google.com', 'aud' => 'gid.apps', 'exp' => time() + 300, 'nonce' => $_SESSION['oauth']['nonce'], 'email_verified' => true];
+                if ($mut) $mut($claims);
+                return ft_oauth_callback(['state' => $q['state'], 'code' => 'c1']);
+            };
+            try {
+                $_SESSION = [];
+                t_eq(ft_oauth_enabled(), ['google', 'facebook']);
+                App::$s['oauth_facebook'] = false; t_eq(ft_oauth_enabled(), ['google'], 'kikapcsolható'); App::$s['oauth_facebook'] = true;
+                $u = ft_oauth_start('google');
+                t_ok(str_contains($u, 'client_id=gid.apps') && str_contains($u, 'code_challenge=') && str_contains($u, 'redirect_uri='), 'Google URL');
+                t_ok(!str_contains($u, 'gsec'), 'a titkos kulcs nem megy a böngészőbe');
+                // forged / replayed / expired callbacks
+                t_throws(fn() => ft_oauth_callback(['state' => 'hamis', 'code' => 'c']), 'hamis state');
+                t_eq($_SESSION['oauth'] ?? null, null, 'a state egyszer használható');
+                ft_oauth_start('google'); $_SESSION['oauth']['t'] -= 700; $st = $_SESSION['oauth']['state'];
+                t_throws(fn() => ft_oauth_callback(['state' => $st, 'code' => 'c']), 'lejárt');
+                t_throws(fn() => $google(['sub' => 'g1', 'email' => 'anna@x.hu'], function (&$c) { $c['aud'] = 'masik-app'; }), 'más alkalmazásnak szóló azonosító');
+                t_throws(fn() => $google(['sub' => 'g1', 'email' => 'anna@x.hu'], function (&$c) { $c['nonce'] = 'x'; }), 'rossz nonce');
+                t_throws(fn() => $google(['sub' => 'g1', 'email' => 'anna@x.hu'], function (&$c) { $c['iss'] = 'https://evil.example'; }), 'rossz kibocsátó');
+                t_throws(fn() => $google(['sub' => 'g1', 'email' => 'anna@x.hu'], function (&$c) { $c['email_verified'] = false; }), 'nem igazolt cím nem kapcsol meglévő taghoz');
+                t_eq(App::$user, null, 'eddig senki nem lépett be');
+                // a member with the same verified address: linked and logged in, PKCE verifier sent
+                t_eq($google(['sub' => 'g1', 'email' => 'Anna@X.hu', 'name' => 'Anna']), '#/person/5');
+                t_eq((int)App::uid(), (int)$anna['id']);
+                t_eq((int)$db->val("SELECT user_id FROM {user_identities} WHERE provider = 'google' AND subject = 'g1'"), (int)$anna['id']);
+                $tokCall = array_values(array_filter($seen, fn($x) => str_contains($x[0], 'googleapis')))[0][1];
+                t_ok(strlen($tokCall['code_verifier']) > 40 && $tokCall['client_secret'] === 'gsec', 'PKCE + titok a szerverek között');
+                // next time by the identity, even if the address changed at Google
+                App::$user = null; $_SESSION = [];
+                $google(['sub' => 'g1', 'email' => 'mas@gmail.com']);
+                t_eq((int)App::uid(), (int)$anna['id'], 'az azonosító alapján lép be');
+                // link Facebook while logged in; appsecret_proof sent
+                $fbMe = ['id' => 'f9', 'name' => 'Anna F', 'email' => 'anna.fb@x.hu'];
+                $u = ft_oauth_start('facebook', 'link'); parse_str((string)parse_url($u, PHP_URL_QUERY), $q);
+                t_eq(ft_oauth_callback(['state' => $q['state'], 'code' => 'c']), '#/account?linked=facebook');
+                $me = array_values(array_filter($seen, fn($x) => str_ends_with($x[0], '/me')))[0][1];
+                t_eq($me['appsecret_proof'], hash_hmac('sha256', 'fbtok', 'fbsec'));
+                t_eq(count(ft_oauth_mine()['linked']), 2);
+                // somebody else cannot take over an identity that is already linked
+                $bela = t_user($db, 'member', 'bela@x.hu'); t_as($bela); $_SESSION['uid'] = (int)$bela['id'];
+                $u = ft_oauth_start('facebook', 'link'); parse_str((string)parse_url($u, PHP_URL_QUERY), $q);
+                t_throws(fn() => ft_oauth_callback(['state' => $q['state'], 'code' => 'c']), 'másik taghoz kötött fiók');
+                // a stranger: registration with approval, no password
+                t_as(null); $_SESSION = [];
+                t_eq($google(['sub' => 'g2', 'email' => 'uj@gmail.com', 'name' => 'Új Rokon']), '#/register?oauth=google');
+                t_eq(App::$user, null, 'új ember nem lép be azonnal');
+                t_eq(ft_oauth_pending_info()['email'], 'uj@gmail.com');
+                $H['register.oauth'](['name' => 'Új Rokon', 'intro' => 'Anna unokája', 'email' => 'hamis@x.hu']);
+                $nu = $db->row('SELECT * FROM {users} WHERE email = ?', ['uj@gmail.com']);
+                t_ok($nu && !$nu['active'] && $nu['status'] === 'pending' && $nu['pass_hash'] === '', 'jóváhagyásra vár, jelszó nélkül; a Google-cím számít, nem a beírt');
+                t_throws(fn() => $H['register.oauth'](['name' => 'X']), 'egyszer használható');
+                t_eq($google(['sub' => 'g2', 'email' => 'uj@gmail.com']), '#/login?oauth=pending');
+                t_eq(App::$user, null);
+                t_throws(fn() => $H['login'](['email' => 'uj@gmail.com', 'password' => '']), 'üres jelszóval nem lehet belépni');
+                $db->update('users', ['active' => 1, 'status' => 'ok'], (int)$nu['id']);
+                $google(['sub' => 'g2', 'email' => 'uj@gmail.com']);
+                t_eq((int)App::uid(), (int)$nu['id'], 'jóváhagyás után belép');
+                // the only way in cannot be removed; after setting a password it can
+                t_throws(fn() => ft_oauth_unlink('google'), 'az utolsó belépési mód marad');
+                $H['password'](['new' => 'uj-jelszo-1']);
+                App::$user = $db->row('SELECT * FROM {users} WHERE id = ?', [(int)$nu['id']]);
+                t_ok(password_verify('uj-jelszo-1', App::$user['pass_hash']), 'jelszó beállítva régi nélkül');
+                ft_oauth_unlink('google');
+                t_eq((int)$db->val('SELECT COUNT(*) FROM {user_identities} WHERE user_id = ?', [(int)$nu['id']]), 0);
+                // Facebook without e-mail (phone sign-up): must type an address
+                t_as(null); $_SESSION = [];
+                $fbMe = ['id' => 'f7', 'name' => 'Telefonos'];
+                $u = ft_oauth_start('facebook'); parse_str((string)parse_url($u, PHP_URL_QUERY), $q);
+                t_eq(ft_oauth_callback(['state' => $q['state'], 'code' => 'c']), '#/register?oauth=facebook');
+                t_throws(fn() => $H['register.oauth'](['name' => 'Telefonos']), 'e-mail kell');
+                t_throws(fn() => $H['register.oauth'](['name' => 'Telefonos', 'email' => 'anna@x.hu']), 'foglalt cím');
+                $H['register.oauth'](['name' => 'Telefonos', 'email' => 'tel@x.hu']);
+                t_ok((bool)$db->val('SELECT id FROM {users} WHERE email = ?', ['tel@x.hu']));
+                // disabled member; registration switched off
+                $_SESSION = [];
+                t_throws(fn() => $google(['sub' => 'g3', 'email' => 'tilt@x.hu']), 'tiltott tag nem lép be');
+                App::$s['allow_register'] = false; $_SESSION = [];
+                t_throws(fn() => $google(['sub' => 'g4', 'email' => 'idegen@x.hu']), 'kikapcsolt regisztráció');
+                // the user cancels at the provider
+                $u = ft_oauth_start('google'); parse_str((string)parse_url($u, PHP_URL_QUERY), $q);
+                t_throws(fn() => ft_oauth_callback(['state' => $q['state'], 'error' => 'access_denied']), 'megszakítva');
+                // deleting a member removes the links
+                t_as(t_user($db, 'admin'));
+                $H['admin.user.delete'](['id' => (int)$anna['id']]);
+                t_eq((int)$db->val('SELECT COUNT(*) FROM {user_identities} WHERE user_id = ?', [(int)$anna['id']]), 0);
+            } finally {
+                unset($GLOBALS['ft_oauth_mock']);
+                App::$cfg = $cfg;
+                $_SESSION = $sess;
+            }
+        },
         'Elfelejtett jelszó: e-mailes link, lejárat, egyszeri használat' => function () {
             $db = t_fresh_db();
             $db->insert('users', ['email' => 'a@b.hu', 'name' => 'Anna', 'pass_hash' => password_hash('regi-jelszo', PASSWORD_DEFAULT), 'role' => 'member', 'active' => 1, 'failed' => 3, 'locked_until' => date('Y-m-d H:i:s', time() + 600), 'lang' => 'en', 'created' => ft_now()]);

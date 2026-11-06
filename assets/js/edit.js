@@ -219,6 +219,7 @@ export async function photoViewer(list, index = 0) {
   wrap.append(stage, side);
   const close = () => { wrap.remove(); document.removeEventListener('keydown', key); window.removeEventListener('hashchange', close); };
   const key = e => {
+    if (wrap.nextElementSibling) return;              // a dialog opened from the viewer is on top: it gets the keys
     if (e.key === 'Escape') return close();
     if (e.target.closest?.('textarea,input,select')) return; // arrows move the cursor while typing a comment
     if (e.key === 'ArrowRight') show(i + 1); if (e.key === 'ArrowLeft') show(i - 1);
@@ -227,7 +228,8 @@ export async function photoViewer(list, index = 0) {
   // following a link (a person, a family…) leaves the viewer – the page behind it changes
   window.addEventListener('hashchange', close);
   side.addEventListener('click', e => { const a = e.target.closest('a[href^="#/"]'); if (a) close(); });
-  document.body.append(wrap);
+  // in the same layer as the dialogs: whatever opens later (e.g. "Adatok", "Törlés") comes on top of the viewer
+  (document.getElementById('modal-root') || document.body).append(wrap);
   let focusFor = null; // person id whose face point is being set
 
   async function show(n) {

@@ -1,8 +1,9 @@
 // Admin area behind the gear: settings, users, branch heads, approvals, import/export, log, self-tests.
-import { S, T, P, h, api, icon, setTitle, loadTree, personName, personPicker, field, toast, fail, modal, formData, confirmBox, go, render, chip, years, familyLabel, F } from './core.js';
+import { S, T, P, h, api, icon, setTitle, loadTree, personName, personPicker, field, toast, fail, modal, formData, confirmBox, go, render, chip, years, familyLabel, F, parentsOf } from './core.js';
 import { runClientTests } from './tests.js';
+import { uploadPhotos, photoViewer } from './edit.js';
 
-const TABS = [['settings', 'Beállítások'], ['changes', 'Jóváhagyások'], ['users', 'Felhasználók'], ['branches', 'Családfők és ágak'], ['import', 'Import / export'], ['log', 'Napló'], ['tests', 'Autotesztek'], ['system', 'Rendszer']];
+const TABS = [['settings', 'Beállítások'], ['changes', 'Jóváhagyások'], ['users', 'Felhasználók'], ['branches', 'Családfők és ágak'], ['nophoto', 'Fénykép nélkül'], ['import', 'Import / export'], ['log', 'Napló'], ['tests', 'Autotesztek'], ['system', 'Rendszer']];
 
 export async function viewAdmin(tab = 'settings', qs) {
   if (S.user?.role !== 'admin') { go('#/login'); return null; }
@@ -12,7 +13,7 @@ export async function viewAdmin(tab = 'settings', qs) {
     k === 'changes' && S.boot.pendingChanges ? h('span', { class: 'badge pend' }, S.boot.pendingChanges) : null,
     k === 'users' && S.boot.pendingUsers ? h('span', { class: 'badge pend' }, S.boot.pendingUsers) : null)));
   const body = h('div');
-  const fn = { settings: settingsTab, users: usersTab, branches: branchesTab, changes: changesTab, import: importTab, log: logTab, tests: testsTab, system: systemTab }[tab] || settingsTab;
+  const fn = { settings: settingsTab, users: usersTab, branches: branchesTab, changes: changesTab, nophoto: noPhotoTab, import: importTab, log: logTab, tests: testsTab, system: systemTab }[tab] || settingsTab;
   body.append(await fn(qs));
   return h('div', { class: 'admin' }, nav, body);
 }
@@ -110,11 +111,11 @@ async function usersTab() {
       h('button', { class: 'btn btn-primary', onclick: () => edit(null) }, icon('plus'), T('Új felhasználó'))),
     pending.length ? h('section', { class: 'section' }, h('h2', null, T('Jóváhagyásra vár (') + pending.length + ')'),
       pending.map(u => h('div', { class: 'change' },
-        h('div', { class: 'hd' }, h('b', null, u.name), h('span', null, u.email), h('span', { class: 'hint' }, T('regisztrált: ') + (u.created || '').slice(0, 16))),
+        h('div', { class: 'hd' }, h('b', null, u.name), h('span', null, u.email), (u.logins || []).map(p => h('span', { class: 'badge' }, p === 'google' ? 'Google' : 'Facebook')), h('span', { class: 'hint' }, T('regisztrált: ') + (u.created || '').slice(0, 16))),
         u.intro ? h('p', { style: 'margin:8px 0 0;white-space:pre-wrap' }, u.intro) : null,
         h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn btn-danger', onclick: () => reject(u) }, T('Elutasítás')), h('button', { class: 'btn btn-primary', onclick: () => approve(u) }, icon('check'), T('Jóváhagyás…')))))) : null,
     h('table', { class: 'tbl' }, h('tr', null, [T('Név'), T('E-mail'), T('Szerep'), T('Ő a fában'), T('Ágak'), T('Utolsó belépés'), ''].map(t => h('th', null, t))),
-      others.map(u => h('tr', null, h('td', null, u.name, +u.active ? null : h('span', { class: 'badge bad', style: 'margin-left:6px' }, T('tiltva'))), h('td', null, u.email), h('td', null, roleL[u.role] || u.role),
+      others.map(u => h('tr', null, h('td', null, u.name, +u.active ? null : h('span', { class: 'badge bad', style: 'margin-left:6px' }, T('tiltva'))), h('td', null, u.email, (u.logins || []).map(p => h('span', { class: 'badge', style: 'margin-left:6px', title: T('Ezzel is be tud lépni') }, p === 'google' ? 'Google' : 'Facebook'))), h('td', null, roleL[u.role] || u.role),
         h('td', null, u.person_id && P(u.person_id) ? h('a', { href: '#/person/' + u.person_id }, personName(P(u.person_id))) : '—'),
         h('td', null, u.branches?.length ? u.branches.map(id => personName(P(id), { short: true })).join(', ') : '—'),
         h('td', null, u.last_login?.slice(0, 16) || '—'), h('td', null, h('button', { class: 'btn btn-sm', onclick: () => edit(u) }, T('Szerkesztés')))))));
@@ -179,6 +180,89 @@ async function changesTab(qs) {
 }
 
 // ------------------------------------------------------------------ import / export
+// ------------------------------------------------------------------ photo hunting
+/** Steps from one person to everyone (parents, children, spouses = 1 step each). */
+function kinDistance(from) {
+  const dist = new Map();
+  if (!from || !P(from)) return dist;
+  dist.set(from, 0);
+  const queue = [from];
+  while (queue.length) {
+    const id = queue.shift(), p = P(id), d = dist.get(id) + 1;
+    const next = [];
+    for (const fid of p.fc || []) { const f = F(fid); if (f) next.push(f.h, f.w); }
+    for (const fid of p.fs || []) { const f = F(fid); if (f) next.push(f.h, f.w, ...(f.c || [])); }
+    for (const n of next) if (n && !dist.has(n) && P(n)) { dist.set(n, d); queue.push(n); }
+  }
+  return dist;
+}
+
+async function noPhotoTab(qs) {
+  const box = h('div');
+  let data;
+  try { data = await api('admin.nophoto'); } catch (e) { return h('p', { class: 'hint' }, e.message); }
+  const me = S.user.person_id || null;
+  const dist = kinDistance(me || S.tree.home || null);
+  const st = { q: qs?.get('q') || '', kind: qs?.get('kind') || 'none', life: qs?.get('life') || 'all', sort: qs?.get('sort') || (dist.size ? 'kin' : 'birth'), limit: 150 };
+  const q = h('input', { type: 'search', placeholder: T('Szűrés névre, évre…'), value: st.q });
+  const sel = (key, opts) => h('select', { onchange: e => { st[key] = e.target.value; st.limit = 150; draw(); } }, opts.map(([v, l]) => h('option', { value: v, selected: st[key] === v }, T(l))));
+  const listEl = h('div');
+  const summary = h('p');
+  const reload = async () => { await loadTree(true); data = await api('admin.nophoto'); draw(); };
+  const draw = () => {
+    const all = data.list.filter(r => P(r.id));
+    const none = all.filter(r => !r.photos.length).length;
+    summary.replaceChildren(T('{0} családtagnak nincs portréja ({1} személyből).', all.length, data.total), ' ',
+      all.length - none ? T('Közülük {0} már szerepel megjelölve valamelyik fotón – nekik elég portrét választani.', all.length - none) : '');
+    const words = st.q ? st.q.toLocaleLowerCase('hu').normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean) : [];
+    let rows = all.filter(r => {
+      const p = P(r.id);
+      if (st.kind === 'none' && r.photos.length) return false;
+      if (st.kind === 'tagged' && !r.photos.length) return false;
+      if (st.life === 'dead' && p.liv) return false;
+      if (st.life === 'living' && !p.liv) return false;
+      if (!words.length) return true;
+      const t = (personName(p) + ' ' + (p.n || '') + ' ' + (p.b || '')).toLocaleLowerCase('hu').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return words.every(w => t.includes(w));
+    });
+    const by = p => p.b || p.bs || 9999;
+    if (st.sort === 'kin') rows.sort((a, b) => (dist.get(a.id) ?? 999) - (dist.get(b.id) ?? 999) || by(P(a.id)) - by(P(b.id)));
+    else if (st.sort === 'birth') rows.sort((a, b) => by(P(a.id)) - by(P(b.id)));
+    else rows.sort((a, b) => personName(P(a.id)).localeCompare(personName(P(b.id)), 'hu'));
+    const shown = rows.slice(0, st.limit);
+    listEl.replaceChildren(
+      h('p', { class: 'hint' }, T('{0} találat', rows.length)),
+      shown.length ? h('table', { class: 'tbl nophoto' }, shown.map(r => {
+        const p = P(r.id);
+        const par = parentsOf(r.id).map(id => personName(P(id), { short: true })).join(' és ');
+        return h('tr', null,
+          h('td', null, chip(r.id), par ? h('div', { class: 'hint' }, T('Szülei: {0}', par)) : null),
+          h('td', { class: 'hint', style: 'white-space:nowrap' }, st.sort === 'kin' && dist.has(r.id) ? T('{0} lépés', dist.get(r.id)) : ''),
+          h('td', { class: 'np-act' },
+            r.photos.length ? h('button', { class: 'btn btn-sm', title: T('A csillaggal választhatsz portrét'), onclick: () => {
+              photoViewer(r.photos.map(id => ({ id })));
+              // when the viewer closes, the list follows (a portrait may have been chosen)
+              const mo = new MutationObserver(() => { if (!document.querySelector('.lightbox')) { mo.disconnect(); reload().catch(fail); } });
+              mo.observe(document.getElementById('modal-root') || document.body, { childList: true });
+            } }, icon('photo'), T('{0} fotón szerepel', r.photos.length)) : null,
+            h('button', { class: 'btn btn-sm btn-primary', onclick: () => uploadPhotos({ person_id: r.id }, () => reload().catch(fail)) }, icon('photo'), T('Fotó feltöltése'))));
+      })) : h('p', { class: 'empty' }, T('Nincs ilyen családtag.')),
+      rows.length > shown.length ? h('button', { class: 'btn', onclick: () => { st.limit += 300; draw(); } }, T('Továbbiak ({0})', rows.length - shown.length)) : null);
+  };
+  let tmr;
+  q.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(() => { st.q = q.value.trim(); draw(); }, 150); });
+  box.append(h('h1', null, T('Fénykép nélkül')),
+    h('p', { class: 'muted' }, T('Vadássz fotókat: ezeknek a családtagoknak még nincs portréja a fán.')),
+    summary,
+    h('div', { class: 'tools' }, q,
+      sel('kind', [['none', 'Semmilyen fotón nem szerepel'], ['tagged', 'Fotón szerepel, de nincs portréja'], ['all', 'Mindenki portré nélkül']]),
+      sel('life', [['all', 'Élők és elhunytak'], ['dead', 'Csak elhunytak'], ['living', 'Csak élők']]),
+      sel('sort', [...(dist.size ? [['kin', me ? 'Hozzám legközelebbiek elöl' : 'A kezdőlap gyökeréhez legközelebbiek elöl']] : []), ['birth', 'Születési év szerint'], ['name', 'Név szerint']])),
+    listEl);
+  draw();
+  return box;
+}
+
 // ------------------------------------------------------------------ full backup / restore
 const fmtBytes = b => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' kB';
 const sleep = ms => new Promise(r => setTimeout(r, ms));

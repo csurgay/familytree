@@ -194,11 +194,13 @@ function ft_handlers(): array
             $installed = (int)$db->val('SELECT COUNT(*) FROM {users}') > 0;
             $u = App::$user;
             $out = ['installed' => $installed, 'version' => FT_VERSION, 'csrf' => $_SESSION['csrf'] ?? '',
-                'user' => $u ? ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'person_id' => ft_int($u['person_id'])] : null,
+                'user' => $u ? ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'role' => $u['role'], 'person_id' => ft_int($u['person_id']), 'hasPassword' => (string)$u['pass_hash'] !== ''] : null,
+                'oauth' => ft_oauth_enabled(), 'oauthNew' => ft_oauth_pending_info(),
                 'settings' => array_filter(App::$s, fn($k) => $k[0] !== '_', ARRAY_FILTER_USE_KEY),
                 'canRead' => ft_can_read(), 'eventTypes' => FT_EVENT_TYPES, 'driver' => $db->driver,
                 'langs' => array_map(fn($l) => ['code' => $l, 'name' => FT_LANGS[$l]], ft_langs()), 'allowRegister' => (bool)App::$s['allow_register'], 'pwReset' => (bool)App::$s['pw_reset'],
                 'repoGedcom' => $installed ? null : (($gf = ft_find_ged(App::$root)) ? basename($gf) : null)];
+            if (!empty($_SESSION['oauth_err'])) { $out['oauthError'] = ft_t((string)$_SESSION['oauth_err']); unset($_SESSION['oauth_err']); }
             if (App::isAdmin()) {
                 $out['settingsDef'] = ft_settings_def();
                 $out['pendingUsers'] = (int)$db->val("SELECT COUNT(*) FROM {users} WHERE status = 'pending'");
@@ -296,11 +298,15 @@ function ft_handlers(): array
         'logout' => function () { $_SESSION = []; session_regenerate_id(true); $_SESSION['csrf'] = bin2hex(random_bytes(16)); App::$user = null; return ['ok' => true]; },
         'password' => function ($in) {
             ft_require_login();
-            if (!password_verify((string)($in['old'] ?? ''), App::$user['pass_hash'])) throw ft_err('A jelenlegi jelszó nem stimmel.');
+            // a member who signed up with Google / Facebook has no password yet and may set one
+            if ((string)App::$user['pass_hash'] !== '' && !password_verify((string)($in['old'] ?? ''), App::$user['pass_hash'])) throw ft_err('A jelenlegi jelszó nem stimmel.');
             if (mb_strlen((string)($in['new'] ?? '')) < 8) throw ft_err('Az új jelszó legalább 8 karakter legyen.');
             App::$db->update('users', ['pass_hash' => password_hash((string)$in['new'], PASSWORD_DEFAULT), 'reset_hash' => null, 'reset_until' => null], App::uid());
             return ['ok' => true];
         },
+        'register.oauth' => fn($in) => ft_oauth_register($in),
+        'oauth.mine' => fn() => ft_oauth_mine(),
+        'oauth.unlink' => fn($in) => ft_oauth_unlink((string)($in['provider'] ?? '')),
         // forgotten password: always the same answer, so the form does not reveal who has an account
         'pwreset.request' => function ($in) {
             $db = App::$db;
@@ -657,7 +663,10 @@ function ft_handlers(): array
         'admin.users' => function () {
             ft_require_admin();
             $rows = App::$db->all('SELECT id, email, name, role, person_id, active, status, intro, created, last_login FROM {users} ORDER BY name');
-            foreach ($rows as &$r) $r['branches'] = array_map('intval', App::$db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [(int)$r['id']]));
+            foreach ($rows as &$r) {
+                $r['branches'] = array_map('intval', App::$db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [(int)$r['id']]));
+                $r['logins'] = App::$db->col('SELECT provider FROM {user_identities} WHERE user_id = ? ORDER BY provider', [(int)$r['id']]);
+            }
             return $rows;
         },
         'admin.user.save' => function ($in) {
@@ -719,6 +728,7 @@ function ft_handlers(): array
             $id = (int)$in['id'];
             if ($id === App::uid()) throw ft_err('Saját magadat nem törölheted.');
             App::$db->q('DELETE FROM {branches} WHERE user_id = ?', [$id]);
+            App::$db->q('DELETE FROM {user_identities} WHERE user_id = ?', [$id]);
             App::$db->delete('users', $id);
             App::audit('user.delete', 'user', $id, '');
             return ['ok' => true];
@@ -803,6 +813,18 @@ function ft_handlers(): array
             $f = $_FILES['file'] ?? null;
             if (!$f || ($f['error'] ?? 4) !== UPLOAD_ERR_OK) throw ft_err(($f['error'] ?? 4) === UPLOAD_ERR_INI_SIZE ? 'A ZIP nagyobb, mint amit a szerver enged (upload_max_filesize).' : 'Válassz egy ZIP fájlt.');
             return ft_photo_package_import($f['tmp_name']);
+        },
+        // photo hunting: everyone without a portrait, and the approved photos they are already tagged on
+        'admin.nophoto' => function () {
+            ft_require_admin();
+            $tagged = [];
+            foreach (App::$db->all("SELECT l.person_id, l.photo_id FROM {photo_links} l JOIN {photos} p ON p.id = l.photo_id
+                                    WHERE l.person_id IS NOT NULL AND p.status = 'ok' ORDER BY p.id") as $r) $tagged[(int)$r['person_id']][] = (int)$r['photo_id'];
+            $out = [];
+            foreach (App::$db->col('SELECT id FROM {persons} WHERE photo_id IS NULL OR photo_id = 0 ORDER BY id') as $id) {
+                $out[] = ['id' => (int)$id, 'photos' => $tagged[(int)$id] ?? []];
+            }
+            return ['list' => $out, 'total' => (int)App::$db->val('SELECT COUNT(*) FROM {persons}')];
         },
         'admin.stats' => function () {
             ft_require_admin();

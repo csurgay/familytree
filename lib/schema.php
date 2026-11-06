@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 7;
+const FT_SCHEMA_VERSION = 8;
 
 function ft_schema(): array
 {
@@ -63,6 +63,9 @@ function ft_schema(): array
         'comments' => ['cols' => ['id' => 'id', 'entity' => 'str16', 'entity_id' => 'int', 'parent_id' => 'int', 'user_id' => 'int',
             'body' => 'text', 'status' => 'str16', 'created' => 'datetime', 'updated' => 'datetime'],
             'idx' => ['e' => ['entity', 'entity_id'], 'c' => ['created']]],
+        'user_identities' => ['cols' => ['id' => 'id', 'user_id' => 'int', 'provider' => 'str16', 'subject' => 'str190', 'email' => 'str190',
+            'name' => 'str120', 'created' => 'datetime', 'last_used' => 'datetime'],
+            'idx' => ['u_ps' => ['provider', 'subject'], 'u' => ['user_id']]],
         'audit' => ['cols' => ['id' => 'id', 'user_id' => 'int', 'action' => 'str40', 'entity' => 'str20', 'entity_id' => 'int',
             'summary' => 'text', 'created' => 'datetime'], 'idx' => ['c' => ['created']]],
     ];

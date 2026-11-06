@@ -31,10 +31,10 @@ async function boot() {
   route('/charts', gate(viewCharts), { nav: 'charts' });
   route('/quiz', gate(viewQuiz), { nav: 'quiz' });
   route('/login', qs => viewLogin(qs));
-  route('/register', () => viewRegister());
+  route('/register', qs => viewRegister(qs));
   route('/forgot', qs => viewForgot(qs));
   route('/reset/:token', token => viewReset(token));
-  route('/account', () => viewAccount());
+  route('/account', qs => viewAccount(qs));
   route('/admin', qs => viewAdmin('settings', qs));
   route('/admin/:tab', viewAdmin);
   window.addEventListener('hashchange', render);
@@ -63,16 +63,19 @@ function drawUserbox() {
 
 function setupSearch() {
   const q = $('#q'), res = $('#qres');
-  let sel = -1, items = [];
+  let sel = -1, items = [], seq = 0;
   const close = () => { res.hidden = true; sel = -1; };
+  const openRes = a => { close(); q.value = ''; q.blur(); const to = a.getAttribute('href'); if (location.hash === to) render(); else location.hash = to; };
   q.addEventListener('input', async () => {
     const v = norm(q.value);
+    const my = ++seq;
     if (v.length < 2) return close();
     try { await loadTree(); } catch (e) { return; }
+    if (my !== seq) return;                // a later keystroke already drew its own list
     const words = v.split(' ');
     items = [...S.tree.P.values()].filter(p => { const t = norm(personName(p) + ' ' + (p.n || '') + ' ' + (p.b || '')); return words.every(w => t.includes(w)); })
       .sort((a, b) => (b.ph ? 1 : 0) - (a.ph ? 1 : 0) || (a.b || 9999) - (b.b || 9999)).slice(0, 12);
-    res.replaceChildren(...(items.length ? items.map((p, i) => h('a', { href: '#/person/' + p.id, role: 'option', onclick: () => { close(); q.value = ''; } }, avatar(p, 32), h('span', null, personName(p), h('div', { class: 'hint' }, years(p) || '—'))))
+    res.replaceChildren(...(items.length ? items.map((p, i) => h('a', { href: '#/person/' + p.id, role: 'option', onclick: e => { e.preventDefault(); openRes(e.currentTarget); } }, avatar(p, 32), h('span', null, personName(p), h('div', { class: 'hint' }, years(p) || '—'))))
       : [h('div', { class: 'hint', style: 'padding:8px' }, T('Nincs ilyen nevű családtag.'))]));
     res.hidden = false; sel = -1;
   });
@@ -80,11 +83,15 @@ function setupSearch() {
     const links = [...res.querySelectorAll('a')];
     if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, links.length - 1); e.preventDefault(); }
     else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); e.preventDefault(); }
-    else if (e.key === 'Enter') { const a = links[Math.max(sel, 0)]; if (a) { location.hash = a.getAttribute('href'); close(); q.value = ''; q.blur(); } }
+    else if (e.key === 'Enter') { const a = links[Math.max(sel, 0)]; if (a) openRes(a); }
     else if (e.key === 'Escape') { close(); q.blur(); }
     links.forEach((a, i) => a.classList.toggle('sel', i === sel));
   });
-  q.addEventListener('blur', () => setTimeout(close, 150));
+  // the list must survive the click on it: pressing on a result keeps the focus in the box (a slow click or a
+  // tap no longer closes the list before it lands); a press anywhere else closes it
+  res.addEventListener('mousedown', e => e.preventDefault());
+  document.addEventListener('pointerdown', e => { if (!res.hidden && !e.target.closest('#qres, #q')) close(); });
+  q.addEventListener('focus', () => { if (res.childElementCount && norm(q.value).length >= 2) res.hidden = false; });
 }
 
 boot().catch(fail);
