@@ -35,7 +35,8 @@ function ft_comment_json(array $c, array $names): array
         'body' => $del ? null : $c['body'], 'deleted' => $del, 'created' => $c['created'],
         'edited' => !$del && $c['updated'] && $c['updated'] !== $c['created'],
         'mine' => !$del && $uid === App::uid(), 'can_delete' => !$del && ($uid === App::uid() || App::isAdmin()),
-        'story' => !$del && !empty($c['story']), 'can_story' => !$del && ($uid === App::uid() || App::isAdmin())];
+        'story' => !$del && !empty($c['story']), 'can_story' => !$del && ($uid === App::uid() || App::isAdmin()),
+        '_tr' => $del ? [] : [['body', 'comment', (int)$c['id']]]];
 }
 
 function ft_user_names(array $ids): array

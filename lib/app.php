@@ -14,6 +14,7 @@ require_once __DIR__ . '/ops.php';
 require_once __DIR__ . '/photos.php';
 require_once __DIR__ . '/zipimport.php';
 require_once __DIR__ . '/content.php';
+require_once __DIR__ . '/texttr.php';
 require_once __DIR__ . '/comments.php';
 require_once __DIR__ . '/backup.php';
 require_once __DIR__ . '/oauth.php';

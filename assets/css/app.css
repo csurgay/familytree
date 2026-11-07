@@ -676,3 +676,9 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .c-story-check { margin: 6px 0 2px; font-size: .9rem; }
 .c-story-check svg, .c-story-badge svg { width: 15px; height: 15px; vertical-align: -3px; }
 .c-story-badge { display: inline-flex; align-items: center; gap: 3px; font-size: .78rem; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); text-decoration: none; }
+
+/* machine-translated text: a small globe shows the original */
+.tr-toggle { border: 0; background: none; padding: 0 2px; margin-left: 4px; cursor: pointer; color: var(--muted); opacity: .7; vertical-align: -2px; line-height: 1; }
+.tr-toggle svg { width: 14px; height: 14px; }
+.tr-toggle:hover, .tr-toggle.on { opacity: 1; color: var(--accent); }
+.tr-toggle.long { display: flex; align-items: center; gap: 5px; margin: 6px 0 0; font: inherit; font-size: .8rem; white-space: normal; text-align: left; }

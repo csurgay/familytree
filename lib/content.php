@@ -131,11 +131,13 @@ function ft_bio_item(string $kind, int $id, string $notes, array $g): array
     if ($kind === 'bio') {
         $gp = $g['P'][$id]; $yrs = ft_life_years($gp);
         return ['kind' => 'bio', 'id' => $id, 'title' => ft_name($gp) . ($yrs ? " ($yrs)" : ''), 'y' => $gp['by'], 'date' => null,
-            'excerpt' => ft_excerpt($notes), 'cover' => ft_portrait($id), 'person_ids' => [$id], 'family_ids' => []];
+            'excerpt' => ft_excerpt($notes), 'cover' => ft_portrait($id), 'person_ids' => [$id], 'family_ids' => [],
+            '_tr' => [['excerpt', 'person', $id, 'notes', $notes, true]]];
     }
     $f = $g['F'][$id];
     return ['kind' => 'fbio', 'id' => $id, 'title' => ft_family_title($g, $id), 'y' => $f['my'], 'date' => null,
-        'excerpt' => ft_excerpt($notes), 'cover' => ft_portrait($f['husband_id'] ?: $f['wife_id']), 'person_ids' => [], 'family_ids' => [$id]];
+        'excerpt' => ft_excerpt($notes), 'cover' => ft_portrait($f['husband_id'] ?: $f['wife_id']), 'person_ids' => [], 'family_ids' => [$id],
+        '_tr' => [['excerpt', 'family', $id, 'notes', $notes, true]]];
 }
 
 function ft_comment_story_item(array $c, array $names): array
@@ -143,7 +145,8 @@ function ft_comment_story_item(array $c, array $names): array
     $a = ft_comment_about($c);
     return ['kind' => 'comment', 'id' => (int)$c['id'], 'title' => $a['label'], 'y' => $a['y'], 'date' => null,
         'excerpt' => ft_excerpt((string)$c['body']), 'cover' => $a['cover'], 'person_ids' => $a['person_ids'], 'family_ids' => $a['family_ids'],
-        'author' => $names[(int)$c['user_id']] ?? null, 'created' => $c['created'], 'entity' => $c['entity'], 'entity_id' => (int)$c['entity_id']];
+        'author' => $names[(int)$c['user_id']] ?? null, 'created' => $c['created'], 'entity' => $c['entity'], 'entity_id' => (int)$c['entity_id'],
+        '_tr' => [['excerpt', 'comment', (int)$c['id'], 'body', (string)$c['body'], true]]];
 }
 
 /** One biography or comment-memory, read like a story (kind: bio | fbio | comment). */
@@ -157,6 +160,7 @@ function ft_story_extra(string $kind, int $id): array
         $o = ft_bio_item($kind, $id, $notes, $g);
         if (!ft_story_visible($o)) throw ft_err('Ez az életrajz élő családtagról szól, ezért csak bejelentkezve olvasható.', 401);
         $o['body'] = $notes;
+        $o['_tr'][] = ['body', $kind === 'bio' ? 'person' : 'family', $id, 'notes'];
         return $o;
     }
     if ($kind === 'comment') {
@@ -166,6 +170,7 @@ function ft_story_extra(string $kind, int $id): array
         $names = ft_user_names([$c['user_id']]);
         $o = ft_comment_story_item($c, $names);
         $o['body'] = $c['body'];
+        $o['_tr'][] = ['body', 'comment', $id];
         $o['story'] = (bool)$c['story'];
         $a = ft_comment_about($c);
         $o['photo'] = $a['photo'];
@@ -224,7 +229,8 @@ function ft_translate(array $texts, string $target, ?string $source = null): arr
     }
     $d = json_decode($resp, true);
     $out = array_map(fn($t) => $t['text'], $d['translations'] ?? []);
-    return ['texts' => $out, 'detected' => strtolower($d['translations'][0]['detected_source_language'] ?? '')];
+    $each = array_map(fn($t) => ['text' => $t['text'], 'detected' => strtolower((string)($t['detected_source_language'] ?? ''))], $d['translations'] ?? []);
+    return ['texts' => $out, 'detected' => strtolower($d['translations'][0]['detected_source_language'] ?? ''), 'each' => $each];
 }
 
 /** Translate one story into every other enabled language. Unchanged texts are not sent again. */

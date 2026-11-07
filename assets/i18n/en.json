@@ -1082,5 +1082,20 @@
 "Ezekre a nyelvekre fordítjuk a sztorikat. A DeepL kulcs a config.php-ben van.": "Stories are translated into these languages. The DeepL key is in config.php.",
 "A fordításhoz DeepL kulcs kell a config.php-be. Most nincs beállítva.": "Translation needs a DeepL key in config.php. It is not set now.",
 "A fordításhoz DeepL kulcs kell a config.php-ben, és a szervernek el kell érnie az internetet.": "Translation needs a DeepL key in config.php, and the server must reach the internet.",
-"Nincs DeepL kulcs a config.php-ben.": "No DeepL key in config.php."
+"Nincs DeepL kulcs a config.php-ben.": "No DeepL key in config.php.",
+"fordítás mutatása": "show translation",
+"gépi fordítás – eredeti ({0})": "machine translation – show original ({0})",
+"Eredeti szöveg ({0}). Kattints a fordításért.": "Original text ({0}). Click for the translation.",
+"Gépi fordítás, az eredeti {0}. Kattints az eredetiért.": "Machine translation, the original is {0}. Click for the original.",
+"Minden beírt szöveg fordítása is": "Translate everything people write, too",
+"Életrajzok, események megnevezése és jegyzete, fotók címe és leírása, hozzászólások, kitűzött elemek felirata – bármelyik nyelven írták. Az első megtekintéskor fordul le (DeepL), utána tárolva marad; az eredeti mindig egy kattintással látszik. Az Import / export lapon előre is lefordítható minden.": "Biographies, event names and notes, photo titles and descriptions, comments, captions of pinned items – in whatever language they were written. Translated (DeepL) on first view, then kept; the original is always one click away. On the Import / export tab everything can be translated in advance.",
+"Számolás…": "Counting…",
+"Mindent lefordít most": "Translate everything now",
+"{0}: {1} szöveg, kb. {2} karakter": "{0}: {1} texts, about {2} characters",
+"Még nincs lefordítva – ": "Not translated yet – ",
+"Minden szöveg le van fordítva minden bekapcsolt nyelvre.": "Every text is translated into every enabled language.",
+"Nem volt mit fordítani.": "There was nothing to translate.",
+"Életrajzok, hozzászólások, képcímek fordítása": "Translating biographies, comments, photo titles",
+"Bármelyik nyelven írták, a többi bekapcsolt nyelvre is lefordul: életrajzok, a családokról szóló jegyzetek, események megnevezése és jegyzete, fotók címe és leírása, hozzászólások, a kitűzött elemek felirata. Magától is lefordul, amikor valaki először megnézi más nyelven; ezzel előre el lehet készíteni mindet. A DeepL havi keretébe a karakterek számítanak.": "Whatever language they were written in, they are translated into the other enabled languages: biographies, notes about families, event names and notes, photo titles and descriptions, comments, captions of pinned items. This happens by itself when someone first views them in another language; here you can prepare all of them in advance. Characters count towards the monthly DeepL quota.",
+"A DeepL most nem fordít (hiba vagy elfogyott a keret). A részletek a szerver hibanaplójában vannak.": "DeepL is not translating right now (error or quota used up). Details are in the server error log."
 }

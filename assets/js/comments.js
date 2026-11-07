@@ -1,5 +1,5 @@
 // Comments (hozzászólások) under persons, families, stories and photos – for logged-in members.
-import { S, T, api, h, icon, fail, toast, confirmBox, personName, familyLabel, P, F } from './core.js';
+import { S, T, api, h, icon, fail, toast, confirmBox, personName, familyLabel, P, F, tx, trText } from './core.js';
 
 const enabled = () => (S.settings.comments || 'members') !== 'off';
 
@@ -59,7 +59,7 @@ export function commentsBox(entity, id, { compact = false } = {}) {
     const body = editing === c.id
       ? composer({ placeholder: '', label: T('Mentés'), value: c.body, onCancel: () => { editing = null; draw(); },
           onSend: async v => { await api('comment.edit', { id: c.id, body: v }); editing = null; await load(); } })
-      : h('div', { class: 'c-body' }, c.body);
+      : trText(c, 'body', 'div', { class: 'c-body' });
     return h('div', { class: 'c-item', id: 'c' + c.id },
       h('div', { class: 'c-meta' }, h('b', null, c.author || T('ismeretlen')), h('span', null, when(c.created)), c.edited ? h('span', null, T('(javítva)')) : null,
         c.story ? h('a', { class: 'c-story-badge', href: '#/story/c-' + c.id, title: T('A Történetek között is megjelenik') }, icon('book'), T('Történet')) : null),
@@ -105,5 +105,5 @@ export function recentComments(list, openPhoto) {
   return h('section', { class: 'section' }, h('h2', null, T('Legutóbbi hozzászólások')),
     list.map(c => h('div', { class: 'c-recent' },
       h('div', { class: 'c-meta' }, h('b', null, c.author || T('ismeretlen')), ' → ', target(c), h('span', null, when(c.created))),
-      h('div', { class: 'c-body' }, c.body.length > 180 ? c.body.slice(0, 180) + '…' : c.body))));
+      h('div', { class: 'c-body' }, (b => b.length > 180 ? b.slice(0, 180) + '…' : b)(tx(c, 'body'))))));
 }

@@ -30,6 +30,11 @@ Ha nincs `config.php`, az app helyi SQLite fájlon fut (`data/familytree.sqlite`
   A kulcs a `config.php`-ben van (a `:fx` végű ingyenes kulcs is működik); az
   adatbázisba és a böngészőbe nem kerül. A fejlécben választható a nyelv; a fordított sztori alatt
   egy kattintással látszik az eredeti. A már lefordított, változatlan szöveget nem küldi el újra.
+  Minden más beírt szöveg is fordul, bármelyik nyelven írták: életrajzok, családjegyzetek, események
+  megnevezése és jegyzete, fotók címe és leírása, hozzászólások, kitűzött elemek felirata. Az első
+  megtekintéskor (vagy az Import / export lapon előre, egyben) fordul le, utána tárolva marad; a DeepL
+  ismeri fel, milyen nyelven írták. Az eredeti szöveg nem változik, a fordítás mellett egy kis
+  földgömb mutatja meg. Ha a DeepL hibázik vagy elfogy a keret, az eredeti látszik, és 10 percig nem próbálja újra.
   A teljes felület (menük, gombok, beállítások, dátumok, rokonsági elnevezések) magyarul, angolul és
   németül is elérhető; a nyelvválasztó a jobb felső sarokban van, a választás megmarad. A szótárak:
   `assets/i18n/en.json`, `de.json` (kulcs = a magyar szöveg).

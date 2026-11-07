@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 9;
+const FT_SCHEMA_VERSION = 10;
 
 function ft_schema(): array
 {
@@ -43,6 +43,9 @@ function ft_schema(): array
             'idx' => ['src' => ['source']]],
         'story_tr' => ['cols' => ['id' => 'id', 'story_id' => 'int', 'lang' => 'str5', 'title' => 'str255', 'body' => 'text',
             'src_hash' => 'str40', 'created' => 'datetime'], 'idx' => ['sl' => ['story_id', 'lang']]],
+        // machine translations of biographies, event texts, photo titles, comments… (lib/texttr.php)
+        'text_tr' => ['cols' => ['id' => 'id', 'kind' => 'str16', 'item_id' => 'int', 'field' => 'str16', 'lang' => 'str5', 'text' => 'text',
+            'src_lang' => 'str5', 'src_hash' => 'str40', 'created' => 'datetime'], 'idx' => ['ki' => ['kind', 'item_id']]],
         'story_links' => ['cols' => ['id' => 'id', 'story_id' => 'int', 'person_id' => 'int', 'family_id' => 'int'],
             'idx' => ['s' => ['story_id'], 'p' => ['person_id']]],
         'sources' => ['cols' => ['id' => 'id', 'xref' => 'str20', 'title' => 'str255', 'author' => 'str255',

@@ -1082,5 +1082,20 @@
 "Ezekre a nyelvekre fordítjuk a sztorikat. A DeepL kulcs a config.php-ben van.": "In diese Sprachen übersetzen wir die Geschichten. Der DeepL-Schlüssel steht in der config.php.",
 "A fordításhoz DeepL kulcs kell a config.php-be. Most nincs beállítva.": "Für die Übersetzung braucht es einen DeepL-Schlüssel in der config.php. Derzeit ist keiner eingetragen.",
 "A fordításhoz DeepL kulcs kell a config.php-ben, és a szervernek el kell érnie az internetet.": "Für die Übersetzung braucht es einen DeepL-Schlüssel in der config.php, und der Server muss das Internet erreichen.",
-"Nincs DeepL kulcs a config.php-ben.": "Kein DeepL-Schlüssel in der config.php."
+"Nincs DeepL kulcs a config.php-ben.": "Kein DeepL-Schlüssel in der config.php.",
+"fordítás mutatása": "Übersetzung zeigen",
+"gépi fordítás – eredeti ({0})": "maschinelle Übersetzung – Original zeigen ({0})",
+"Eredeti szöveg ({0}). Kattints a fordításért.": "Originaltext ({0}). Klicken für die Übersetzung.",
+"Gépi fordítás, az eredeti {0}. Kattints az eredetiért.": "Maschinelle Übersetzung, das Original ist {0}. Klicken für das Original.",
+"Minden beírt szöveg fordítása is": "Auch alle eingegebenen Texte übersetzen",
+"Életrajzok, események megnevezése és jegyzete, fotók címe és leírása, hozzászólások, kitűzött elemek felirata – bármelyik nyelven írták. Az első megtekintéskor fordul le (DeepL), utána tárolva marad; az eredeti mindig egy kattintással látszik. Az Import / export lapon előre is lefordítható minden.": "Lebensläufe, Bezeichnungen und Notizen von Ereignissen, Fototitel und -beschreibungen, Kommentare, Beschriftungen angehefteter Elemente – egal in welcher Sprache geschrieben. Beim ersten Ansehen übersetzt (DeepL), danach gespeichert; das Original ist immer einen Klick entfernt. Unter Import / Export lässt sich alles vorab übersetzen.",
+"Számolás…": "Zähle…",
+"Mindent lefordít most": "Jetzt alles übersetzen",
+"{0}: {1} szöveg, kb. {2} karakter": "{0}: {1} Texte, etwa {2} Zeichen",
+"Még nincs lefordítva – ": "Noch nicht übersetzt – ",
+"Minden szöveg le van fordítva minden bekapcsolt nyelvre.": "Alle Texte sind in alle aktivierten Sprachen übersetzt.",
+"Nem volt mit fordítani.": "Es gab nichts zu übersetzen.",
+"Életrajzok, hozzászólások, képcímek fordítása": "Lebensläufe, Kommentare, Fototitel übersetzen",
+"Bármelyik nyelven írták, a többi bekapcsolt nyelvre is lefordul: életrajzok, a családokról szóló jegyzetek, események megnevezése és jegyzete, fotók címe és leírása, hozzászólások, a kitűzött elemek felirata. Magától is lefordul, amikor valaki először megnézi más nyelven; ezzel előre el lehet készíteni mindet. A DeepL havi keretébe a karakterek számítanak.": "In welcher Sprache auch immer geschrieben, sie werden in die anderen aktivierten Sprachen übersetzt: Lebensläufe, Notizen zu Familien, Bezeichnungen und Notizen von Ereignissen, Fototitel und -beschreibungen, Kommentare, Beschriftungen angehefteter Elemente. Das geschieht von selbst beim ersten Ansehen in einer anderen Sprache; hier lässt sich alles vorab erledigen. Die Zeichen zählen zum monatlichen DeepL-Kontingent.",
+"A DeepL most nem fordít (hiba vagy elfogyott a keret). A részletek a szerver hibanaplójában vannak.": "DeepL übersetzt gerade nicht (Fehler oder Kontingent aufgebraucht). Details stehen im Fehlerprotokoll des Servers."
 }

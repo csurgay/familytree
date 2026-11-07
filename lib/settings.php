@@ -35,6 +35,7 @@ function ft_settings_def(): array
 
         ['Hozzáférés', 'backup_keep', 'int', 5, 'Ennyi saját teljes mentést őriz meg a szerveren', 'A data/backups mappában; a régebbiek automatikusan törlődnek. A feltöltött mentéseket nem törli.', [1, 50]],
         ['Nyelvek és szövegek', 'languages', 'multi', ['hu', 'en', 'de'], 'Nyelvek', 'Ezekre a nyelvekre fordítjuk a sztorikat. A DeepL kulcs a config.php-ben van.', ['hu' => 'Magyar', 'en' => 'English', 'de' => 'Deutsch']],
+        ['Nyelvek és szövegek', 'translate_content', 'bool', true, 'Minden beírt szöveg fordítása is', 'Életrajzok, események megnevezése és jegyzete, fotók címe és leírása, hozzászólások, kitűzött elemek felirata – bármelyik nyelven írták. Az első megtekintéskor fordul le (DeepL), utána tárolva marad; az eredeti mindig egy kattintással látszik. Az Import / export lapon előre is lefordítható minden.'],
         ['Nyelvek és szövegek', 'translate_auto', 'bool', true, 'Sztori mentésekor automatikus fordítás', 'Ha ki van kapcsolva, az Import / export lapon kézzel indítható.'],
         ['Nyelvek és szövegek', 'bios_in_stories', 'bool', true, 'A hosszabb életrajzok a Történetek között is megjelennek', 'Nem másolat: ugyanaz a szöveg, ami a személy (vagy a család) lapján van, és ott kell szerkeszteni.'],
         ['Nyelvek és szövegek', 'notes_story_min', 'int', 80, 'Ennél hosszabb életrajz jelenik meg a Történetek között (karakter)', 'A rövid bejegyzések (pl. „orvos”) csak a személy lapján látszanak.', [1, 5000]],

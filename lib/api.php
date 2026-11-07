@@ -62,7 +62,8 @@ function ft_event_json(array $e, ?array $g = null): array
     $g = $g ?? ft_graph();
     $o = ['id' => (int)$e['id'], 'type' => $e['type'], 'tl' => FT_EVENT_TYPES[$e['type']] ?? $e['type'], 'label' => $e['label'],
         'raw' => $e['date_raw'], 'date' => ft_format_date($e['date_raw']), 'y' => ft_int($e['y']), 'm' => ft_int($e['m']), 'd' => ft_int($e['d']),
-        'sort' => ft_int($e['sort']), 'place' => $e['place'], 'note' => $e['note'], 'person_id' => ft_int($e['person_id']), 'family_id' => ft_int($e['family_id'])];
+        'sort' => ft_int($e['sort']), 'place' => $e['place'], 'note' => $e['note'], 'person_id' => ft_int($e['person_id']), 'family_id' => ft_int($e['family_id']),
+        '_tr' => [['label', 'event', (int)$e['id']], ['note', 'event', (int)$e['id']]]];
     return $o;
 }
 
@@ -83,7 +84,8 @@ function ft_event_hidden(array $e, array $g): bool
 function ft_photo_json(array $r, bool $withLinks = true): array
 {
     $o = ['id' => (int)$r['id'], 'file' => $r['file'], 'thumb' => $r['thumb'], 'w' => (int)$r['w'], 'h' => (int)$r['h'], 'title' => $r['title'],
-        'descr' => $r['descr'], 'raw' => $r['date_raw'], 'date' => ft_format_date($r['date_raw']), 'status' => $r['status'], 'uploaded_by' => ft_int($r['uploaded_by'])];
+        'descr' => $r['descr'], 'raw' => $r['date_raw'], 'date' => ft_format_date($r['date_raw']), 'status' => $r['status'], 'uploaded_by' => ft_int($r['uploaded_by']),
+        '_tr' => [['title', 'photo', (int)$r['id']], ['descr', 'photo', (int)$r['id']]]];
     if ($withLinks) $o['links'] = array_map(fn($l) => ['person_id' => ft_int($l['person_id']), 'family_id' => ft_int($l['family_id']), 'story_id' => ft_int($l['story_id']),
         'fx' => (float)($l['fx'] ?? .5), 'fy' => (float)($l['fy'] ?? .35)], App::$db->all('SELECT * FROM {photo_links} WHERE photo_id = ?', [(int)$r['id']]));
     return $o;
@@ -385,10 +387,11 @@ function ft_handlers(): array
             if (!$masked) foreach (App::$db->all('SELECT p.* FROM {photos} p JOIN {photo_links} l ON l.photo_id = p.id WHERE l.person_id = ? ORDER BY p.y IS NULL, p.y, p.id', [$id]) as $ph) {
                 $j = ft_photo_json($ph); if (ft_photo_visible($j, $g)) $photos[] = $j;
             }
-            $stories = ft_story_list(App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.person_id = ? ORDER BY s.y IS NULL, s.y, s.id', [$id]));
+            $stories = ft_story_list(App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.person_id = ? ORDER BY s.y IS NULL, s.y, s.id', [$id]), App::$lang);
             $out = ['person' => $light, 'notes' => $masked ? null : $row['notes'], 'married_name' => $masked ? null : $row['married_name'],
                 'photo_id' => $masked ? null : ft_int($row['photo_id']), 'events' => $events, 'families' => $families, 'photos' => $photos, 'stories' => $stories,
-                'modes' => ft_modes([$id], []), 'xref' => $row['xref'], 'created' => $row['created'], 'updated' => $row['updated']];
+                'modes' => ft_modes([$id], []), 'xref' => $row['xref'], 'created' => $row['created'], 'updated' => $row['updated'],
+                '_tr' => [['notes', 'person', $id]]];
             if (ft_can_see_contacts() && $row['extra']) $out['extra'] = json_decode($row['extra'], true);
             if (App::isAdmin()) {
                 $out['heads'] = App::$db->all('SELECT u.id, u.name FROM {branches} b JOIN {users} u ON u.id = b.user_id WHERE b.person_id = ?', [$id]);
@@ -407,11 +410,11 @@ function ft_handlers(): array
             foreach (App::$db->all('SELECT p.* FROM {photos} p JOIN {photo_links} l ON l.photo_id = p.id WHERE l.family_id = ? ORDER BY p.y IS NULL, p.y, p.id', [$id]) as $ph) {
                 $j = ft_photo_json($ph); if (ft_photo_visible($j, $g)) $photos[] = $j;
             }
-            $stories = ft_story_list(App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.family_id = ?', [$id]));
+            $stories = ft_story_list(App::$db->all('SELECT s.* FROM {stories} s JOIN {story_links} l ON l.story_id = s.id WHERE l.family_id = ?', [$id]), App::$lang);
             $f = $g['F'][$id];
             $hidden = ft_mask_living() && (($f['husband_id'] && ft_is_living($g, $f['husband_id'])) || ($f['wife_id'] && ft_is_living($g, $f['wife_id'])));
             return ['id' => $id, 'notes' => $hidden ? null : $row['notes'], 'events' => $events, 'photos' => $photos, 'stories' => $stories,
-                'photo_id' => ft_int($row['photo_id']), 'modes' => ft_modes([], [$id])];
+                'photo_id' => ft_int($row['photo_id']), 'modes' => ft_modes([], [$id]), '_tr' => [['notes', 'family', $id]]];
         },
 
         'home' => function () {
@@ -459,7 +462,8 @@ function ft_handlers(): array
             }
             $pins = [];
             foreach ($db->all('SELECT * FROM {pins} ORDER BY sort, id') as $p) {
-                $o = ['id' => (int)$p['id'], 'kind' => $p['kind'], 'ref_id' => (int)$p['ref_id'], 'params' => json_decode($p['params'] ?? '{}', true) ?: [], 'caption' => $p['caption']];
+                $o = ['id' => (int)$p['id'], 'kind' => $p['kind'], 'ref_id' => (int)$p['ref_id'], 'params' => json_decode($p['params'] ?? '{}', true) ?: [], 'caption' => $p['caption'],
+                    '_tr' => [['caption', 'pin', (int)$p['id']]]];
                 if ($p['kind'] === 'event') {
                     $e = $db->row('SELECT * FROM {events} WHERE id = ?', [(int)$p['ref_id']]);
                     if (!$e || ft_event_hidden($e, $g)) continue;
@@ -771,6 +775,17 @@ function ft_handlers(): array
             if ($mode === 'replace' || !(int)App::$s['home_person']) { $hp = ft_pick_home_person(ft_graph()); if ($hp) ft_setting_set(App::$db, 'home_person', $hp); }
             App::audit('gedcom.import', 'app', null, $stats);
             return $stats;
+        },
+        'admin.tr_status' => function () {
+            ft_require_admin();
+            return ['ready' => ft_translator_ready(), 'on' => !empty(App::$s['translate_content']),
+                'left' => array_map(fn($m) => ['n' => $m['n'], 'chars' => $m['chars']], ft_tr_missing()),
+                'cached' => (int)App::$db->val('SELECT COUNT(*) FROM {text_tr}')];
+        },
+        'admin.tr_step' => function () {
+            ft_require_admin();
+            @set_time_limit(120);
+            return ft_tr_step();
         },
         'admin.translate' => function ($in) {
             ft_require_admin();

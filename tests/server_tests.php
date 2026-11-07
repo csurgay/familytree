@@ -558,6 +558,67 @@ function ft_server_tests(): array
             t_throws(fn() => ft_story_extra('comment', $c2), 'vendég a hozzászólást sem');
             App::$s['notes_story_min'] = 80;
         },
+        'Beírt szövegek fordítása: bármelyik nyelvről, gyorsítótárral, az eredeti érintetlen' => function () {
+            $db = t_fresh_db(); $ids = t_import($db);
+            $admin = t_user($db, 'admin'); t_as($admin);
+            $calls = [];
+            // "DE:" = German text, everything else Hungarian
+            $GLOBALS['ft_translate_mock'] = fn() => ['texts' => [], 'detected' => ''];
+            $GLOBALS['ft_translate_each_mock'] = function ($texts, $target) use (&$calls) {
+                $calls[] = $target . ':' . count($texts);
+                return array_map(fn($t) => ['text' => str_starts_with($t, 'DE:') && $target === 'de' || !str_starts_with($t, 'DE:') && $target === 'hu' ? $t : "[$target] $t",
+                    'detected' => str_starts_with($t, 'DE:') ? 'de' : 'hu'], $texts);
+            };
+            try {
+                App::$s['translate_content'] = true; App::$s['_tr_pause'] = 0;
+                $bio = 'Kovácsmester volt a faluban, és hét gyermeket nevelt fel.';
+                $db->update('persons', ['notes' => $bio], $ids['I1']);
+                $ev = $db->insert('events', ['person_id' => $ids['I1'], 'type' => 'OCCU', 'label' => 'kovács', 'created' => ft_now(), 'updated' => ft_now()]);
+                App::flush();
+                $h = ft_handlers();
+                $get = fn($lang) => ft_tr_apply($h['person'](['id' => $ids['I1']]), $lang);
+                $en = $get('en');
+                t_eq([$en['notes'], $en['notes_tr'], $en['notes_src']], [$bio, "[en] $bio", 'hu'], 'a fordítás külön mezőben, az eredeti marad');
+                $occ = array_values(array_filter($en['events'], fn($e) => $e['id'] === $ev))[0];
+                t_eq($occ['label_tr'] ?? null, '[en] kovács', 'a foglalkozás is');
+                t_ok(!str_contains(json_encode($en), '"_tr"'), 'a jelölők nem mennek ki');
+                t_eq($calls, ['en:2'], 'egyetlen kérés a lapra');
+                $get('en');
+                t_eq($calls, ['en:2'], 'másodszor a tárolt fordítás jön');
+                $hu = $get('hu');
+                t_ok(!isset($hu['notes_tr']), 'magyar nézetben a magyar szöveg marad (helyi felismerés, nincs DeepL)');
+                t_ok(!isset(array_values(array_filter($hu['events'], fn($e) => $e['id'] === $ev))[0]['label_tr']), 'rövid szónál a DeepL felismerte nyelv dönt');
+                t_eq(count($calls), 1, 'ehhez nem kell újabb kérés (az angol fordításkor kiderült, hogy magyar)');
+                // a German comment, read in Hungarian
+                ft_comment_add(['entity' => 'person', 'entity_id' => $ids['I1'], 'body' => 'DE: Er war ein guter Mann.']);
+                $cl = ft_tr_apply(ft_comments_list('person', $ids['I1']), 'hu');
+                t_eq([$cl[0]['body_tr'], $cl[0]['body_src']], ['[hu] DE: Er war ein guter Mann.', 'de'], 'német hozzászólás magyarul');
+                $cl = ft_tr_apply(ft_comments_list('person', $ids['I1']), 'de');
+                t_ok(!isset($cl[0]['body_tr']), 'németül az eredeti');
+                // edited text → translated again
+                $db->update('persons', ['notes' => $bio . ' Később a tsz-ben dolgozott.'], $ids['I1']);
+                t_eq($get('en')['notes_tr'], "[en] $bio Később a tsz-ben dolgozott.", 'módosított szöveget újrafordít');
+                // in the stories feed too (excerpt of the biography)
+                App::$s['notes_story_min'] = 10;
+                $feed = ft_tr_apply(ft_story_feed('en'), 'en');
+                $b = array_values(array_filter($feed, fn($x) => $x['kind'] === 'bio' && $x['id'] === $ids['I1']))[0];
+                t_ok(str_starts_with($b['excerpt_tr'] ?? '', 'en Kovácsmester'), 'a Történetek kivonata is (a kivonatból a zárójelek kimaradnak)');
+                App::$s['notes_story_min'] = 80;
+                // DeepL fails: originals shown, and a pause instead of slow pages
+                $GLOBALS['ft_translate_each_mock'] = function () { throw ft_err('DeepL fordítás sikertelen: elfogyott a havi DeepL keret', 502); };
+                $db->update('persons', ['notes' => 'Egészen új szöveg, amit még senki nem fordított le.'], $ids['I1']);
+                $x = $get('en');
+                t_ok(!isset($x['notes_tr']) && $x['notes'] === 'Egészen új szöveg, amit még senki nem fordított le.', 'hibánál az eredeti látszik');
+                t_ok(!ft_tr_on(), 'és szünetel');
+                // the admin translates everything in advance
+                App::$s['_tr_pause'] = 0;
+                $GLOBALS['ft_translate_each_mock'] = fn($texts, $target) => array_map(fn($t) => ['text' => "[$target] $t", 'detected' => 'hu'], $texts);
+                $miss = ft_tr_missing();
+                t_ok($miss['en']['n'] > 0 && $miss['de']['n'] > 0, 'látszik, mennyi van hátra');
+                for ($i = 0; $i < 10 && array_sum(array_column(ft_tr_step()['left'], 'n')); $i++);
+                t_eq(array_sum(array_column(ft_tr_missing(), 'n')), 0, 'előre mindent lefordít');
+            } finally { unset($GLOBALS['ft_translate_mock'], $GLOBALS['ft_translate_each_mock']); App::$s['_tr_pause'] = 0; }
+        },
         'Fordítás: minden nyelvre, változatlan szöveget nem küld újra, nyelv szerint mutatja' => function () {
             $db = t_fresh_db(); t_import($db); t_as(t_user($db, 'admin'));
             $calls = [];

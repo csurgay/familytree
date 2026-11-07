@@ -57,7 +57,7 @@ try {
     $open = ['boot', 'login', 'logout', 'install', 'register', 'pwreset.request', 'pwreset', 'register.oauth'];
     if (!in_array($action, $open, true) && !ft_can_read()) throw new ApiError('Az oldal megtekintéséhez jelentkezz be.', 401);
     $writes = ['login', 'logout', 'install', 'register', 'password', 'pwreset.request', 'pwreset', 'register.oauth', 'oauth.unlink', 'op', 'pin', 'unpin', 'chart.save', 'chart.delete', 'quiz.save', 'upload', 'comment.add', 'comment.edit', 'comment.delete'];
-    if ((in_array($action, $writes, true) || str_starts_with($action, 'admin.')) && $method !== 'POST' && $action !== 'admin.changes' && $action !== 'admin.users' && $action !== 'admin.branches' && $action !== 'admin.audit' && $action !== 'admin.stats' && $action !== 'admin.backups' && $action !== 'admin.nophoto') {
+    if ((in_array($action, $writes, true) || str_starts_with($action, 'admin.')) && $method !== 'POST' && $action !== 'admin.changes' && $action !== 'admin.users' && $action !== 'admin.branches' && $action !== 'admin.audit' && $action !== 'admin.stats' && $action !== 'admin.backups' && $action !== 'admin.nophoto' && $action !== 'admin.tr_status') {
         throw new ApiError('POST kérés szükséges.', 405);
     }
 
@@ -68,7 +68,9 @@ try {
 
     $h = ft_handlers();
     if (!isset($h[$action])) throw new ApiError('Ismeretlen kérés: ' . $action, 404);
-    ft_json(['ok' => true, 'data' => $h[$action]($in)]);
+    $data = $h[$action]($in);
+    // machine translation of the texts people wrote (lib/texttr.php); also removes the field markers
+    ft_json(['ok' => true, 'data' => is_array($data) ? ft_tr_apply($data, App::$lang, !str_starts_with($action, 'admin.')) : $data]);
 } catch (ApiError $e) {
     ft_json(['ok' => false, 'error' => ft_t($e->getMessage())], $e->status);
 } catch (Throwable $e) {

@@ -1,5 +1,5 @@
 // Edit dialogs. Every save goes through op() → applied directly or queued for approval by the server.
-import { S, T, P, F, h, api, op, modal, field, dateInput, formData, personPicker, toast, fail, opDone, confirmBox, modeNote,
+import { S, T, P, F, h, api, op, modal, tx, trText, field, dateInput, formData, personPicker, toast, fail, opDone, confirmBox, modeNote,
   personName, years, avatar, loadTree, render, icon, gedToInput, familyLabel, chip, $, spouseIn } from './core.js';
 
 import { commentsBox } from './comments.js';
@@ -382,7 +382,7 @@ export async function photoViewer(list, index = 0) {
     i = n;
     let ph;
     try { ph = await api('photo', null, { query: { id: list[i].id } }); } catch (e) { fail(e); return; }
-    const img = h('img', { src: ph.file, alt: ph.title || T('Fotó') });
+    const img = h('img', { src: ph.file, alt: tx(ph, 'title') || T('Fotó') });
     const dots = h('div', { style: 'position:absolute;inset:0;pointer-events:none' });
     const holder = h('div', { style: 'position:relative;display:inline-block;max-width:100%' }, img, dots);
     const drawDots = () => {
@@ -405,10 +405,10 @@ export async function photoViewer(list, index = 0) {
     const fams = ph.links.filter(l => l.family_id && F(l.family_id));
     const canTag = !!S.user && ph.modes?.create !== 'deny';
     side.replaceChildren(
-      h('h2', null, ph.title || T('Fotó')),
+      ph.title ? trText(ph, 'title', 'h2') : h('h2', null, T('Fotó')),
       ph.status === 'pending' ? h('p', null, h('span', { class: 'badge pend' }, T('Jóváhagyásra vár'))) : null,
       ph.date ? h('p', { class: 'muted' }, ph.date) : null,
-      ph.descr ? h('p', { style: 'white-space:pre-wrap' }, ph.descr) : null,
+      ph.descr ? trText(ph, 'descr', 'p', { style: 'white-space:pre-wrap' }) : null,
       h('h4', { style: 'margin-top:18px' }, T('A képen')),
       people.length ? h('div', null, people.map(l => h('div', { class: 'row', style: 'justify-content:space-between' }, chip(l.person_id),
         canTag ? h('span', null,

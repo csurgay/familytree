@@ -1,4 +1,4 @@
-import { S, T, P, F, h, api, op, icon, LANG_NAMES, personName, years, avatar, chip, personLink, parentsOf, childrenOf, siblingsOf, spouseIn, familyLabel,
+import { S, T, P, F, h, api, op, icon, LANG_NAMES, tx, trText, personName, years, avatar, chip, personLink, parentsOf, childrenOf, siblingsOf, spouseIn, familyLabel,
   loadTree, setTitle, md, fmtDate, splitDate, toast, fail, opDone, personPicker, field, go, norm, huCmp, photoStyle, modal, formData, render, confirmBox, pwInput } from './core.js';
 import { renderChart, exportChart, CHART_KINDS, chartOrient, cardShape } from './charts.js';
 import { editPerson, addRelative, linkExisting, editFamily, editEvent, uploadPhotos, photoViewer, editStory, refresh } from './edit.js';
@@ -29,9 +29,9 @@ function pinBtn(kind, ref_id, label = T('Kitűzés a kezdőlapra')) {
 function timeline(events, { withSubject = true, editable = null } = {}) {
   return h('ul', { class: 'timeline' }, events.map(e => h('li', null, whenCell(e), h('span', { class: 'ico ' + e.type }, icon(EV_ICON[e.type] || 'star')),
     h('div', { class: 'what' },
-      h('div', { class: 't' }, withSubject ? [evSubject(e), ' ', evVerb(e)] : [T(e.tl), e.label ? ': ' + e.label : '']),
-      h('div', { class: 's' }, [withSubject && e.label ? e.label : null, e.place].filter(Boolean).join(' · ')),
-      e.note ? h('div', { class: 's', style: 'white-space:pre-wrap' }, e.note) : null),
+      h('div', { class: 't' }, withSubject ? [evSubject(e), ' ', evVerb(e)] : [T(e.tl), e.label ? [': ', trText(e, 'label')] : '']),
+      withSubject && e.label || e.place ? h('div', { class: 's' }, withSubject && e.label ? trText(e, 'label') : null, withSubject && e.label && e.place ? ' · ' : null, e.place || null) : null,
+      e.note ? trText(e, 'note', 'div', { class: 's', style: 'white-space:pre-wrap' }) : null),
     h('div', { class: 'tl-act' },
       editable ? h('button', { class: 'icon-btn act', title: T('Szerkesztés'), onclick: () => editable(e) }, icon('edit')) : null, pinBtn('event', e.id)))));
 }
@@ -78,7 +78,7 @@ export async function viewHome() {
 
   const right = h('div', null,
     recentComments(home.comments, photoViewer),
-    photoPin ? h('section', { class: 'section' }, h('h2', null, T('Kitűzött fotó')), h('a', { href: '#', onclick: e => { e.preventDefault(); photoViewer([photoPin.photo]); } }, h('img', { src: photoPin.photo.file, alt: photoPin.photo.title || '', style: 'border-radius:8px' })), photoPin.photo.title ? h('p', { class: 'muted', style: 'margin-top:6px' }, photoPin.photo.title) : null) : null,
+    photoPin ? h('section', { class: 'section' }, h('h2', null, T('Kitűzött fotó')), h('a', { href: '#', onclick: e => { e.preventDefault(); photoViewer([photoPin.photo]); } }, h('img', { src: photoPin.photo.file, alt: tx(photoPin.photo, 'title'), style: 'border-radius:8px' })), photoPin.photo.title ? trText(photoPin.photo, 'title', 'p', { class: 'muted', style: 'margin-top:6px' }) : null) : null,
     s.anniversaries ? h('section', { class: 'section' }, h('h2', null, T('Évfordulók')),
       home.anniversaries.length ? home.anniversaries.slice(0, 8).map(a => h('div', { class: 'ann' },
         h('div', { class: 'n' }, a.years, h('small', null, a.type === 'MARR' ? T('éve házasok') : P(a.person_id)?.dec ? T('éve született') : T('éves lesz'))),
@@ -139,10 +139,10 @@ function pinnedEvent(pin) {
   return h('article', { class: 'pinned-event' },
     h('div', { class: 'ph' }, ph ? h('img', { src: pin.photo?.file || subj?.pf || ph, alt: '', style: subj && !pin.photo ? photoStyle(subj) : '' }) : null),
     h('div', null,
-      h('div', { class: 'kick' }, icon('pin'), pin.caption || T(e.tl)),
+      h('div', { class: 'kick' }, icon('pin'), pin.caption ? trText(pin, 'caption') : T(e.tl)),
       h('h2', null, evSubject(e)),
-      h('p', null, [e.date, e.place].filter(Boolean).join(', '), e.label ? ' — ' + e.label : ''),
-      e.note ? h('p', { style: 'margin-top:6px' }, e.note) : null,
+      h('p', null, [e.date, e.place].filter(Boolean).join(', '), e.label ? [' — ', trText(e, 'label')] : ''),
+      e.note ? trText(e, 'note', 'p', { style: 'margin-top:6px' }) : null,
       isAdmin() ? h('button', { class: 'btn btn-sm btn-ghost', style: 'margin-top:8px', onclick: async () => { await api('unpin', { id: pin.id }); render(); } }, T('Levétel a kezdőlapról')) : null));
 }
 /** One story in a list; shows whom it is about (except the people of the page it is listed on). */
@@ -241,7 +241,7 @@ export async function viewPerson(id) {
   const mini = h('div', { class: 'mini-chart' });
   const evEditable = canTry(m.update) || canTry(m.create) ? e => editEvent(e, { person_id: id, mode: m.update }) : null;
   const leftCol = h('div', null,
-    d.notes ? h('section', { class: 'section' }, h('h2', null, T('Életrajz')), h('div', { class: 'bio' }, d.notes)) : null,
+    d.notes ? h('section', { class: 'section' }, h('h2', null, T('Életrajz')), trText(d, 'notes', 'div', { class: 'bio' })) : null,
     d.events.length ? h('section', { class: 'section' }, h('h2', null, T('Életút')), timeline(d.events, { withSubject: false, editable: evEditable })) : null,
     h('section', { class: 'section' }, h('h2', null, T('Fotók'), canTry(m.create) ? h('button', { class: 'btn btn-sm side', onclick: () => uploadPhotos({ person_id: id }) }, icon('plus'), T('Feltöltés')) : null),
       d.photos.length ? photoGrid(d.photos) : h('p', { class: 'empty' }, p.masked ? T('Élő személy fotói csak bejelentkezve láthatók.') : T('Még nincs fotó róla.'))),
@@ -275,7 +275,7 @@ function photoGrid(photos) {
   return h('div', { class: 'photo-grid' }, photos.map((p, i) => h('a', { href: '#', onclick: e => { e.preventDefault(); photoViewer(photos, i); } },
     h('img', { src: p.thumb, alt: p.title || '', loading: 'lazy', width: p.w, height: p.h, style: 'height:auto' }),
     p.status === 'pending' ? h('span', { class: 'badge pend' }, T('jóváhagyásra vár')) : null,
-    p.title || p.date ? h('div', { class: 'cap' }, [p.title, p.date].filter(Boolean).join(' · ')) : null)));
+    p.title || p.date ? h('div', { class: 'cap' }, [tx(p, 'title'), p.date].filter(Boolean).join(' · ')) : null)));
 }
 
 // ======================================================================= FAMILY
@@ -300,7 +300,7 @@ export async function viewFamily(id) {
     h('div', { class: 'person-grid' },
       h('div', null,
         ph ? h('section', { class: 'section' }, h('a', { href: '#', onclick: e => { e.preventDefault(); photoViewer(d.photos, d.photos.indexOf(ph)); } }, h('img', { src: ph.file, alt: ph.title || '', style: 'border-radius:8px;max-height:520px;width:auto' }))) : null,
-        d.notes ? h('section', { class: 'section' }, h('h2', null, T('A családról')), h('div', { class: 'bio' }, d.notes)) : null,
+        d.notes ? h('section', { class: 'section' }, h('h2', null, T('A családról')), trText(d, 'notes', 'div', { class: 'bio' })) : null,
         d.events.length ? h('section', { class: 'section' }, h('h2', null, T('Események')), timeline(d.events, { withSubject: false, editable: S.user ? e => editEvent(e, { family_id: id, mode: m.update }) : null })) : null,
         h('section', { class: 'section' }, h('h2', null, T('Családi fotók')), d.photos.length ? photoGrid(d.photos) : h('p', { class: 'empty' }, T('Még nincs családi fotó.'))),
         d.stories.length ? h('section', { class: 'section' }, h('h2', null, T('Sztorik')), d.stories.map(s => storyTeaser(s, false, [f.h, f.w, 'f' + id].filter(Boolean)))) : null,
@@ -413,7 +413,7 @@ export async function viewStories(qs) {
   const card = s => h('a', { class: 'story-card' + (s.kind && s.kind !== 'story' ? ' sc-' + kindOf(s) : ''), href: storyHref(s) },
     h('div', { class: 'cover' + (s.cover?.portrait ? ' portrait-cover' : '') }, s.cover ? h('img', { src: s.cover.thumb, alt: '' }) : h('span', { class: 'q' }, '„')),
     h('h3', null, s.title), h('div', { class: 'meta' }, storyMeta(s)),
-    h('p', null, s.excerpt));
+    h('p', null, tx(s, 'excerpt')));
   const tabs = Object.keys(counts).length > 1 ? h('div', { class: 'tabs story-tabs' },
     [['all', T('Mind'), list.length], ...Object.entries(STORY_KINDS).filter(([k]) => counts[k]).map(([k, l]) => [k, T(l), counts[k]])].map(([k, l, n]) =>
       h('button', { type: 'button', class: k === cur ? 'on' : '', 'data-k': k, onclick: () => { cur = k; draw(); history.replaceState(null, '', '#/stories' + (k === 'all' ? '' : '?k=' + k)); } }, l, h('span', { class: 'c-count' }, n)))) : null;
@@ -440,9 +440,8 @@ async function viewStoryExtra(kind, id) {
     return h('article', { class: 'story-page' }, back,
       h('h1', null, s.title),
       h('div', { class: 'meta' }, kind === 'bio' ? T('Életrajz – a személy lapjáról') : T('A családról – a család lapjáról')),
-      S.lang !== 'hu' && (S.boot.langs || []).length > 1 ? h('p', { class: 'tr-note' }, T('Az életrajzok eredeti (magyar) nyelven látszanak.')) : null,
       s.cover ? h('img', { class: 'story-portrait', src: s.cover.file, alt: '' }) : null,
-      h('div', { class: 'bio' }, s.body),
+      trText(s, 'body', 'div', { class: 'bio' }),
       kind === 'fbio' ? people : null,
       h('div', { class: 'row', style: 'margin-top:20px' },
         h('a', { class: 'btn', href: home }, icon(kind === 'bio' ? 'user' : 'family'), kind === 'bio' ? T('A személy lapja') : T('A család lapja')),
@@ -454,9 +453,9 @@ async function viewStoryExtra(kind, id) {
     h('h1', null, s.title),
     h('div', { class: 'meta' }, T('Emlék – lejegyezte: '), h('b', null, s.author || T('ismeretlen')), ' · ', fmtWhen(s.created)),
     s.photo ? h('div', { style: 'margin:14px 0' }, photoGrid([s.photo])) : s.cover?.portrait ? h('img', { class: 'story-portrait', src: s.cover.file, alt: '' }) : null,
-    h('div', { class: 'bio' }, s.body),
+    trText(s, 'body', 'div', { class: 'bio' }),
     s.replies.length ? h('section', { class: 'section comments' }, h('h2', null, T('Válaszok')),
-      s.replies.map(r => h('div', { class: 'c-item' }, h('div', { class: 'c-meta' }, h('b', null, r.author || T('ismeretlen')), h('span', null, fmtWhen(r.created))), h('div', { class: 'c-body' }, r.body)))) : null,
+      s.replies.map(r => h('div', { class: 'c-item' }, h('div', { class: 'c-meta' }, h('b', null, r.author || T('ismeretlen')), h('span', null, fmtWhen(r.created))), trText(r, 'body', 'div', { class: 'c-body' })))) : null,
     h('p', { class: 'hint', style: 'margin-top:18px' }, T('Hozzászólásként született itt: '), tgt, T('. Válaszolni ott lehet.')),
     people);
 }

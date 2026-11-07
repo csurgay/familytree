@@ -443,6 +443,7 @@ async function importTab() {
         } catch (er) { fail(er); }
         b.disabled = false; b.textContent = T('Fordítás indítása');
       } }, T('Fordítás indítása')))),
+    textTrSection(),
     h('section', { class: 'section panel' }, h('h2', null, T('Fotócsomag importálása')),
       h('p', null, T('ZIP fájl képekkel és manifest.json leírással (pl. a TribalPages-ről mentett fotók). A képek a GEDCOM-azonosító alapján a megfelelő személyhez kerülnek; ami már bent van, azt kihagyja, így többször is futtatható.')),
       h('div', { class: 'row' }, zipIn, h('button', { class: 'btn btn-primary', onclick: async e => {
@@ -503,4 +504,36 @@ async function systemTab() {
       h('dt', null, T('Feltöltési korlát')), h('dd', null, `upload_max_filesize ${s.upload_max}, post_max_size ${s.post_max}`)),
     h('h2', { style: 'margin-top:26px' }, T('Rekordok')),
     h('table', { class: 'tbl', style: 'max-width:420px' }, Object.entries(s.counts).map(([k, v]) => h('tr', null, h('td', null, k), h('td', { style: 'text-align:right' }, v)))));
+}
+
+// everything people wrote (biographies, event texts, photo titles, comments, pin captions), in every language
+function textTrSection() {
+  const info = h('p', { class: 'hint' }, T('Számolás…'));
+  const btn = h('button', { class: 'btn btn-primary', disabled: true }, T('Mindent lefordít most'));
+  const langName = l => (S.boot.langs || []).find(x => x.code === l)?.name || l;
+  const show = st => {
+    const parts = Object.entries(st.left).filter(([, m]) => m.n).map(([l, m]) => T('{0}: {1} szöveg, kb. {2} karakter', langName(l), m.n, m.chars.toLocaleString()));
+    info.textContent = parts.length ? T('Még nincs lefordítva – ') + parts.join('; ') + '.' : T('Minden szöveg le van fordítva minden bekapcsolt nyelvre.');
+    btn.disabled = !st.ready || !parts.length;
+  };
+  api('admin.tr_status').then(st => {
+    if (!st.ready) { info.textContent = T('A fordításhoz DeepL kulcs kell a config.php-be. Most nincs beállítva.'); return; }
+    show(st);
+  }).catch(e => { info.textContent = e.message; });
+  btn.onclick = async () => {
+    btn.disabled = true; let tot = 0;
+    try {
+      for (let i = 0; i < 200; i++) {
+        btn.textContent = T('Fordítás… ') + (tot ? T("({0} kész)", tot) : '');
+        const r = await api('admin.tr_step', {});
+        tot += r.done; show({ ready: true, left: r.left });
+        if (!Object.values(r.left).some(m => m.n) || !r.done) break;
+      }
+      toast(tot ? T("{0} fordítás elkészült.", tot) : T('Nem volt mit fordítani.'));
+    } catch (er) { fail(er); }
+    btn.textContent = T('Mindent lefordít most');
+  };
+  return h('section', { class: 'section panel' }, h('h2', null, T('Életrajzok, hozzászólások, képcímek fordítása')),
+    h('p', null, T('Bármelyik nyelven írták, a többi bekapcsolt nyelvre is lefordul: életrajzok, a családokról szóló jegyzetek, események megnevezése és jegyzete, fotók címe és leírása, hozzászólások, a kitűzött elemek felirata. Magától is lefordul, amikor valaki először megnézi más nyelven; ezzel előre el lehet készíteni mindet. A DeepL havi keretébe a karakterek számítanak.')),
+    info, h('div', { class: 'row' }, btn));
 }

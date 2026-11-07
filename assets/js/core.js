@@ -285,6 +285,30 @@ export function avatar(p, size = 44) {
   else el.append(initials(p) || '?');
   return el;
 }
+// ---- machine translation of what people wrote (server: lib/texttr.php adds <field>_tr and <field>_src)
+const SRC_LANG = { hu: 'magyar', en: 'angol', de: 'német' };
+/** The text to show for o[f] in the current language (the translation when there is one). */
+export const tx = (o, f) => (o && o[f + '_tr']) || (o && o[f]) || '';
+/** o[f] as an element: the translation, with a small button that shows the original. */
+export function trText(o, f, tag = 'span', attrs = null) {
+  const tr = o?.[f + '_tr'], orig = o?.[f] ?? '';
+  if (!tr) return h(tag, attrs, orig);
+  const src = T(SRC_LANG[o[f + '_src']] || o[f + '_src'] || '');
+  const txt = h('span', null, tr);
+  let showOrig = false;
+  const tip = () => showOrig ? T('Eredeti szöveg ({0}). Kattints a fordításért.', src) : T('Gépi fordítás, az eredeti {0}. Kattints az eredetiért.', src);
+  // longer texts get a readable label too (no tooltips on phones)
+  const long = String(orig).length > 120;
+  const lbl = long ? h('span', null) : null;
+  const setLbl = () => { if (lbl) lbl.textContent = showOrig ? T('fordítás mutatása') : T('gépi fordítás – eredeti ({0})', src); };
+  setLbl();
+  const btn = h('button', { type: 'button', class: 'tr-toggle' + (long ? ' long' : ''), title: tip(), 'aria-label': tip(), onclick: e => {
+    e.preventDefault(); e.stopPropagation();
+    showOrig = !showOrig; txt.textContent = showOrig ? orig : tr; btn.classList.toggle('on', showOrig); btn.title = tip(); btn.setAttribute('aria-label', tip()); setLbl();
+  } }, icon('globe'), lbl);
+  return h(tag, attrs, txt, btn);
+}
+
 export function chip(id, extra = '') {
   const p = P(id);
   if (!p) return h('span', { class: 'muted' }, T('ismeretlen'));
