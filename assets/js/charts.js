@@ -13,7 +13,7 @@ export const CHART_KINDS = {
   // orient: the kind can lay out its generations both ways; the value is its default (v = top-down, h = left-right)
   ancestors: { label: 'Felmenők', icon: 'ancestors', up: true, orient: 'h' },
   descendants: { label: 'Leszármazottak', icon: 'descendants', down: true, orient: 'v' },
-  hourglass: { label: 'Homokóra', icon: 'hourglass', up: true, down: true, orient: 'v' },
+  hourglass: { label: 'Családfa', icon: 'hourglass', up: true, down: true, orient: 'v' },
   fan: { label: 'Legyező', icon: 'fan', up: true },
   family: { label: 'Családlap', icon: 'family' },
   relation: { label: 'Rokonság', icon: 'relation' },
@@ -105,7 +105,7 @@ export function chartOrient(o) {
 }
 
 // dir: in the horizontal layout the ancestors go to the right (1) or, in an hourglass, to the left (-1)
-export function layoutAncestors(rootId, o, vertical = false, dir = 1) {
+export function layoutAncestors(rootId, o, vertical = false, dir = 1, { noRootLinks = false } = {}) {
   const { w, hh } = { w: boxSize(o).w, hh: boxSize(o).h };
   const G = o.up; const nodes = []; const links = [];
   // o.viewUp (home page): the older generations are packed above without spreading the ones shown first
@@ -135,7 +135,7 @@ export function layoutAncestors(rootId, o, vertical = false, dir = 1) {
     else cross = (pk[0].cross + pk[pk.length - 1].cross) / 2;
     const n = mk(id, g, cross);
     if (g === C) top.push(n);
-    for (const c of pk) link(n, c);
+    if (!(noRootLinks && g === 0)) for (const c of pk) link(n, c);
     return n;
   };
   const r = place(rootId, 0);
@@ -517,6 +517,37 @@ export function layoutHourglass(rootId, o, orient = 'v') {
       for (const t of tops) d += `M${bus},${t}H${rd.x}`;
       if (!up.nodes.some(n => !n.root)) d += `M${bus},${cy}H${rd.x}`;
       links.push({ d });
+    }
+  }
+  // the spouses' own ancestors (o.spTree): above (left of) the spouse, pushed aside where they would overlap
+  if (o.spTree && mode !== 'none' && o.up > 0) {
+    const spNodes = nodes.filter(n => n.of === rootId && (n.spouse || n.sp));
+    for (const sn of spNodes) {
+      const t = horiz ? layoutAncestors(sn.id, o, false, -1, { noRootLinks: true }) : layoutAncestors(sn.id, o, true, 1, { noRootLinks: true });
+      const tr = t.nodes.find(n => n.root);
+      const tn = t.nodes.filter(n => !n.root);
+      if (!tn.length) continue;
+      // same generation rows as the centre person's ancestors; centred on the spouse card
+      let ox = horiz ? rd.x - tr.x : sn.x - tr.x, oy = horiz ? sn.y - tr.y : rd.y - tr.y;
+      const lo = {}, hi = {};
+      for (const n of nodes) if (n.gen > 0) { const a = horiz ? n.y : n.x, b = a + (horiz ? n.h : n.w); hi[n.gen] = Math.max(hi[n.gen] ?? -Infinity, b); lo[n.gen] = Math.min(lo[n.gen] ?? Infinity, a); }
+      let need = 0;
+      for (const n of tn) { const a = (horiz ? n.y + oy : n.x + ox); if (hi[n.gen] != null) need = Math.max(need, hi[n.gen] + 24 - a); }
+      if (horiz) oy += need; else ox += need;
+      const sh = d => d.replace(/([MLHV])([-\d.]+)(?:,([-\d.]+))?/g, (m, c, a, b) => c === 'H' ? `H${+a + ox}` : c === 'V' ? `V${+a + oy}` : `${c}${+a + ox},${+b + oy}`);
+      const placed = tn.map(n => ({ ...n, x: n.x + ox, y: n.y + oy, spTree: sn.id }));
+      nodes.push(...placed);
+      links.push(...t.links.map(l => ({ ...l, d: sh(l.d) })));
+      // from the visible part of the spouse card to their parents (not along the siblings' line)
+      const par = placed.filter(n => n.gen === 1);
+      const behind = !!sn.spouse;
+      if (!horiz) {
+        const sx = behind ? sn.x + w - SDX / 2 : sn.x + w / 2, sy = sn.y, my = rd.y - 44;
+        for (const p of par) links.push({ d: `M${sx},${sy}V${my}H${p.x + w / 2}V${p.y + hh}` });
+      } else {
+        const sx = sn.x, sy = behind ? sn.y + hh - SDY / 2 : sn.y + hh / 2, mx = rd.x - 36;
+        for (const p of par) links.push({ d: `M${sx},${sy}H${mx}V${p.y + hh / 2}H${p.x + w}` });
+      }
     }
   }
   return { nodes, links, linksOnTop: down.linksOnTop };
@@ -1052,7 +1083,7 @@ export function renderChart(host, opts) {
   svg.append(defs);
   const world = sv('g');
   svg.append(world);
-  let bounds, info = {}, core = null;
+  let bounds, info = {}, core = null, anchor = { x: 0, y: 0 };
   if (!P(o.root)) { host.replaceChildren(h('div', { class: 'empty', style: 'padding:30px' }, T('Válassz egy személyt.'))); return null; }
 
   if (o.kind === 'fan') {
@@ -1077,6 +1108,8 @@ export function renderChart(host, opts) {
     for (const n of order) world.append(personBox(n, o, pal, defs, uid));
     if (L.linksOnTop) world.append(lg);
     bounds = measureBounds(L.nodes);
+    const rn = L.nodes.find(n => n.root) || L.nodes.find(n => n.id === o.root);
+    if (rn) anchor = { x: rn.x, y: rn.y };
     // o.viewUp / o.viewDown: more generations are drawn than shown at first; the starting view covers these
     if (o.viewUp != null || o.viewDown != null) {
       const vu = o.viewUp ?? o.up, vd = o.viewDown ?? o.down;
@@ -1125,7 +1158,10 @@ export function renderChart(host, opts) {
     if (core) vb.y = B.y + B.h - pad + 10 / sc + extra - vb.h;
     apply();
   };
-  const initialView = () => (o.fitWidth && host.clientWidth >= 640 ? fitWidth() : o.focus || host.clientWidth < 640 ? focusRoot() : fit(1.25, vbounds));
+  // o.view (from getView() of the previous drawing): the same zoom and position, relative to the centre person
+  const kept = o.view || null;
+  const initialView = () => kept ? (vb = { x: anchor.x + kept.x, y: anchor.y + kept.y, w: kept.w, h: kept.h }, apply()) : (o.fitWidth && host.clientWidth >= 640 ? fitWidth() : o.focus || host.clientWidth < 640 ? focusRoot() : fit(1.25, vbounds));
+  if (kept) initialView();
   const focusRoot = () => {
     const r = host.getBoundingClientRect();
     if (!r.width || !r.height || !host.isConnected) return;
@@ -1182,7 +1218,7 @@ export function renderChart(host, opts) {
   };
 
   const cleanups = [];
-  let touched = false; // once the user zoomed/panned, resizes no longer reset the view
+  let touched = !!kept; // once the user zoomed/panned, resizes no longer reset the view
   if (o.interactive) {
     // pointers: 1 finger/mouse = pan, 2 fingers = pinch-zoom around their midpoint
     const pts = new Map();
@@ -1268,6 +1304,7 @@ export function renderChart(host, opts) {
 
   return {
     svg, bounds, info, opts: o, fit, zoom, focusRoot, closePop,
+    getView: () => ({ x: vb.x - anchor.x, y: vb.y - anchor.y, w: vb.w, h: vb.h }),
     destroy: () => cleanups.forEach(f => f()),
     exportSVG: (title) => buildExportSVG(svg, bounds, pal, title),
   };

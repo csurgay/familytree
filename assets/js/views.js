@@ -254,7 +254,7 @@ export async function viewPerson(id) {
     d.extra?.length ? h('section', { class: 'section' }, h('h2', null, T('Egyéb adatok')), h('dl', { class: 'facts' }, d.extra.map(([k, v]) => [h('dt', null, { _PHOM: T('Telefon (otthon)'), _PMOB: T('Mobil'), _POFF: T('Telefon (munka)'), EMAIL: T('E-mail') }[k] || k), h('dd', null, v)]))) : null,
     commentsBox('person', id));
   const rightCol = h('div', null, h('section', { class: 'section' }, h('h2', null, T('Család')), fam),
-    h('section', { class: 'section' }, h('h2', null, T('Homokóra'), h('a', { href: `#/tree/${id}?kind=hourglass` }, T('Nagyobban'))), mini));
+    h('section', { class: 'section' }, h('h2', null, T('Családfa'), h('a', { href: `#/tree/${id}?kind=hourglass` }, T('Nagyobban'))), mini));
   requestAnimationFrame(() => renderChart(mini, { kind: 'hourglass', root: id, up: 2, down: 1, photos: true, style: S.settings.chart_style, wheel: false, focus: true,
     onRecenter: nid => go('#/person/' + nid), popActions: personPop }));
   return h('div', null, head, h('div', { class: 'person-grid' }, leftCol, rightCol));
@@ -499,33 +499,41 @@ export async function viewStory(id) {
 
 // ======================================================================= TREE EXPLORER / CHART BUILDER
 let ctrl = null;
+const chartKindOn = k => k === 'hourglass' || (Array.isArray(S.settings.chart_kinds) ? S.settings.chart_kinds : ['fan', 'relation']).includes(k);
 export async function viewTree(id, qs) {
   await loadTree();
   const s = S.settings;
   let root = +(id || qs.get('root') || S.user?.person_id || S.tree.home || [...S.tree.P.keys()][0]);
   if (!P(root)) root = S.tree.home;
-  const st = { kind: qs.get('kind') || 'hourglass', root, other: +(qs.get('other') || 0) || null, up: +(qs.get('up') || s.chart_gens_up), down: +(qs.get('down') || s.chart_gens_down),
-    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: (v => v === '0' ? 'none' : v === 'beside' || v === 'behind' || v === 'none' ? v : (s.chart_spouses || 'behind'))(qs.get('spouses')), sibs: qs.has('sibs') ? qs.get('sibs') === '1' : s.chart_siblings !== false, style: qs.get('style') || s.chart_style, orient: qs.get('orient') || '', card: qs.get('card') || s.chart_card || 'tall', photoSize: qs.get('photo') || s.chart_photo || 'large' };
+  // chart kinds switched off in the settings: Ancestors / Descendants / Family sheet are the Családfa with 0 generations
+  const kinds = Object.keys(CHART_KINDS).filter(k => k === 'hourglass' || chartKindOn(k));
+  let kind0 = qs.get('kind') || 'hourglass';
+  const conv = !kinds.includes(kind0) ? { ancestors: { down: 0 }, descendants: { up: 0 }, family: { up: 1, down: 1 } }[kind0] || {} : null;
+  if (conv) kind0 = 'hourglass';
+  const st = { kind: kind0, root, other: +(qs.get('other') || 0) || null, up: +(qs.get('up') || s.chart_gens_up), down: +(qs.get('down') || s.chart_gens_down),
+    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: (v => v === '0' ? 'none' : v === 'beside' || v === 'behind' || v === 'none' ? v : (s.chart_spouses || 'behind'))(qs.get('spouses')), sibs: qs.has('sibs') ? qs.get('sibs') === '1' : s.chart_siblings !== false, spTree: qs.get('sptree') === '1', style: qs.get('style') || s.chart_style, orient: qs.get('orient') || '', card: qs.get('card') || s.chart_card || 'tall', photoSize: qs.get('photo') || s.chart_photo || 'large' };
+  if (conv) Object.assign(st, conv);
   if (!P(st.root)) return h('div', null, emptyTree());
   setTitle(T('Családfa – ') + personName(P(st.root)));
   const host = h('div', { class: 'chart-host' });
   const titleBar = h('div', { class: 'chart-title-bar' });
   const stage = h('div', { class: 'chart-stage' }, titleBar, host,
+    h('button', { type: 'button', class: 'btn btn-sm chart-opts-btn', onclick: () => side.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, icon('gear'), T('Beállítások')),
   );
   const rootPk = personPicker({ value: st.root, onPick: v => { if (v) { st.root = v; draw(); } } });
   const otherPk = personPicker({ value: st.other, placeholder: T('Másik személy…'), onPick: v => { st.other = v; draw(); } });
-  const types = h('div', { class: 'ctype' }, Object.entries(CHART_KINDS).map(([k, v]) => h('button', { type: 'button', class: st.kind === k ? 'on' : '', 'data-k': k, onclick: () => { st.kind = k; draw(); } }, icon(v.icon), T(v.label))));
-  const num = (key, label, max = 10) => { const i = h('input', { type: 'range', min: 1, max, value: st[key], oninput: e => { st[key] = +e.target.value; i.nextSibling.textContent = st[key]; draw(); } }); return h('label', { class: 'f', 'data-g': key }, h('span', null, label), h('div', { class: 'row', style: 'flex-wrap:nowrap' }, i, h('b', { style: 'min-width:1.5em;text-align:right' }, st[key]))); };
-  const tog = (key, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st[key], onchange: e => { st[key] = e.target.checked; draw(); } }), h('span', null, label));
-  const orientSel = h('select', { onchange: e => { st.orient = e.target.value; draw(); } },
+  const types = h('div', { class: 'ctype' }, Object.entries(CHART_KINDS).filter(([k]) => kinds.includes(k)).map(([k, v]) => h('button', { type: 'button', class: st.kind === k ? 'on' : '', 'data-k': k, onclick: () => { st.kind = k; draw(true); } }, icon(v.icon), T(v.label))));
+  const num = (key, label, max = 10) => { const i = h('input', { type: 'range', min: 0, max, value: st[key], oninput: e => { st[key] = +e.target.value; i.nextSibling.textContent = st[key]; draw(true); } }); return h('label', { class: 'f', 'data-g': key }, h('span', null, label), h('div', { class: 'row', style: 'flex-wrap:nowrap' }, i, h('b', { style: 'min-width:1.5em;text-align:right' }, st[key]))); };
+  const tog = (key, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st[key], onchange: e => { st[key] = e.target.checked; draw(true); } }), h('span', null, label));
+  const orientSel = h('select', { onchange: e => { st.orient = e.target.value; draw(true); } },
     h('option', { value: 'v' }, T('Függőlegesen (fentről lefelé)')), h('option', { value: 'h' }, T('Vízszintesen (balról jobbra)')));
-  const cardSel = h('select', { onchange: e => { st.card = e.target.value; draw(); } },
+  const cardSel = h('select', { onchange: e => { st.card = e.target.value; draw(true); } },
     h('option', { value: 'tall', selected: st.card !== 'wide' }, T('Álló (keskeny, fotó felül)')), h('option', { value: 'wide', selected: st.card === 'wide' }, T('Fekvő (széles, fotó balra)')));
-  const photoSel = h('select', { onchange: e => { st.photoSize = e.target.value; draw(); } },
+  const photoSel = h('select', { onchange: e => { st.photoSize = e.target.value; draw(true); } },
     [['normal', T('Normál')], ['large', T('Nagy')], ['xl', T('Nagyon nagy (kilóg a kártyából)')], ['portrait', T('Igazolványkép (álló téglalap)')]].map(([k, l]) => h('option', { value: k, selected: st.photoSize === k }, l)));
-  const spSel = h('select', { onchange: e => { st.spouses = e.target.value; draw(); } },
+  const spSel = h('select', { onchange: e => { st.spouses = e.target.value; draw(true); } },
     [['behind', T('A kártya mögött (csak egy csík látszik)')], ['beside', T('Mellette, teljes kártyán')], ['none', T('Nem látszanak')]].map(([k, l]) => h('option', { value: k, selected: st.spouses === k }, l)));
-  const style = h('select', { onchange: e => { st.style = e.target.value; draw(); } }, [['album', T('Album')], ['classic', T('Klasszikus')], ['minimal', T('Letisztult')]].map(([k, l]) => h('option', { value: k, selected: st.style === k }, l)));
+  const style = h('select', { onchange: e => { st.style = e.target.value; draw(true); } }, [['album', T('Album')], ['classic', T('Klasszikus')], ['minimal', T('Letisztult')]].map(([k, l]) => h('option', { value: k, selected: st.style === k }, l)));
   const title = h('input', { type: 'text', placeholder: T('Cím az exporthoz (nem kötelező)') });
   const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (e) { fail(e); } finally { btn.disabled = false; } };
   const autoTitle = () => title.value || `${T(CHART_KINDS[st.kind].label)}: ${personName(P(st.root))}`;
@@ -539,7 +547,7 @@ export async function viewTree(id, qs) {
     h('div', { 'data-g': 'orient' }, field(T('Nemzedékek elrendezése'), orientSel)),
     tog('photos', T('Fotók')), tog('places', T('Születési hely')),
     h('div', { 'data-g': 'spouses' }, field(T('Házastársak'), spSel)),
-    h('div', { 'data-g': 'sibs' }, tog('sibs', T('Testvérek a középső sorban'))),
+    h('div', { 'data-g': 'sibs' }, tog('sibs', T('Testvérek a középső sorban')), tog('spTree', T('A házastárs felmenői is'))),
     h('div', { 'data-g': 'card' }, field(T('Kártyák formája'), cardSel)),
     h('div', { 'data-g': 'photo' }, field(T('Fotók mérete'), photoSel)),
     field(T('Doboz stílus'), style),
@@ -554,8 +562,10 @@ export async function viewTree(id, qs) {
       isAdmin() && st.kind !== 'relation' ? h('button', { class: 'btn btn-sm', onclick: async () => { await api('pin', { kind: 'tree', ref_id: st.root, replace: true, caption: title.value, params: { kind: st.kind, up: Math.min(st.up, 4), down: Math.min(st.down, 4), ...(st.orient ? { orient: st.orient } : {}) } }); toast(T('Kitűzve a kezdőlapra.')); } }, icon('pin'), T('Kitűzés')) : null) : null,
     h('p', { class: 'hint', style: 'margin-top:14px' }, T('Dupla kattintás (mobilon dupla koppintás) egy kártyán: ő kerül középre. Egy kattintás: gyorskártya. Billentyűk: ↑ szülő, ↓ gyermek, ← → testvér, Home: kiinduló személy; a böngésző Vissza gombja az előző személyre ugrik. Nagyítás: görgő, két ujjas csípés vagy +/−.')));
 
-  const draw = () => {
+  // keep = a setting changed: the chart stays at the same zoom and position (relative to the centre person)
+  const draw = (keep = false) => {
     const k = CHART_KINDS[st.kind];
+    if (st.kind === 'fan' && st.up < 1) st.up = 1;
     types.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === st.kind));
     side.querySelector('[data-g=up]').hidden = !k.up;
     side.querySelector('[data-g=down]').hidden = !k.down;
@@ -569,14 +579,16 @@ export async function viewTree(id, qs) {
     const q = new URLSearchParams({ kind: st.kind, up: st.up, down: st.down, photos: st.photos ? 1 : 0, places: st.places ? 1 : 0, style: st.style });
     if (st.spouses !== (s.chart_spouses || 'behind')) q.set('spouses', st.spouses);
     if (st.sibs !== (s.chart_siblings !== false)) q.set('sibs', st.sibs ? 1 : 0);
+    if (st.spTree) q.set('sptree', 1);
     if (st.orient) q.set('orient', st.orient);
     if (st.card !== (s.chart_card || 'tall')) q.set('card', st.card);
     if (st.photoSize !== (s.chart_photo || 'large')) q.set('photo', st.photoSize);
     if (st.other) q.set('other', st.other);
     const url = `#/tree/${st.root}?${q}`;
     if (pushNext) { history.pushState(null, '', url); pushNext = false; } else history.replaceState(null, '', url);
+    const view = keep && ctrl?.getView ? ctrl.getView() : null;
     ctrl?.destroy();
-    ctrl = renderChart(host, { ...st, focus: true, onRecenter: nid => recenter(nid), onOpen: nid => go('#/person/' + nid),
+    ctrl = renderChart(host, { ...st, focus: true, view, onRecenter: nid => recenter(nid), onOpen: nid => go('#/person/' + nid),
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => recenter(x) },
         { label: T('Adatlap'), run: x => go('#/person/' + x) },
