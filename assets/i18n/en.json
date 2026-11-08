@@ -1111,5 +1111,9 @@
 "Ennyivel több felmenő és leszármazott is ott van, de kezdetben csak a fenti nemzedékek látszanak; a többihez húzni / nagyítani kell. 0 = nincs.": "This many more ancestor and descendant generations are drawn, but at first only the generations above are shown; drag / zoom to see the rest. 0 = none.",
 "Diagramfajták a Családfa-böngészőben": "Chart types in the tree explorer",
 "A Családfa mindig ott van: 0 leszármazott nemzedékkel felmenői, 0 felmenővel leszármazotti fa, 1–1 nemzedékkel családlap lesz belőle.": "The Family tree is always there: with 0 descendant generations it is an ancestor chart, with 0 ancestor generations a descendant chart, with 1 and 1 a family sheet.",
-"Házastárs fája is": "The spouse's family tree too"
+"Házastárs fája is": "The spouse's family tree too",
+"Fája kinyitása": "Open their tree",
+"Fája becsukása": "Close their tree",
+"A Családfán a házastárs fája is": "The spouse's tree on the family tree too",
+"A házastárs szülei, felmenői és testvérei is látszanak, a házastárs oldalán. A Családfa-böngészőben ki-be kapcsolható.": "The spouse's parents, ancestors and siblings are shown too, on the spouse's side. Can be switched on and off in the tree explorer."
 }

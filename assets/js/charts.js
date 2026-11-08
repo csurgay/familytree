@@ -193,7 +193,7 @@ export function spouseMode(o) {
   if (v === false || v === 'none' || v === '0' || v === 0) return 'none';
   if (v === 'beside' || v === 'behind') return v;
   const d = S.settings?.chart_spouses;
-  return d === 'beside' || d === 'none' ? d : 'behind';
+  return d === 'behind' || d === 'none' ? d : 'beside';
 }
 const spGap = () => Math.round(18 * K);
 let SP_RIGHT = false;   // set while a chart with the spouses' families is laid out
@@ -587,6 +587,178 @@ function hourglass(rootId, o, orient) {
     });
   }
   return { nodes, links, linksOnTop: down.linksOnTop };
+}
+
+/**
+ * The Családfa as a general family graph: the centre person's hourglass (ancestors, siblings, spouses,
+ * descendants, the spouses' families) plus the trees of every person "opened" on the chart (o.open: their
+ * ancestors, siblings, spouses and descendants). Everyone appears once, in their generation's row.
+ *
+ * Rows hold units (a person with their spouses). The order inside a row and the positions come from a few
+ * sweeps: each unit wants to sit under its parents (top-down) and over its children (bottom-up), siblings in
+ * birth order; overlaps are resolved by merging blocks around their average wish (least squares), so a family
+ * stays as close to its parents as its neighbours allow. Lines: a bus per family between the rows, with
+ * separate heights where buses would overlap.
+ */
+export function layoutGraph(rootId, o, orient = 'v') {
+  const horiz = orient === 'h';
+  const { w, h: hh } = boxSize(o);
+  const mode = spouseMode(o);
+  const UP = Math.max(0, o.up ?? 2), DN = Math.max(0, o.down ?? 2);
+  // ---- who is on the chart, and in which row (0 = the centre person's generation, +1 = their children)
+  const row = new Map();
+  const add = (id, r) => { if (id && P(id) && !row.has(id)) row.set(id, r); return row.has(id); };
+  const spousesOf = id => famsOf(id).map(f => spouseIn(f, id)).filter(Boolean);
+  const sibsOf = id => { const bf = (P(id)?.fc || []).map(F).find(Boolean); return bf ? bf.c.filter(c => P(c)) : []; };
+  const ancestors = (id, r, n) => { if (n <= 0) return; for (const p of parentsOf(id)) { add(p, r - 1); ancestors(p, r - 1, n - 1); } };
+  const descendants = (id, r, n) => {
+    if (mode !== 'none') for (const sp of spousesOf(id)) add(sp, r);
+    if (n <= 0) return;
+    for (const f of famsOf(id)) for (const c of f.c) { add(c, r + 1); descendants(c, r + 1, n - 1); }
+  };
+  const siblings = id => { const r = row.get(id); for (const c of sibsOf(id)) { add(c, r); if (mode !== 'none') for (const sp of spousesOf(c)) add(sp, r); } };
+  add(rootId, 0);
+  ancestors(rootId, 0, UP);
+  if (o.sibs !== false) siblings(rootId);
+  descendants(rootId, 0, DN);
+  if (o.spTree && mode !== 'none') for (const sp of spousesOf(rootId)) { ancestors(sp, 0, UP); if (o.sibs !== false) siblings(sp); }
+  for (const x of o.open || []) {
+    if (!row.has(x)) continue;
+    const r = row.get(x);
+    ancestors(x, r, Math.max(1, UP)); siblings(x); descendants(x, r, Math.max(1, DN));
+  }
+  // ---- units: a person (in the order they were reached) with their spouses who are on the chart
+  const unitOf = new Map(), units = [];
+  for (const [id, r] of row) {
+    if (unitOf.has(id)) continue;
+    const fams = famsOf(id);
+    const sps = mode === 'none' ? [] : fams.filter(f => { const s = spouseIn(f, id); return s && row.get(s) === r && !unitOf.has(s); });
+    const u = { id, r, fams, sps, members: [id, ...sps.map(f => spouseIn(f, id))] };
+    u.U = horiz ? spouseUnitH(id, fams, sps, mode, w, hh) : spouseUnitV(id, fams, sps, mode, w, hh);
+    u.len = horiz ? u.U.unitH : u.U.unitW;
+    for (const m of u.members) unitOf.set(m, u);
+    units.push(u);
+  }
+  const rows = new Map();
+  for (const u of units) { if (!rows.has(u.r)) rows.set(u.r, []); rows.get(u.r).push(u); }
+  const rowKeys = [...rows.keys()].sort((a, b) => a - b);
+  // links between units: parents' units (for each member) and children's units
+  for (const u of units) {
+    u.par = []; u.kids = [];
+    for (const m of u.members) for (const pid of parentsOf(m)) { const pu = unitOf.get(pid); if (pu && pu.r === u.r - 1 && !u.par.includes(pu)) u.par.push(pu); }
+    // birth order among siblings: the tie-breaker
+    const bf = (P(u.id)?.fc || []).map(F).find(Boolean);
+    u.bi = bf ? bf.c.indexOf(u.id) : 0;
+  }
+  for (const u of units) for (const pu of u.par) if (!pu.kids.includes(u)) pu.kids.push(u);
+  // ---- order and position
+  const kgap = horiz ? 14 : 26;
+  const cen = u => u.pos + u.len / 2;
+  const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+  const sameFam = (a, b) => a.par.length && a.par.some(p => b.par.includes(p));
+  const pack = list => {   // left to right, no overlaps, each as close to its wish as the others allow
+    const blocks = [];
+    let i = 0;
+    for (const u of list) {
+      const g = i ? (sameFam(list[i - 1], u) ? kgap : kgap * 1.8) : 0;
+      u.gapBefore = g; i++;
+      let b = { us: [u], off: [0], len: u.len, sum: u.want, n: 1 };
+      b.pos = b.sum / b.n;
+      blocks.push(b);
+      while (blocks.length > 1) {
+        const a = blocks[blocks.length - 2], c = blocks[blocks.length - 1];
+        const gap = c.us[0].gapBefore;
+        if (a.pos + a.len + gap <= c.pos) break;
+        const shiftC = a.len + gap;
+        c.us.forEach((x, k) => { a.us.push(x); a.off.push(shiftC + c.off[k]); a.sum += x.want - (shiftC + c.off[k]); a.n++; });
+        a.len = shiftC + c.len; a.pos = a.sum / a.n;
+        blocks.pop();
+      }
+    }
+    for (const b of blocks) b.us.forEach((u, k) => { u.pos = b.pos + b.off[k]; });
+  };
+  // first placement: rows in reach order, packed
+  for (const r of rowKeys) { let x = 0; for (const u of rows.get(r)) { u.want = x; x += u.len + kgap * 2; } pack(rows.get(r)); }
+  const sweep = (down, reorder) => {
+    const keys = down ? rowKeys : rowKeys.slice().reverse();
+    for (const r of keys) {
+      const list = rows.get(r);
+      for (const u of list) {
+        const nb = down ? u.par : u.kids;
+        u.want = (nb.length ? avg(nb.map(cen)) : cen(u)) - u.len / 2;
+      }
+      if (reorder) {
+        const idx = new Map(list.map((u, i) => [u, i]));
+        list.sort((a, b) => (sameFam(a, b) ? a.bi - b.bi : 0) || (a.want - b.want) || (idx.get(a) - idx.get(b)));
+      }
+      pack(list);
+    }
+  };
+  for (let i = 0; i < 4; i++) { sweep(true, true); sweep(false, true); }
+  sweep(true, false); sweep(false, false); sweep(true, false);
+  // ---- place the cards
+  const maxSp = mode === 'beside' ? 0 : Math.max(0, ...units.map(u => u.sps.length));
+  const step = horiz ? w + maxSp * SDX + 72 : hh + maxSp * SDY + 64;
+  const gapMain = horiz ? 72 : 64;
+  const nodes = [], links = [], famPt = new Map(), cardOf = new Map();
+  const r0 = rowKeys[0] ?? 0;
+  for (const u of units) {
+    const main = (u.r - r0) * step;
+    const x = horiz ? main : u.pos, y = horiz ? u.pos : main;
+    const nx = horiz ? x : x + u.U.off;
+    nodes.push({ id: u.id, x: nx, y, w, h: hh, main: true, root: u.id === rootId, gen: -u.r, open: (o.open || []).includes(u.id) });
+    const n0 = nodes.length;
+    const fp = u.U.place(x, y, nodes, links);
+    for (let i = n0; i < nodes.length; i++) { nodes[i].gen = -u.r; nodes[i].open = (o.open || []).includes(nodes[i].id); }
+    for (const [fid, pt] of Object.entries(fp)) famPt.set(+fid, pt);
+  }
+  for (const n of nodes) cardOf.set(n.id, n);
+  // where a child's line ends: top (left) of the card, or the visible strip of a spouse tucked behind
+  const endOf = n => horiz
+    ? (n.spouse ? { a: n.y + hh - SDY / 2, m: n.x } : { a: n.y + hh / 2, m: n.x })
+    : (n.spouse ? { a: n.x + w - SDX / 2, m: n.y } : { a: n.x + w / 2, m: n.y });
+  // one bus per family between the rows
+  const buses = [];
+  const fams = new Set();
+  for (const id of row.keys()) for (const f of (P(id)?.fc || []).map(F).filter(Boolean)) fams.add(f);
+  for (const f of fams) {
+    const kids = f.c.filter(c => cardOf.has(c));
+    if (!kids.length) continue;
+    const kr = row.get(kids[0]);
+    const par = [f.h, f.w].filter(x => x && cardOf.has(x) && row.get(x) === kr - 1);
+    if (!par.length) continue;
+    let pt = famPt.get(f.id);
+    // the family's own exit point exists when its parent is the main card of a unit; else from the parent's card
+    if (!pt || !par.some(pid => unitOf.get(pid)?.id === pid)) {
+      const pn = cardOf.get(par[0]);
+      pt = horiz ? { x: pn.x + w, y: pn.y + hh / 2 } : { head: `M${pn.x + w / 2},${pn.y + hh}`, x: pn.x + w / 2 };
+    }
+    const ends = kids.filter(c => row.get(c) === kr).map(c => endOf(cardOf.get(c)));
+    const childMain = (kr - r0) * step;
+    buses.push({ pt, ends, childMain, a0: Math.min(horiz ? pt.y : pt.x, ...ends.map(e => e.a)), a1: Math.max(horiz ? pt.y : pt.x, ...ends.map(e => e.a)) });
+  }
+  // overlapping buses in the same gap get different heights
+  const byRow = new Map();
+  for (const b of buses) { if (!byRow.has(b.childMain)) byRow.set(b.childMain, []); byRow.get(b.childMain).push(b); }
+  for (const list of byRow.values()) {
+    list.sort((a, b) => a.a0 - b.a0);
+    const ends = [];
+    for (const b of list) { let l = ends.findIndex(e => e < b.a0 - 4); if (l < 0) { l = ends.length; ends.push(0); } ends[l] = b.a1; b.lvl = l; }
+    const L = ends.length;
+    for (const b of list) {
+      const bm = b.childMain - gapMain / 2 + (b.lvl - (L - 1) / 2) * Math.min(14, (gapMain - 20) / Math.max(1, L - 1));
+      let d;
+      if (!horiz) {
+        d = `${b.pt.head}V${bm}M${b.a0},${bm}H${b.a1}`;
+        for (const e of b.ends) d += `M${e.a},${bm}V${e.m}`;
+      } else {
+        d = `M${b.pt.x},${b.pt.y}H${bm}M${bm},${b.a0}V${b.a1}`;
+        for (const e of b.ends) d += `M${bm},${e.a}H${e.m}`;
+      }
+      links.push({ d });
+    }
+  }
+  return { nodes, links, linksOnTop: horiz };
 }
 
 export function layoutFamily(rootId, o) {
@@ -1134,7 +1306,7 @@ export function renderChart(host, opts) {
       L = layoutRelation(o.root, o.other || o.root, o); info.path = L.path; info.paths = L.paths;
       info.label = L.paths?.length > 1 ? T('{0} úton is kapcsolódnak: ', L.paths.length) + L.paths.map((p, i) => `(${i + 1}) ${relationLabel(p)}`).join(' ') : relationLabel(L.path);
     }
-    else L = layoutHourglass(o.root, o, orient);
+    else L = o.graph || o.open?.length ? layoutGraph(o.root, o, orient) : layoutHourglass(o.root, o, orient);
     const lg = sv('g', { fill: 'none', stroke: pal.muted, 'stroke-width': 1.4, 'stroke-linejoin': 'round', opacity: .75, 'pointer-events': 'none' });
     for (const l of L.links) lg.append(sv('path', { d: l.d, ...(l.kind === 'marr' ? { stroke: pal.accent, 'stroke-width': 2.2 } : {}), ...(l.kind === 'div' ? { stroke: pal.muted, 'stroke-dasharray': '5 4' } : {}) }));
     if (!L.linksOnTop) world.append(lg);

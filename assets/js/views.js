@@ -104,7 +104,7 @@ export async function viewHome() {
       ...(gUp => ({ up: Math.min(10, gUp + more), viewUp: gUp }))(+(tp.up || s.home_tree_gens || 2)),
       ...(gDn => ({ down: Math.min(10, gDn + more), viewDown: gDn }))(+(tp.down || s.home_tree_down || 2)),
       kind, root, photos: s.chart_photos, style: s.chart_style, orient: tp.orient,
-      places: false, interactive: true, wheel: false, focus: true, fitWidth: true, padBottom: host.clientWidth < 640 ? 0 : 52, padRight: 58, focusRow: -1, ...(cardShape({}) === 'tall' ? { minScale: host.clientWidth < 640 ? 0.5 : 0.56, focusShift: 215 } : { minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130 }),
+      places: false, interactive: true, wheel: false, focus: true, fitWidth: true, padBottom: host.clientWidth < 640 ? 0 : 52, padRight: 58, focusRow: -1, spTree: s.chart_sptree !== false, ...(cardShape({}) === 'tall' ? { minScale: host.clientWidth < 640 ? 0.5 : 0.56, focusShift: 215 } : { minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130 }),
       onRecenter: id => drawHome(id), onOpen: id => go('#/person/' + id),
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => drawHome(x) },
@@ -514,7 +514,7 @@ export async function viewTree(id, qs) {
   const conv = !kinds.includes(kind0) ? { ancestors: { down: 0 }, descendants: { up: 0 }, family: { up: 1, down: 1 } }[kind0] || {} : null;
   if (conv) kind0 = 'hourglass';
   const st = { kind: kind0, root, other: +(qs.get('other') || 0) || null, up: +(qs.get('up') || s.chart_gens_up), down: +(qs.get('down') || s.chart_gens_down),
-    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: (v => v === '0' ? 'none' : v === 'beside' || v === 'behind' || v === 'none' ? v : (s.chart_spouses || 'behind'))(qs.get('spouses')), sibs: qs.has('sibs') ? qs.get('sibs') === '1' : s.chart_siblings !== false, spTree: qs.get('sptree') === '1', style: qs.get('style') || s.chart_style, orient: qs.get('orient') || '', card: qs.get('card') || s.chart_card || 'tall', photoSize: qs.get('photo') || s.chart_photo || 'large' };
+    photos: qs.has('photos') ? qs.get('photos') === '1' : !!s.chart_photos, places: qs.has('places') ? qs.get('places') === '1' : !!s.chart_places, spouses: (v => v === '0' ? 'none' : v === 'beside' || v === 'behind' || v === 'none' ? v : (s.chart_spouses || 'beside'))(qs.get('spouses')), sibs: qs.has('sibs') ? qs.get('sibs') === '1' : s.chart_siblings !== false, spTree: qs.has('sptree') ? qs.get('sptree') === '1' : s.chart_sptree !== false, graph: qs.get('graph') !== '0', open: (qs.get('open') || '').split(',').map(Number).filter(Boolean), style: qs.get('style') || s.chart_style, orient: qs.get('orient') || '', card: qs.get('card') || s.chart_card || 'tall', photoSize: qs.get('photo') || s.chart_photo || 'large' };
   if (conv) Object.assign(st, conv);
   if (!P(st.root)) return h('div', null, emptyTree());
   setTitle(T('Családfa – ') + personName(P(st.root)));
@@ -580,9 +580,11 @@ export async function viewTree(id, qs) {
     side.querySelector('[data-g=photo]').hidden = st.kind === 'fan' || !st.photos;
     if (k.orient) orientSel.value = chartOrient(st);
     const q = new URLSearchParams({ kind: st.kind, up: st.up, down: st.down, photos: st.photos ? 1 : 0, places: st.places ? 1 : 0, style: st.style });
-    if (st.spouses !== (s.chart_spouses || 'behind')) q.set('spouses', st.spouses);
+    if (st.spouses !== (s.chart_spouses || 'beside')) q.set('spouses', st.spouses);
     if (st.sibs !== (s.chart_siblings !== false)) q.set('sibs', st.sibs ? 1 : 0);
-    if (st.spTree) q.set('sptree', 1);
+    if (st.spTree !== (s.chart_sptree !== false)) q.set('sptree', st.spTree ? 1 : 0);
+    st.open = st.open.filter(x => P(x));
+    if (st.open.length) q.set('open', st.open.join(','));
     if (st.orient) q.set('orient', st.orient);
     if (st.card !== (s.chart_card || 'tall')) q.set('card', st.card);
     if (st.photoSize !== (s.chart_photo || 'large')) q.set('photo', st.photoSize);
@@ -596,6 +598,9 @@ export async function viewTree(id, qs) {
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => recenter(x) },
         { label: T('Adatlap'), run: x => go('#/person/' + x) },
+        // open (or close) this person's own tree on the chart: ancestors, spouses, siblings, descendants
+        ...(id !== st.root && st.kind === 'hourglass' ? [{ label: st.open.includes(id) ? T('Fája becsukása') : T('Fája kinyitása'),
+          run: x => { st.open = st.open.includes(x) ? st.open.filter(y => y !== x) : [...st.open, x]; draw(true); } }] : []),
         ...(id !== st.root ? [{ label: T('Rokonság vele'), run: x => { st.other = x; st.kind = 'relation'; otherPk.set(x); draw(); } }] : []),
       ] });
     const rp = P(st.root);

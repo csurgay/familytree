@@ -1,6 +1,6 @@
 // Browser-side self-tests, run from the admin gear. Read-only on the loaded tree.
-import { S, P, F, spouseIn as spouseOf, parseGed, fmtDate, previewDate, gedToInput, norm, md, personName, h } from './core.js';
-import { layoutAncestors, layoutDescendants, layoutHourglass, layoutFamily, findPath, kinTerm, relationLabel, renderChart, buildExportSVG, fitGiven, SDX, SDY } from './charts.js';
+import { S, P, F, parentsOf, spouseIn as spouseOf, parseGed, fmtDate, previewDate, gedToInput, norm, md, personName, h } from './core.js';
+import { layoutAncestors, layoutDescendants, layoutHourglass, layoutFamily, layoutGraph, findPath, kinTerm, relationLabel, renderChart, buildExportSVG, fitGiven, SDX, SDY } from './charts.js';
 import { distractors, buildQuiz, shuffle } from './quiz.js';
 
 class AssertError extends Error { }
@@ -118,10 +118,25 @@ const T = {
   'Diagram: házastárs-kártya a partnere mögött, jobbra-lent': () => {
     const id = [...S.tree.P.values()].find(p => p.fs.length && p.fs.some(f => spouseOf(F(f), p.id)))?.id;
     if (!id) return 'skip';
-    const L = layoutDescendants(id, { up: 1, down: 1, photos: true, spouses: true });
+    const L = layoutDescendants(id, { up: 1, down: 1, photos: true, spouses: 'behind' });
     const root = L.nodes.find(n => n.root), sp = L.nodes.filter(n => n.spouse && n.of === id);
     ok(sp.length >= 1, 'nincs házastárs-kártya');
     sp.forEach(s => { eq(s.x - root.x, s.layer * SDX); eq(s.y - root.y, s.layer * SDY); });
+  },
+  'Diagram: Családfa – házastárs mellette, mindenki egyszer, kinyitott fa': () => {
+    const id = [...S.tree.P.values()].find(p => p.fc.length && p.fs.some(f => spouseOf(F(f), p.id)))?.id;
+    if (!id) return 'skip';
+    const L = layoutGraph(id, { up: 2, down: 2, photos: false, spouses: 'beside', sibs: true, spTree: true });
+    const root = L.nodes.find(n => n.root), sp = L.nodes.filter(n => n.sp && n.of === id);
+    ok(sp.length >= 1, 'nincs házastárs mellette');
+    sp.forEach(s => eq(s.y, root.y, 'egy sorban a partnerével'));
+    eq(new Set(L.nodes.map(n => n.id)).size, L.nodes.length, 'valaki kétszer szerepel');
+    // no two cards overlap in a row
+    const rows = {}; L.nodes.forEach(n => (rows[n.y] ||= []).push(n));
+    for (const r of Object.values(rows)) { r.sort((a, b) => a.x - b.x); for (let i = 1; i < r.length; i++) ok(r[i].x >= r[i - 1].x + r[i - 1].w - 0.5, 'egymásra lógó kártyák'); }
+    // opening someone's tree adds their relatives
+    const other = L.nodes.find(n => !n.root && P(n.id)?.fc.length && !L.nodes.some(m => parentsOf(n.id).includes(m.id)));
+    if (other) { const L2 = layoutGraph(id, { up: 2, down: 2, spouses: 'beside', sibs: true, spTree: true, open: [other.id] }); ok(parentsOf(other.id).every(x => L2.nodes.some(m => m.id === x)), 'a kinyitott fa szülei hiányoznak'); }
   },
   'Diagram: három keresztnévből kettő, ha nem fér ki': () => {
     eq(fitGiven('Árpád István Ernő', 12), 'Árpád István');

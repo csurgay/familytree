@@ -1111,5 +1111,9 @@
 "Ennyivel több felmenő és leszármazott is ott van, de kezdetben csak a fenti nemzedékek látszanak; a többihez húzni / nagyítani kell. 0 = nincs.": "So viele weitere Vorfahren- und Nachkommengenerationen sind vorhanden, anfangs sind aber nur die obigen Generationen sichtbar; für den Rest ziehen / zoomen. 0 = keine.",
 "Diagramfajták a Családfa-böngészőben": "Diagrammarten im Stammbaum-Browser",
 "A Családfa mindig ott van: 0 leszármazott nemzedékkel felmenői, 0 felmenővel leszármazotti fa, 1–1 nemzedékkel családlap lesz belőle.": "Der Stammbaum ist immer da: mit 0 Nachkommengenerationen wird er zur Ahnentafel, mit 0 Vorfahrengenerationen zum Nachkommenbaum, mit je 1 zum Familienblatt.",
-"Házastárs fája is": "Auch der Stammbaum des Ehepartners"
+"Házastárs fája is": "Auch der Stammbaum des Ehepartners",
+"Fája kinyitása": "Ihren Baum öffnen",
+"Fája becsukása": "Ihren Baum schließen",
+"A Családfán a házastárs fája is": "Im Stammbaum auch der Baum des Ehepartners",
+"A házastárs szülei, felmenői és testvérei is látszanak, a házastárs oldalán. A Családfa-böngészőben ki-be kapcsolható.": "Eltern, Vorfahren und Geschwister des Ehepartners erscheinen auch, auf seiner Seite. Im Stammbaum-Browser ein- und ausschaltbar."
 }
