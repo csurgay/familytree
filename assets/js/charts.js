@@ -196,6 +196,7 @@ export function spouseMode(o) {
   return d === 'beside' || d === 'none' ? d : 'behind';
 }
 const spGap = () => Math.round(18 * K);
+let SP_RIGHT = false;   // set while a chart with the spouses' families is laid out
 
 /**
  * A person with the spouses drawn next to / behind them, generations top-down. Returns the unit's size,
@@ -218,13 +219,14 @@ function spouseUnitV(id, fams, sps, mode, w, hh) {
     },
   };
   // beside: 1st spouse on the right, 2nd on the left, 3rd further right…; the children's line drops from the gap
-  const SG = spGap(), step = w + SG, nL = Math.floor(n / 2);
+  // (with the spouse's family shown too, all spouses go to the right: their families are on that side)
+  const SG = spGap(), step = w + SG, nL = SP_RIGHT ? 0 : Math.floor(n / 2);
   return {
     unitW: w * (1 + n) + n * SG, unitH: hh, off: nL * step,
     place(ux, top, nodes, links) {
       const px = ux + nL * step, my = top + hh / 2, famPt = {};
       sps.forEach((f, i) => {
-        const k = i + 1, side = k % 2 ? 1 : -1, idx = Math.ceil(k / 2);
+        const k = i + 1, side = SP_RIGHT || k % 2 ? 1 : -1, idx = SP_RIGHT ? k : Math.ceil(k / 2);
         nodes.push({ id: spouseIn(f, id), x: px + side * idx * step, y: top, w, h: hh, sp: true, of: id, div: f.dv });
         const gx = side > 0 ? px + idx * step - SG / 2 : px - (idx - 1) * step - SG / 2;
         links.push({ d: `M${gx - SG / 2},${my}H${gx + SG / 2}`, kind: f.dv ? 'div' : 'marr' });
@@ -445,19 +447,32 @@ export function layoutDescendantsH(rootId, o, { withRootSpouses = true } = {}) {
  * line from the parents. So two brothers who married two sisters show up side by side.
  */
 export function layoutHourglass(rootId, o, orient = 'v') {
+  SP_RIGHT = !!o.spTree && spouseMode(o) !== 'none';
+  try { return hourglass(rootId, o, orient); } finally { SP_RIGHT = false; }
+}
+/**
+ * o.spTree ("Házastárs fája is"): the spouse's family too – their parents and further ancestors above them,
+ * their siblings beside them in the middle row. Then the centre person's siblings all go to the left and
+ * the spouse's family to the right, so the two families' lines never cross.
+ */
+function hourglass(rootId, o, orient) {
   const horiz = orient === 'h';
   const { w, h: hh } = boxSize(o);
   const mode = spouseMode(o);
-  // the siblings (and their spouses) of the middle row
-  const bf = o.sibs === false ? null : (P(rootId)?.fc || []).map(F).find(Boolean);
-  const sibs = bf ? bf.c.filter(c => P(c)) : [];
+  const spT = SP_RIGHT;
   const unitOf = id => {
     const fams0 = famsOf(id);
     const sps = mode === 'none' ? [] : fams0.filter(f => spouseIn(f, id));
     return { id, fams: fams0, sps };
   };
+  const sibsOf = id => { const bf = (P(id)?.fc || []).map(F).find(Boolean); return bf ? bf.c.filter(c => P(c)) : []; };
+  // the siblings (and their spouses) of the middle row
+  const sibs = o.sibs === false ? [] : sibsOf(rootId);
   const sibUnits = sibs.filter(c => c !== rootId).map(unitOf);
-  const minSp = Math.max(0, ...sibUnits.map(u => u.sps.length));
+  // the spouses' siblings (spTree)
+  const rootSps = mode === 'none' ? [] : famsOf(rootId).map(f => spouseIn(f, rootId)).filter(Boolean);
+  const spSibs = spT && o.sibs !== false ? rootSps.map(sp => sibsOf(sp).filter(c => c !== sp && c !== rootId).map(unitOf)) : rootSps.map(() => []);
+  const minSp = Math.max(0, ...sibUnits.map(u => u.sps.length), ...spSibs.flat().map(u => u.sps.length));
   const o2 = { ...o, _minSp: minSp };
   const down = horiz ? layoutDescendantsH(rootId, o2) : layoutDescendants(rootId, o2);
   const up = horiz ? layoutAncestors(rootId, o, false, -1) : layoutAncestors(rootId, o, true);
@@ -466,89 +481,110 @@ export function layoutHourglass(rootId, o, orient = 'v') {
   const shift = d => d.replace(/([MLHV])([-\d.]+)(?:,([-\d.]+))?/g, (m, c, a, b) => c === 'H' ? `H${+a + dx}` : c === 'V' ? `V${+a + dy}` : `${c}${+a + dx},${+b + dy}`);
   const nodes = down.nodes.concat(up.nodes.filter(n => !n.root).map(n => ({ ...n, x: n.x + dx, y: n.y + dy })));
   const links = down.links.concat(up.links.map(l => ({ ...l, d: shift(l.d) })));
+  const gap = Math.round(26 * K);
+  const ru0 = unitOf(rootId);
+  const U = id => { const u = unitOf(id); return horiz ? spouseUnitH(id, u.fams, u.sps, mode, w, hh) : spouseUnitV(id, u.fams, u.sps, mode, w, hh); };
+  const rU = U(rootId);
+  // a sibling unit at `pos` (left edge, or top edge when horizontal); returns its connection point on the cross axis
+  const put = (id, pos) => {
+    const V = U(id);
+    const x = horiz ? rd.x : pos, y = horiz ? pos : rd.y;
+    nodes.push({ id, x: x + V.off, y, w, h: hh, main: true, sib: true, gen: 0 });
+    const n0 = nodes.length;
+    V.place(x, y, nodes, links);
+    for (let i = n0; i < nodes.length; i++) nodes[i].gen = 0;
+    return horiz ? y + hh / 2 : x + V.off + w / 2;
+  };
+  const len = id => (horiz ? U(id).unitH : U(id).unitW);
+  const rootStart = horiz ? rd.y : rd.x - rU.off, rootEnd = rootStart + (horiz ? rU.unitH : rU.unitW);
   if (sibUnits.length) {
     const ri = sibs.indexOf(rootId);
-    const older = sibs.slice(0, Math.max(0, ri)).map(unitOf), younger = sibs.slice(ri + 1).map(unitOf);
-    const ru0 = unitOf(rootId);
-    const gap = Math.round(26 * K);
-    const tops = [];   // [x, y] of each sibling card's connection point
+    // with the spouse's family on the right, all of the centre person's siblings are on the left
+    const before = spT ? sibs.filter(c => c !== rootId) : sibs.slice(0, Math.max(0, ri));
+    const after = spT ? [] : sibs.slice(ri + 1);
+    const pts = [];
+    let pos = rootStart - gap;
+    for (const id of before.slice().reverse()) { pos -= len(id); pts.push(put(id, pos)); pos -= gap; }
+    pos = rootEnd + gap;
+    for (const id of after) { pts.push(put(id, pos)); pos += len(id) + gap; }
+    // the parents' line to the children: a bus just before the middle row (the root's own line is already there)
+    const rc = horiz ? rd.y + hh / 2 : rd.x + w / 2;
+    const all = pts.concat(rc);
+    const noPar = !up.nodes.some(n => !n.root);
     if (!horiz) {
-      const rU = spouseUnitV(rootId, ru0.fams, ru0.sps, mode, w, hh);
-      const rootLeft = rd.x - rU.off, rootRight = rootLeft + rU.unitW;
-      const put = (u, left) => {
-        const U = spouseUnitV(u.id, u.fams, u.sps, mode, w, hh);
-        nodes.push({ id: u.id, x: left + U.off, y: rd.y, w, h: hh, main: true, sib: true, gen: 0 });
-        const n0 = nodes.length;
-        U.place(left, rd.y, nodes, links);
-        for (let i = n0; i < nodes.length; i++) nodes[i].gen = 0;
-        tops.push(left + U.off + w / 2);
-        return U.unitW;
-      };
-      let x = rootLeft - gap;
-      for (const u of older.reverse()) { const U = spouseUnitV(u.id, u.fams, u.sps, mode, w, hh); x -= U.unitW; put(u, x); x -= gap; }
-      x = rootRight + gap;
-      for (const u of younger) x += put(u, x) + gap;
-      // the parents' line to the children: a bus just above the middle row (the root's own line is already there)
-      const bus = rd.y - 29, cx = rd.x + w / 2;
-      const xs = tops.concat(cx);
-      let d = `M${Math.min(...xs)},${bus}H${Math.max(...xs)}`;
-      for (const t of tops) d += `M${t},${bus}V${rd.y}`;
-      if (!up.nodes.some(n => !n.root)) d += `M${cx},${bus}V${rd.y}`;   // no parents drawn: still one family
+      const bus = rd.y - 29;
+      let d = `M${Math.min(...all)},${bus}H${Math.max(...all)}`;
+      for (const t of pts) d += `M${t},${bus}V${rd.y}`;
+      if (noPar) d += `M${rc},${bus}V${rd.y}`;   // no parents drawn: still one family
       links.push({ d });
     } else {
-      const rU = spouseUnitH(rootId, ru0.fams, ru0.sps, mode, w, hh);
-      const rootTop = rd.y, rootBottom = rd.y + rU.unitH;
-      const put = (u, top) => {
-        const U = spouseUnitH(u.id, u.fams, u.sps, mode, w, hh);
-        nodes.push({ id: u.id, x: rd.x, y: top, w, h: hh, main: true, sib: true, gen: 0 });
-        const n0 = nodes.length;
-        U.place(rd.x, top, nodes, links);
-        for (let i = n0; i < nodes.length; i++) nodes[i].gen = 0;
-        tops.push(top + hh / 2);
-        return U.unitH;
-      };
-      let y = rootTop - gap;
-      for (const u of older.reverse()) { const U = spouseUnitH(u.id, u.fams, u.sps, mode, w, hh); y -= U.unitH; put(u, y); y -= gap; }
-      y = rootBottom + gap;
-      for (const u of younger) y += put(u, y) + gap;
-      const bus = rd.x - 23, cy = rd.y + hh / 2;
-      const ys = tops.concat(cy);
-      let d = `M${bus},${Math.min(...ys)}V${Math.max(...ys)}`;
-      for (const t of tops) d += `M${bus},${t}H${rd.x}`;
-      if (!up.nodes.some(n => !n.root)) d += `M${bus},${cy}H${rd.x}`;
+      const bus = rd.x - 23;
+      let d = `M${bus},${Math.min(...all)}V${Math.max(...all)}`;
+      for (const t of pts) d += `M${bus},${t}H${rd.x}`;
+      if (noPar) d += `M${bus},${rc}H${rd.x}`;
       links.push({ d });
     }
   }
-  // the spouses' own ancestors (o.spTree): above (left of) the spouse, pushed aside where they would overlap
-  if (o.spTree && mode !== 'none' && o.up > 0) {
+  // the spouses' families (spTree)
+  if (spT) {
     const spNodes = nodes.filter(n => n.of === rootId && (n.spouse || n.sp));
-    for (const sn of spNodes) {
-      const t = horiz ? layoutAncestors(sn.id, o, false, -1, { noRootLinks: true }) : layoutAncestors(sn.id, o, true, 1, { noRootLinks: true });
-      const tr = t.nodes.find(n => n.root);
-      const tn = t.nodes.filter(n => !n.root);
-      if (!tn.length) continue;
-      // same generation rows as the centre person's ancestors; centred on the spouse card
-      let ox = horiz ? rd.x - tr.x : sn.x - tr.x, oy = horiz ? sn.y - tr.y : rd.y - tr.y;
-      const lo = {}, hi = {};
-      for (const n of nodes) if (n.gen > 0) { const a = horiz ? n.y : n.x, b = a + (horiz ? n.h : n.w); hi[n.gen] = Math.max(hi[n.gen] ?? -Infinity, b); lo[n.gen] = Math.min(lo[n.gen] ?? Infinity, a); }
-      let need = 0;
-      for (const n of tn) { const a = (horiz ? n.y + oy : n.x + ox); if (hi[n.gen] != null) need = Math.max(need, hi[n.gen] + 24 - a); }
-      if (horiz) oy += need; else ox += need;
-      const sh = d => d.replace(/([MLHV])([-\d.]+)(?:,([-\d.]+))?/g, (m, c, a, b) => c === 'H' ? `H${+a + ox}` : c === 'V' ? `V${+a + oy}` : `${c}${+a + ox},${+b + oy}`);
-      const placed = tn.map(n => ({ ...n, x: n.x + ox, y: n.y + oy, spTree: sn.id }));
-      nodes.push(...placed);
-      links.push(...t.links.map(l => ({ ...l, d: sh(l.d) })));
-      // from the visible part of the spouse card to their parents (not along the siblings' line)
-      const par = placed.filter(n => n.gen === 1);
+    let pos = Math.max(rootEnd, ...nodes.filter(n => n.gen === 0).map(n => horiz ? n.y + n.h : n.x + n.w)) + gap;
+    spNodes.forEach((sn, k) => {
       const behind = !!sn.spouse;
-      if (!horiz) {
-        const sx = behind ? sn.x + w - SDX / 2 : sn.x + w / 2, sy = sn.y, my = rd.y - 44;
-        for (const p of par) links.push({ d: `M${sx},${sy}V${my}H${p.x + w / 2}V${p.y + hh}` });
-      } else {
-        const sx = sn.x, sy = behind ? sn.y + hh - SDY / 2 : sn.y + hh / 2, mx = rd.x - 36;
-        for (const p of par) links.push({ d: `M${sx},${sy}H${mx}V${p.y + hh / 2}H${p.x + w}` });
+      // where the spouse's line starts: the visible part of their card
+      const ax = horiz ? sn.x : behind ? sn.x + w - SDX / 2 : sn.x + w / 2;
+      const ay = horiz ? (behind ? sn.y + hh - SDY / 2 : sn.y + hh / 2) : sn.y;
+      // their siblings after everything already in the middle row
+      const pts = [];
+      for (const u of spSibs[k] || []) { pts.push(put(u.id, pos)); pos += len(u.id) + gap; }
+      // their ancestors: same generation rows, centred on the family, pushed aside where they would overlap
+      let par = [];
+      if (o.up > 0) {
+        const t = horiz ? layoutAncestors(sn.id, o, false, -1, { noRootLinks: true }) : layoutAncestors(sn.id, o, true, 1, { noRootLinks: true });
+        const tr = t.nodes.find(n => n.root), tn = t.nodes.filter(n => !n.root);
+        if (tn.length) {
+          const a0 = horiz ? ay : ax, mid = pts.length ? (a0 + pts[pts.length - 1]) / 2 : a0;
+          let ox = horiz ? rd.x - tr.x : mid - w / 2 - tr.x, oy = horiz ? mid - hh / 2 - tr.y : rd.y - tr.y;
+          const hi = {};
+          for (const n of nodes) if (n.gen > 0) hi[n.gen] = Math.max(hi[n.gen] ?? -Infinity, horiz ? n.y + n.h : n.x + n.w);
+          let need = -Infinity;
+          for (const n of tn) if (hi[n.gen] != null) need = Math.max(need, hi[n.gen] + 24 - (horiz ? n.y + oy : n.x + ox));
+          if (need > 0) { if (horiz) oy += need; else ox += need; }
+          const sh = d => d.replace(/([MLHV])([-\d.]+)(?:,([-\d.]+))?/g, (m, c, a, b) => c === 'H' ? `H${+a + ox}` : c === 'V' ? `V${+a + oy}` : `${c}${+a + ox},${+b + oy}`);
+          const placed = tn.map(n => ({ ...n, x: n.x + ox, y: n.y + oy, spTree: sn.id }));
+          nodes.push(...placed);
+          links.push(...t.links.map(l => ({ ...l, d: sh(l.d) })));
+          par = placed.filter(n => n.gen === 1);
+        }
       }
-    }
+      if (!pts.length && !par.length) return;
+      // the spouse's family line: a low bus along the middle row (spouse + siblings), and from it one line up,
+      // beyond the centre person's parents' lines, to a second bus joining the spouse's parents
+      const b1 = 12 + k * 5, b2 = 44 - k * 6;
+      if (!horiz) {
+        const y1 = rd.y - b1, y2 = rd.y - b2;
+        const pc = par.map(p => p.x + w / 2), xu = pc.length ? (Math.min(...pc) + Math.max(...pc)) / 2 : null;
+        const xs = [ax, ...pts, ...(xu != null ? [xu] : [])];
+        let d = `M${ax},${ay}V${y1}M${Math.min(...xs)},${y1}H${Math.max(...xs)}`;
+        for (const t of pts) d += `M${t},${y1}V${rd.y}`;
+        if (xu != null) {
+          d += `M${xu},${y1}V${y2}M${Math.min(...pc)},${y2}H${Math.max(...pc)}`;
+          for (const p of par) d += `M${p.x + w / 2},${y2}V${p.y + hh}`;
+        }
+        links.push({ d });
+      } else {
+        const x1 = rd.x - b1 + 2, x2 = rd.x - (b2 - 8);
+        const pc = par.map(p => p.y + hh / 2), yu = pc.length ? (Math.min(...pc) + Math.max(...pc)) / 2 : null;
+        const ys = [ay, ...pts, ...(yu != null ? [yu] : [])];
+        let d = `M${ax},${ay}H${x1}M${x1},${Math.min(...ys)}V${Math.max(...ys)}`;
+        for (const t of pts) d += `M${x1},${t}H${rd.x}`;
+        if (yu != null) {
+          d += `M${x1},${yu}H${x2}M${x2},${Math.min(...pc)}V${Math.max(...pc)}`;
+          for (const p of par) d += `M${x2},${p.y + hh / 2}H${p.x + w}`;
+        }
+        links.push({ d });
+      }
+    });
   }
   return { nodes, links, linksOnTop: down.linksOnTop };
 }
@@ -1109,7 +1145,10 @@ export function renderChart(host, opts) {
     if (L.linksOnTop) world.append(lg);
     bounds = measureBounds(L.nodes);
     const rn = L.nodes.find(n => n.root) || L.nodes.find(n => n.id === o.root);
-    if (rn) anchor = { x: rn.x, y: rn.y };
+    if (rn) anchor = { x: rn.x, y: rn.y, w: rn.w, h: rn.h };
+    // o.focusRow (home page on a phone): the bottom of this generation's row is the bottom of the first view
+    const fr = o.focusRow != null ? L.nodes.filter(n => n.gen === o.focusRow) : [];
+    if (fr.length) anchor.rowBottom = Math.max(...fr.map(n => n.y + n.h));
     // o.viewUp / o.viewDown: more generations are drawn than shown at first; the starting view covers these
     if (o.viewUp != null || o.viewDown != null) {
       const vu = o.viewUp ?? o.up, vd = o.viewDown ?? o.down;
@@ -1159,7 +1198,9 @@ export function renderChart(host, opts) {
     apply();
   };
   // o.view (from getView() of the previous drawing): the same zoom and position, relative to the centre person
-  const kept = o.view || null;
+  // o.view: the previous drawing's view (a setting changed); o.zoom: only its zoom level, centred on the
+  // (new) centre person – when someone else is put in the middle
+  const kept = o.view || (o.zoom ? { x: (anchor.w || 0) / 2 - o.zoom.w / 2, y: (anchor.h || 0) / 2 - o.zoom.h / 2, w: o.zoom.w, h: o.zoom.h } : null);
   const initialView = () => kept ? (vb = { x: anchor.x + kept.x, y: anchor.y + kept.y, w: kept.w, h: kept.h }, apply()) : (o.fitWidth && host.clientWidth >= 640 ? fitWidth() : o.focus || host.clientWidth < 640 ? focusRoot() : fit(1.25, vbounds));
   if (kept) initialView();
   const focusRoot = () => {
@@ -1174,6 +1215,10 @@ export function renderChart(host, opts) {
     const sc = o.minScale || (r.width < 640 ? 0.7 : 1);
     if (s >= sc) return fit(sc, vbounds);  // small chart: all of it, centred
     vb = { w: r.width / sc, h: r.height / sc, x: cx - r.width / sc / 2, y: cy - r.height / sc / 2 };
+    if (anchor.rowBottom != null) {
+      const y = anchor.rowBottom + ((o.padBottom || 0) + 10) / sc - vb.h;
+      if (y <= anchor.y - 10 / sc) vb.y = y;   // only while the centre person stays in view
+    }
     apply();
   };
   const zoom = (f, cx, cy) => {

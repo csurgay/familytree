@@ -95,13 +95,16 @@ export async function viewHome() {
   let homeCtrl = null;
   const more = Math.max(0, +(s.home_tree_more ?? 3));
   const drawHome = (root, first = false) => {
+    // another person in the middle: same zoom level, centred on them
+    const v0 = !first && homeCtrl?.getView ? homeCtrl.getView() : null;
     homeCtrl?.destroy();
     homeCtrl = renderChart(host, {
+      zoom: v0 ? { w: v0.w, h: v0.h } : null,
       // more generations are drawn than the first view shows: the rest is reachable by dragging / zooming
       ...(gUp => ({ up: Math.min(10, gUp + more), viewUp: gUp }))(+(tp.up || s.home_tree_gens || 2)),
       ...(gDn => ({ down: Math.min(10, gDn + more), viewDown: gDn }))(+(tp.down || s.home_tree_down || 2)),
       kind, root, photos: s.chart_photos, style: s.chart_style, orient: tp.orient,
-      places: false, interactive: true, wheel: false, focus: true, fitWidth: true, padBottom: 52, padRight: 58, ...(cardShape({}) === 'tall' ? { minScale: host.clientWidth < 640 ? 0.5 : 0.56, focusShift: 215 } : { minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130 }),
+      places: false, interactive: true, wheel: false, focus: true, fitWidth: true, padBottom: host.clientWidth < 640 ? 0 : 52, padRight: 58, focusRow: -1, ...(cardShape({}) === 'tall' ? { minScale: host.clientWidth < 640 ? 0.5 : 0.56, focusShift: 215 } : { minScale: host.clientWidth < 640 ? 0.6 : 0.8, focusShift: 130 }),
       onRecenter: id => drawHome(id), onOpen: id => go('#/person/' + id),
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => drawHome(x) },
@@ -520,7 +523,7 @@ export async function viewTree(id, qs) {
   const stage = h('div', { class: 'chart-stage' }, titleBar, host,
     h('button', { type: 'button', class: 'btn btn-sm chart-opts-btn', onclick: () => side.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, icon('gear'), T('Beállítások')),
   );
-  const rootPk = personPicker({ value: st.root, onPick: v => { if (v) { st.root = v; draw(); } } });
+  const rootPk = personPicker({ value: st.root, onPick: v => { if (v) { st.root = v; draw('zoom'); } } });
   const otherPk = personPicker({ value: st.other, placeholder: T('Másik személy…'), onPick: v => { st.other = v; draw(); } });
   const types = h('div', { class: 'ctype' }, Object.entries(CHART_KINDS).filter(([k]) => kinds.includes(k)).map(([k, v]) => h('button', { type: 'button', class: st.kind === k ? 'on' : '', 'data-k': k, onclick: () => { st.kind = k; draw(true); } }, icon(v.icon), T(v.label))));
   const num = (key, label, max = 10) => { const i = h('input', { type: 'range', min: 0, max, value: st[key], oninput: e => { st[key] = +e.target.value; i.nextSibling.textContent = st[key]; draw(true); } }); return h('label', { class: 'f', 'data-g': key }, h('span', null, label), h('div', { class: 'row', style: 'flex-wrap:nowrap' }, i, h('b', { style: 'min-width:1.5em;text-align:right' }, st[key]))); };
@@ -547,7 +550,7 @@ export async function viewTree(id, qs) {
     h('div', { 'data-g': 'orient' }, field(T('Nemzedékek elrendezése'), orientSel)),
     tog('photos', T('Fotók')), tog('places', T('Születési hely')),
     h('div', { 'data-g': 'spouses' }, field(T('Házastársak'), spSel)),
-    h('div', { 'data-g': 'sibs' }, tog('sibs', T('Testvérek a középső sorban')), tog('spTree', T('A házastárs felmenői is'))),
+    h('div', { 'data-g': 'sibs' }, tog('sibs', T('Testvérek a középső sorban')), tog('spTree', T('Házastárs fája is'))),
     h('div', { 'data-g': 'card' }, field(T('Kártyák formája'), cardSel)),
     h('div', { 'data-g': 'photo' }, field(T('Fotók mérete'), photoSel)),
     field(T('Doboz stílus'), style),
@@ -586,9 +589,10 @@ export async function viewTree(id, qs) {
     if (st.other) q.set('other', st.other);
     const url = `#/tree/${st.root}?${q}`;
     if (pushNext) { history.pushState(null, '', url); pushNext = false; } else history.replaceState(null, '', url);
-    const view = keep && ctrl?.getView ? ctrl.getView() : null;
+    const v0 = keep && ctrl?.getView ? ctrl.getView() : null;
+    const view = keep === true ? v0 : null, zoom = keep === 'zoom' && v0 ? { w: v0.w, h: v0.h } : null;
     ctrl?.destroy();
-    ctrl = renderChart(host, { ...st, focus: true, view, onRecenter: nid => recenter(nid), onOpen: nid => go('#/person/' + nid),
+    ctrl = renderChart(host, { ...st, focus: true, view, zoom, onRecenter: nid => recenter(nid), onOpen: nid => go('#/person/' + nid),
       popActions: id => [
         { label: T('Középre'), primary: true, run: x => recenter(x) },
         { label: T('Adatlap'), run: x => go('#/person/' + x) },
@@ -600,7 +604,7 @@ export async function viewTree(id, qs) {
   };
   // re-centring is a real navigation step: the browser's Back button returns to the previous person
   let pushNext = false;
-  const recenter = nid => { if (!P(nid) || nid === st.root) return; st.root = nid; rootPk.set(nid); pushNext = true; draw(); };
+  const recenter = nid => { if (!P(nid) || nid === st.root) return; st.root = nid; rootPk.set(nid); pushNext = true; draw('zoom'); };
   // keyboard: ↑ parent, ↓ first child, ← → siblings (or spouse), Home = home person
   const onKey = e => {
     if (!document.body.contains(page)) return window.removeEventListener('keydown', onKey);

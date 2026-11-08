@@ -682,7 +682,7 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .tr-toggle:hover, .tr-toggle.on { opacity: 1; color: var(--accent); }
 .tr-toggle.long { display: flex; align-items: center; gap: 5px; margin: 6px 0 0; font: inherit; font-size: .8rem; white-space: normal; text-align: left; }
 /* home tree: the generations below the first view fade out behind the caption (drag to see them) */
-.hero-tree .chart-host svg { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent calc(100% - 34px)); mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent calc(100% - 34px)); }
+@media (min-width: 640px) { .hero-tree .chart-host svg { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent calc(100% - 34px)); mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent calc(100% - 34px)); } }
 
 /* narrow screens: the settings go below the chart; a button on the chart jumps to them */
 .chart-opts-btn { display: none; }
@@ -691,4 +691,9 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
   .chart-side { position: static; max-height: none; border-right: 0; border-top: 1px solid var(--line); order: 2; }
   .chart-stage { height: 72vh; height: 72svh; order: 1; }
   .chart-opts-btn { display: inline-flex; position: absolute; left: 10px; bottom: 10px; z-index: 3; }
+}
+/* phones: the caption (2 lines) goes below the tree instead of over its bottom row */
+@media (max-width: 639px) {
+  .hero-tree { height: 450px; }
+  .hero-tree .chart-host { height: calc(100% - 96px); }
 }
