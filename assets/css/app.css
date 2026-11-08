@@ -682,3 +682,5 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 .tr-toggle svg { width: 14px; height: 14px; }
 .tr-toggle:hover, .tr-toggle.on { opacity: 1; color: var(--accent); }
 .tr-toggle.long { display: flex; align-items: center; gap: 5px; margin: 6px 0 0; font: inherit; font-size: .8rem; white-space: normal; text-align: left; }
+/* home tree: the generations below the first view fade out behind the caption (drag to see them) */
+.hero-tree .chart-host svg { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent calc(100% - 34px)); mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent calc(100% - 34px)); }

@@ -108,28 +108,60 @@ export function chartOrient(o) {
 export function layoutAncestors(rootId, o, vertical = false, dir = 1) {
   const { w, hh } = { w: boxSize(o).w, hh: boxSize(o).h };
   const G = o.up; const nodes = []; const links = [];
+  // o.viewUp (home page): the older generations are packed above without spreading the ones shown first
+  const C = o.viewUp != null ? Math.min(G, o.viewUp) : G;
   const gapMain = vertical ? 58 : 46, gapCross = vertical ? 14 : 12;
+  const size = vertical ? w : hh;
   let next = 0;
   const seen = new Map();
-  const place = (id, g) => {
-    const parents = g < G ? parentsOf(id) : [];
-    let cross;
-    const pk = [];
-    for (const pid of parents) pk.push(place(pid, g + 1));
-    if (!pk.length) { cross = next; next += (vertical ? w : hh) + gapCross; }
-    else cross = (pk[0].cross + pk[pk.length - 1].cross) / 2;
+  const mk = (id, g, cross) => {
     const main = g * ((vertical ? hh : w) + gapMain) * (vertical ? 1 : dir);
     const n = vertical ? { id, x: cross, y: -main, w, h: hh, g, cross } : { id, x: main, y: cross, w, h: hh, g, cross };
     n.dup = seen.has(id); seen.set(id, true); n.gen = g;
     nodes.push(n);
-    for (const c of pk) {
-      if (vertical) { const x1 = n.x + w / 2, y1 = n.y, x2 = c.x + w / 2, y2 = c.y + hh, my = (y1 + y2) / 2; links.push({ d: `M${x1},${y1}V${my}H${x2}V${y2}` }); }
-      else { const x1 = dir > 0 ? n.x + w : n.x, y1 = n.y + hh / 2, x2 = dir > 0 ? c.x : c.x + w, y2 = c.y + hh / 2, mx = (x1 + x2) / 2; links.push({ d: `M${x1},${y1}H${mx}V${y2}H${x2}` }); }
-    }
+    return n;
+  };
+  const link = (n, c) => {
+    if (vertical) { const x1 = n.x + w / 2, y1 = n.y, x2 = c.x + w / 2, y2 = c.y + hh, my = (y1 + y2) / 2; links.push({ d: `M${x1},${y1}V${my}H${x2}V${y2}` }); }
+    else { const x1 = dir > 0 ? n.x + w : n.x, y1 = n.y + hh / 2, x2 = dir > 0 ? c.x : c.x + w, y2 = c.y + hh / 2, mx = (x1 + x2) / 2; links.push({ d: `M${x1},${y1}H${mx}V${y2}H${x2}` }); }
+  };
+  const top = [];
+  const place = (id, g) => {
+    const parents = g < C ? parentsOf(id) : [];
+    let cross;
+    const pk = [];
+    for (const pid of parents) pk.push(place(pid, g + 1));
+    if (!pk.length) { cross = next; next += size + gapCross; }
+    else cross = (pk[0].cross + pk[pk.length - 1].cross) / 2;
+    const n = mk(id, g, cross);
+    if (g === C) top.push(n);
+    for (const c of pk) link(n, c);
     return n;
   };
   const r = place(rootId, 0);
   r.root = true;
+  // older generations: each couple centred on their child as far as the neighbours allow, row balanced
+  let row = top;
+  for (let g = C + 1; g <= G && row.length; g++) {
+    const groups = [];
+    for (const n of row) {
+      if (n.dup) continue;
+      const ps = parentsOf(n.id);
+      if (!ps.length) continue;
+      const gw = ps.length * size + (ps.length - 1) * gapCross;
+      groups.push({ n, ps, gw, ideal: n.cross + size / 2 - gw / 2 });
+    }
+    if (!groups.length) break;
+    let end = -Infinity;
+    for (const q of groups) { q.c = Math.max(q.ideal, end + gapCross * 2); end = q.c + q.gw; }
+    const shift = groups.reduce((s, q) => s + (q.ideal - q.c), 0) / groups.length;
+    const nx = [];
+    for (const q of groups) {
+      let c = q.c + shift;
+      for (const pid of q.ps) { const p = mk(pid, g, c); link(q.n, p); nx.push(p); c += size + gapCross; }
+    }
+    row = nx;
+  }
   return { nodes, links };
 }
 
@@ -240,47 +272,45 @@ function spouseUnitH(id, fams, sps, mode, w, hh) {
 export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
   const { w, h: hh } = boxSize(o);
   const G = o.down, kgap = 26, vgap = 64;
+  // o.viewDown (home page): the generations below it are only reachable by dragging; they are packed
+  // under their parents without widening the generations above, so the first view keeps its proportions
+  const C = o.viewDown != null ? Math.min(G, o.viewDown) : G;
   const nodes = [], links = [];
   const guard = new Set();
   const mode = spouseMode(o);
   let maxSp = o._minSp || 0;
-  const measure = (id, d) => {
+  const unitFor = (id, d) => {
     const showSp = mode !== 'none' && (d > 0 || withRootSpouses);
     const fams0 = famsOf(id);
     const sps = showSp ? fams0.filter(f => spouseIn(f, id)) : [];
     // children of a relationship with no spouse card go first (leftmost): their line leaves on the far left
     const fams = sps.length ? [...fams0.filter(f => !sps.includes(f)), ...sps] : fams0;
     maxSp = Math.max(maxSp, sps.length);
-    const u = spouseUnitV(id, fams, sps, mode, w, hh);
+    return { id, d, fams, sps, u: spouseUnitV(id, fams, sps, mode, w, hh) };
+  };
+  const measure = (id, d) => {
+    const m = unitFor(id, d);
     const kids = [];
-    if (d < G && !guard.has(id)) {
+    if (d < C && !guard.has(id)) {
       guard.add(id);
-      for (const f of fams) for (const c of f.c) kids.push({ fam: f.id, m: measure(c, d + 1) });
+      for (const f of m.fams) for (const c of f.c) kids.push({ fam: f.id, m: measure(c, d + 1) });
     }
     const kidsW = kids.reduce((s, k) => s + k.m.width, 0) + Math.max(0, kids.length - 1) * kgap;
-    return { id, d, fams, sps, u, unitW: u.unitW, kids, kidsW, width: Math.max(u.unitW, kidsW) };
+    return { ...m, unitW: m.u.unitW, kids, kidsW, width: Math.max(m.u.unitW, kidsW) };
   };
   const m0 = measure(rootId, 0);
+  // the deeper generations count for the row height too
+  if (C < G) {
+    const seen = new Set();
+    const walk = (id, d) => { if (d > G || seen.has(id)) return; seen.add(id); unitFor(id, d); if (d < G) for (const f of famsOf(id)) for (const c of f.c) walk(c, d + 1); };
+    walk(rootId, 0);
+  }
   const rowStep = hh + (mode === 'beside' ? 0 : maxSp * SDY) + vgap;
-  const placeT = (m, left, top) => {
-    const ux = left + (m.width - m.unitW) / 2;
-    nodes.push({ id: m.id, x: ux + m.u.off, y: top, w, h: hh, root: m.d === 0, main: true, gen: -m.d });
-    // where each family's line to its children starts: bottom of that spouse's strip (or of the person)
-    const n0 = nodes.length;
-    const famPt = m.u.place(ux, top, nodes, links);
-    for (let i = n0; i < nodes.length; i++) nodes[i].gen = -m.d;
-    let kx = left + (m.width - m.kidsW) / 2;
-    const ky = top + rowStep;
-    const byFam = {};
-    for (const k of m.kids) {
-      placeT(k.m, kx, ky);
-      (byFam[k.fam] ||= []).push(kx + (k.m.width - k.m.unitW) / 2 + k.m.u.off + w / 2);
-      kx += k.m.width + kgap;
-    }
+  const famLinks = (byFam, famPt, ux, top, ky) => {
     const famIds = Object.keys(byFam);
-    famIds.forEach((fid, fi) => {
+    famIds.forEach(fid => {
       const xs = byFam[fid];
-      const ex = famPt[fid] || famExit(ux + m.u.off, top, w, hh, 0, 0);
+      const ex = famPt[fid] || famExit(ux, top, w, hh, 0, 0);
       // separate bus heights when a person has children with several spouses
       const bus = ky - vgap / 2 + (famIds.length > 1 ? (ex.lvl || 0) * 8 : 0);
       const lo = Math.min(ex.x, ...xs), hi = Math.max(ex.x, ...xs);
@@ -289,7 +319,64 @@ export function layoutDescendants(rootId, o, { withRootSpouses = true } = {}) {
       links.push({ d });
     });
   };
+  const frontier = [];   // the units of the last laid-out generation, left to right (for the deeper ones)
+  const placeT = (m, left, top) => {
+    const ux = left + (m.width - m.unitW) / 2;
+    nodes.push({ id: m.id, x: ux + m.u.off, y: top, w, h: hh, root: m.d === 0, main: true, gen: -m.d });
+    // where each family's line to its children starts: bottom of that spouse's strip (or of the person)
+    const n0 = nodes.length;
+    const famPt = m.u.place(ux, top, nodes, links);
+    for (let i = n0; i < nodes.length; i++) nodes[i].gen = -m.d;
+    if (m.d === C) frontier.push({ m, famPt, ux, top });
+    let kx = left + (m.width - m.kidsW) / 2;
+    const ky = top + rowStep;
+    const byFam = {};
+    for (const k of m.kids) {
+      placeT(k.m, kx, ky);
+      (byFam[k.fam] ||= []).push(kx + (k.m.width - k.m.unitW) / 2 + k.m.u.off + w / 2);
+      kx += k.m.width + kgap;
+    }
+    famLinks(byFam, famPt, ux + m.u.off, top, ky);
+  };
   placeT(m0, 0, 0);
+  // deeper generations, row by row: each family's children as a group, as close under the parents as the
+  // neighbours allow; then the whole row is shifted so it is balanced around the parents
+  let row = frontier;
+  for (let d = C + 1; d <= G && row.length; d++) {
+    const top = row[0].top + rowStep;
+    const groups = [];
+    for (const r of row) {
+      if (guard.has(r.m.id)) continue;
+      guard.add(r.m.id);
+      for (const f of r.m.fams) {
+        const kids = f.c.map(c => unitFor(c, d));
+        if (!kids.length) continue;
+        const gw = kids.reduce((s, k) => s + k.u.unitW, 0) + (kids.length - 1) * kgap;
+        const ex = r.famPt[f.id] || famExit(r.ux + r.m.u.off, r.top, w, hh, 0, 0);
+        groups.push({ r, f, kids, gw, ideal: ex.x - gw / 2 });
+      }
+    }
+    if (!groups.length) break;
+    let end = -Infinity;
+    for (const g of groups) { g.x = Math.max(g.ideal, end + kgap * 2); end = g.x + g.gw; }
+    const shift = groups.reduce((s, g) => s + (g.ideal - g.x), 0) / groups.length;
+    const next = [];
+    for (const g of groups) {
+      let x = g.x + shift;
+      const xs = [];
+      for (const k of g.kids) {
+        nodes.push({ id: k.id, x: x + k.u.off, y: top, w, h: hh, main: true, gen: -d });
+        const n0 = nodes.length;
+        const famPt = k.u.place(x, top, nodes, links);
+        for (let i = n0; i < nodes.length; i++) nodes[i].gen = -d;
+        next.push({ m: k, famPt, ux: x, top });
+        xs.push(x + k.u.off + w / 2);
+        x += k.u.unitW + kgap;
+      }
+      famLinks({ [g.f.id]: xs }, g.r.famPt, g.r.ux + g.r.m.u.off, g.r.top, top);
+    }
+    row = next;
+  }
   return { nodes, links, maxSp };
 }
 
@@ -994,7 +1081,15 @@ export function renderChart(host, opts) {
     if (o.viewUp != null || o.viewDown != null) {
       const vu = o.viewUp ?? o.up, vd = o.viewDown ?? o.down;
       const cn = L.nodes.filter(n => n.gen == null || (n.gen <= vu && -n.gen <= vd));
-      if (cn.length && cn.length < L.nodes.length) core = measureBounds(cn);
+      if (cn.length) {
+        core = measureBounds(cn);
+        // fitWidth: the lowest generation shown at first sets the width (e.g. all the grandchildren from one
+        // end to the other) and sits at the bottom; wider rows above it may run off the sides
+        const row = L.nodes.filter(n => n.gen === -vd);
+        const rb = row.length ? measureBounds(row) : null;
+        if (o.fitWidth && rb && rb.h < 3 * row[0].h) core = { x: rb.x, w: rb.w, y: core.y, h: core.h };
+        if (cn.length === L.nodes.length && !(o.fitWidth && rb)) core = null;
+      }
     }
     info.count = new Set(L.nodes.map(n => n.id)).size;
   }
@@ -1025,7 +1120,9 @@ export function renderChart(host, opts) {
     const sc = Math.min(avail / B.w, o.maxScale || 1);
     vb = { w: r.width / sc, h: r.height / sc, x: B.x - (avail - B.w * sc) / 2 / sc, y: 0 };
     const extra = (o.padBottom || 0) / sc;
-    vb.y = B.h + extra <= vb.h ? B.y + B.h / 2 - vb.h / 2 + extra / 2 : B.y + B.h + extra - vb.h;
+    vb.y = B.h + extra <= vb.h && !core ? B.y + B.h / 2 - vb.h / 2 + extra / 2 : B.y + B.h + extra - vb.h;
+    // with more generations below: the lowest first-view row is the bottom line, the rest is out of view
+    if (core) vb.y = B.y + B.h - pad + 10 / sc + extra - vb.h;
     apply();
   };
   const initialView = () => (o.fitWidth && host.clientWidth >= 640 ? fitWidth() : o.focus || host.clientWidth < 640 ? focusRoot() : fit(1.25, vbounds));
