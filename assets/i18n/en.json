@@ -1097,5 +1097,16 @@
 "Nem volt mit fordítani.": "There was nothing to translate.",
 "Életrajzok, hozzászólások, képcímek fordítása": "Translating biographies, comments, photo titles",
 "Bármelyik nyelven írták, a többi bekapcsolt nyelvre is lefordul: életrajzok, a családokról szóló jegyzetek, események megnevezése és jegyzete, fotók címe és leírása, hozzászólások, a kitűzött elemek felirata. Magától is lefordul, amikor valaki először megnézi más nyelven; ezzel előre el lehet készíteni mindet. A DeepL havi keretébe a karakterek számítanak.": "Whatever language they were written in, they are translated into the other enabled languages: biographies, notes about families, event names and notes, photo titles and descriptions, comments, captions of pinned items. This happens by itself when someone first views them in another language; here you can prepare all of them in advance. Characters count towards the monthly DeepL quota.",
-"A DeepL most nem fordít (hiba vagy elfogyott a keret). A részletek a szerver hibanaplójában vannak.": "DeepL is not translating right now (error or quota used up). Details are in the server error log."
+"A DeepL most nem fordít (hiba vagy elfogyott a keret). A részletek a szerver hibanaplójában vannak.": "DeepL is not translating right now (error or quota used up). Details are in the server error log.",
+"A kártya mögött (csak egy csík látszik)": "Behind the card (only a strip shows)",
+"Mellette, teljes kártyán": "Beside, as a full card",
+"Nem látszanak": "Hidden",
+"Testvérek a középső sorban": "Siblings in the middle row",
+"Házastársak a diagramokon": "Spouses on the charts",
+"A kártya mögött: csak egy csík látszik belőlük, a fa keskeny marad. Mellette: teljes kártya, házassági vonallal – áttekinthetőbb, de szélesebb. A Családfa-böngészőben diagramonként is átállítható.": "Behind the card: only a strip shows, the tree stays narrow. Beside: a full card with a marriage line – clearer, but wider. Can also be changed per chart in the tree explorer.",
+"A kártya mögött": "Behind the card",
+"A homokóra középső sorában a testvérek is": "Siblings in the middle row of the hourglass too",
+"Születési sorrendben, a házastársaikkal; így látszik például, ha két testvér két testvért vett el.": "In birth order, with their spouses; so it shows, for example, when two siblings married two siblings.",
+"További nemzedékek a főoldali fában, húzással elérhetően": "More generations in the home page tree, reachable by dragging",
+"Ennyivel több felmenő és leszármazott is ott van, de kezdetben csak a fenti nemzedékek látszanak; a többihez húzni / nagyítani kell. 0 = nincs.": "This many more ancestor and descendant generations are drawn, but at first only the generations above are shown; drag / zoom to see the rest. 0 = none."
 }
