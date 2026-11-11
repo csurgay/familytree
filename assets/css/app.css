@@ -452,6 +452,12 @@ input[type=color] { width: 54px; height: 36px; padding: 2px; border: 1px solid v
 .lightbox .stage { display: grid; place-items: center; padding: 20px; position: relative; min-height: 0; }
 .lightbox .stage img { max-width: 100%; max-height: calc(100vh - 40px); object-fit: contain; cursor: crosshair; }
 .lightbox .side { background: var(--surface); padding: 22px; overflow: auto; }
+.lightbox .tagged { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; min-width: 0; }
+.lightbox .tagged .pchip { flex: 1 1 auto; min-width: 0; padding: 4px 4px; gap: 8px; }
+.lightbox .tagged .pchip .nm { white-space: nowrap; }
+.lightbox .tagged .tag-acts { display: flex; flex: 0 0 auto; gap: 0; }
+.lightbox .tagged .tag-acts .icon-btn { width: 26px; height: 26px; }
+.lightbox .tagged .tag-acts .icon-btn svg { width: 15px; height: 15px; }
 .lightbox .close { position: absolute; top: 12px; left: 12px; }
 .lightbox .nav { position: absolute; top: 50%; transform: translateY(-50%); }
 .lightbox .nav.prev { left: 12px; } .lightbox .nav.next { right: 12px; }
