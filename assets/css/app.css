@@ -703,3 +703,5 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
   .hero-tree { height: 450px; }
   .hero-tree .chart-host { height: calc(100% - 96px); }
 }
+.partner-line { display: flex; gap: 8px; align-items: flex-start; font-size: .92rem; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line)); padding: 8px 10px; border-radius: 6px; margin: 4px 0 10px; }
+.partner-line svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--accent); margin-top: 1px; }

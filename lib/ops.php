@@ -171,10 +171,14 @@ function ft_ops(): array
                             ft_add_child($rest, (int)$c['person_id']);
                         }
                     }
-                    if ($fam && !$fam[$slot]) App::$db->update('families', [$slot => $pid], (int)$fam['id']);
-                    elseif ($fam && $fam[$slot] && !$fam[$slot === 'wife_id' ? 'husband_id' : 'wife_id'] && $sex === 'U') App::$db->update('families', [$slot === 'wife_id' ? 'husband_id' : 'wife_id' => $pid], (int)$fam['id']);
+                    $joined = false;
+                    if ($fam && !$fam[$slot]) { App::$db->update('families', [$slot => $pid], (int)$fam['id']); $joined = true; }
+                    elseif ($fam && $fam[$slot] && !$fam[$slot === 'wife_id' ? 'husband_id' : 'wife_id'] && $sex === 'U') { App::$db->update('families', [$slot === 'wife_id' ? 'husband_id' : 'wife_id' => $pid], (int)$fam['id']); $joined = true; }
                     elseif ($fam) throw ft_err('Ennek a személynek már megvan ez a szülője. Új családot a házastárs hozzáadásával lehet kezdeni.');
                     else { $fid = $sex === 'F' ? ft_new_family(null, $pid) : ft_new_family($pid, null); ft_add_child($fid, $child); }
+                    // the second parent joins the first one's family: they are now a couple, record their wedding if given
+                    if ($joined && $fam['husband_id'] . $fam['wife_id'] !== '' && (!empty($r['marriage_date']) || !empty($r['marriage_place'])))
+                        ft_set_vital(null, (int)$fam['id'], 'MARR', $r['marriage_date'] ?? null, $r['marriage_place'] ?? null);
                 } elseif ($type === 'spouse') {
                     $of = (int)$r['of'];
                     $o = ft_person_row($of);

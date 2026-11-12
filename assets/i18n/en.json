@@ -1115,5 +1115,7 @@
 "Fája kinyitása": "Open their tree",
 "Fája becsukása": "Close their tree",
 "A Családfán a házastárs fája is": "The spouse's tree on the family tree too",
-"A házastárs szülei, felmenői és testvérei is látszanak, a házastárs oldalán. A Családfa-böngészőben ki-be kapcsolható.": "The spouse's parents, ancestors and siblings are shown too, on the spouse's side. Can be switched on and off in the tree explorer."
+"A házastárs szülei, felmenői és testvérei is látszanak, a házastárs oldalán. A Családfa-böngészőben ki-be kapcsolható.": "The spouse's parents, ancestors and siblings are shown too, on the spouse's side. Can be switched on and off in the tree explorer.",
+"{0} házastársaként (párjaként) kerül a fába – ők lesznek {1} közös szülei.": "Will be added as the spouse (partner) of {0} – together they will be the parents of {1}.",
+"Nem kötelező; ha nem voltak házasok, hagyd üresen.": "Optional; leave empty if they were not married."
 }

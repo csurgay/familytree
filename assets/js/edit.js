@@ -16,6 +16,12 @@ export function editPerson(id, rel = null, detail = null) {
   const spouseKids = rel?.type === 'spouse' ? kidPicker(singleParentKids(rel.of), T('Közös gyermekeik')) : { el: null, get: () => [] };
   // a new parent of someone who has siblings with the same (single) known parent: theirs too? (ticked = yes)
   const sibFam = rel?.type === 'parent' ? (P(rel.of)?.fc || []).map(F).find(f => f && (!!f.h !== !!f.w)) : null;
+  // the second parent of someone: the two parents form one family, so they become a couple – say so, and ask for the wedding
+  const partnerOf = sibFam ? (sibFam.h || sibFam.w) : null;
+  const partnerBox = partnerOf ? h('div', { class: 'field partner-note' },
+    h('p', { class: 'partner-line' }, icon('rings'), h('span', null, T('{0} házastársaként (párjaként) kerül a fába – ők lesznek {1} közös szülei.', personName(P(partnerOf)), personName(P(rel.of), { short: true })))),
+    h('div', { class: 'grid2' }, field(T('Házasságkötés dátuma'), dateInput('marriage_date', '')), field(T('Helye'), h('input', { type: 'text', name: 'marriage_place' }))),
+    h('p', { class: 'hint' }, T('Nem kötelező; ha nem voltak házasok, hagyd üresen.'))) : null;
   const sibKids = sibFam ? kidPicker(sibFam.c.filter(c => c !== rel.of), T('A testvéreknek is szülője?'), true, T('Akiket kiveszel, azoknál ez a szülő továbbra is ismeretlen marad.')) : { el: null, get: () => [] };
   const form = h('form', { onsubmit: e => e.preventDefault() },
     modeNote(id ? d.modes?.update : null),
@@ -25,7 +31,7 @@ export function editPerson(id, rel = null, detail = null) {
     h('div', { class: 'grid3' },
       field(T('Előtag'), h('input', { type: 'text', name: 'title', value: p?.t || '', placeholder: T('Dr., id., ifj.') })),
       field(T('Becenév'), h('input', { type: 'text', name: 'nickname', value: p?.n || '' })),
-      field(T('Nem'), sexSelect(p?.sx || rel?.sex || (rel?.type === 'spouse' ? (P(rel.of)?.sx === 'M' ? 'F' : P(rel.of)?.sx === 'F' ? 'M' : 'U') : 'U')))),
+      field(T('Nem'), sexSelect(p?.sx || rel?.sex || (rel?.type === 'spouse' ? (P(rel.of)?.sx === 'M' ? 'F' : P(rel.of)?.sx === 'F' ? 'M' : 'U') : partnerOf ? (P(partnerOf)?.sx === 'M' ? 'F' : P(partnerOf)?.sx === 'F' ? 'M' : 'U') : 'U')))),
     field(T('Asszonynév / más névváltozat'), h('input', { type: 'text', name: 'married_name', value: d.married_name || '' }), T('Pl. Csurgay Péterné')),
     h('div', { class: 'grid2' },
       field(T('Születés dátuma'), dateInput('birth_date', p ? findRaw(d, 'BIRT') : '')),
@@ -35,7 +41,7 @@ export function editPerson(id, rel = null, detail = null) {
       field(T('Halál dátuma'), dateInput('death_date', p ? findRaw(d, 'DEAT') : '')),
       field(T('Halál helye'), h('input', { type: 'text', name: 'death_place', value: p?.dp || '' }))),
     rel?.type === 'spouse' ? h('div', { class: 'grid2' }, field(T('Házasságkötés dátuma'), dateInput('marriage_date', '')), field(T('Helye'), h('input', { type: 'text', name: 'marriage_place' }))) : null,
-    spouseKids.el, sibKids.el,
+    partnerBox, spouseKids.el, sibKids.el,
     field(T('Életrajz, jegyzetek'), h('textarea', { name: 'notes' }, d.notes || '')),
   );
   const relTitle = rel ? { child: T('Új gyermek'), parent: rel.sex === 'M' ? T('Apa') : rel.sex === 'F' ? T('Anya') : T('Új szülő'), spouse: T('Új házastárs') }[rel.type] + ' – ' + personName(P(rel.of) || (rel.family_id ? P(F(rel.family_id)?.h || F(rel.family_id)?.w) : null), { short: true }) : T('Új személy');
