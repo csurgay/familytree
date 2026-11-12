@@ -203,7 +203,7 @@ let SP_RIGHT = false;   // set while a chart with the spouses' families is laid 
  * the offset of the person's own card inside it, and place(ux, top, nodes, links) that adds the spouse cards
  * (and marriage lines) and returns, per family id, where the line to that family's children starts.
  */
-function spouseUnitV(id, fams, sps, mode, w, hh) {
+function spouseUnitV(id, fams, sps, mode, w, hh, flip = false) {
   const n = sps.length;
   if (mode !== 'beside') return {
     unitW: w + n * SDX, unitH: hh + n * SDY, off: 0,
@@ -220,13 +220,14 @@ function spouseUnitV(id, fams, sps, mode, w, hh) {
   };
   // beside: 1st spouse on the right, 2nd on the left, 3rd further right…; the children's line drops from the gap
   // (with the spouse's family shown too, all spouses go to the right: their families are on that side)
-  const SG = spGap(), step = w + SG, nL = SP_RIGHT ? 0 : Math.floor(n / 2);
+  // flip: mirrored (the spouses' side swapped) – the family graph uses it to keep lines from crossing
+  const SG = spGap(), step = w + SG, nL0 = SP_RIGHT ? 0 : Math.floor(n / 2), nL = flip ? n - nL0 : nL0;
   return {
     unitW: w * (1 + n) + n * SG, unitH: hh, off: nL * step,
     place(ux, top, nodes, links) {
       const px = ux + nL * step, my = top + hh / 2, famPt = {};
       sps.forEach((f, i) => {
-        const k = i + 1, side = SP_RIGHT || k % 2 ? 1 : -1, idx = SP_RIGHT ? k : Math.ceil(k / 2);
+        const k = i + 1, side = (SP_RIGHT || k % 2 ? 1 : -1) * (flip ? -1 : 1), idx = SP_RIGHT ? k : Math.ceil(k / 2);
         nodes.push({ id: spouseIn(f, id), x: px + side * idx * step, y: top, w, h: hh, sp: true, of: id, div: f.dv });
         const gx = side > 0 ? px + idx * step - SG / 2 : px - (idx - 1) * step - SG / 2;
         links.push({ d: `M${gx - SG / 2},${my}H${gx + SG / 2}`, kind: f.dv ? 'div' : 'marr' });
@@ -238,7 +239,7 @@ function spouseUnitV(id, fams, sps, mode, w, hh) {
   };
 }
 /** The same with the generations left → right: 'beside' spouses go below the person. */
-function spouseUnitH(id, fams, sps, mode, w, hh) {
+function spouseUnitH(id, fams, sps, mode, w, hh, flip = false) {
   const n = sps.length;
   if (mode !== 'beside') return {
     unitW: w + n * SDX, unitH: hh + n * SDY, off: 0,
@@ -254,18 +255,19 @@ function spouseUnitH(id, fams, sps, mode, w, hh) {
       return famPt;
     },
   };
-  const SG = spGap();
+  // flip: the spouses above the person instead of below (off = where the person's own card is)
+  const SG = spGap(), st = hh + SG, off = flip ? n * st : 0;
   return {
-    unitW: w, unitH: hh * (1 + n) + n * SG, off: 0,
+    unitW: w, unitH: hh * (1 + n) + n * SG, off,
     place(ux, uy, nodes, links) {
       const famPt = {}, cx = ux + w / 2;
       sps.forEach((f, i) => {
-        const k = i + 1, sy = uy + k * (hh + SG);
+        const k = i + 1, sy = flip ? uy + off - k * st : uy + k * st;
         nodes.push({ id: spouseIn(f, id), x: ux, y: sy, w, h: hh, sp: true, of: id, div: f.dv });
-        links.push({ d: `M${cx},${sy - SG}V${sy}`, kind: f.dv ? 'div' : 'marr' });
-        famPt[f.id] = { x: cx, y: sy - SG / 2 };
+        links.push({ d: flip ? `M${cx},${sy + hh}V${sy + st}` : `M${cx},${sy - SG}V${sy}`, kind: f.dv ? 'div' : 'marr' });
+        famPt[f.id] = { x: cx, y: flip ? sy + hh + SG / 2 : sy - SG / 2 };
       });
-      for (const f of fams) if (!famPt[f.id]) famPt[f.id] = { x: ux + w, y: uy + hh / 2 };
+      for (const f of fams) if (!famPt[f.id]) famPt[f.id] = { x: ux + w, y: uy + off + hh / 2 };
       return famPt;
     },
   };
@@ -600,7 +602,22 @@ function hourglass(rootId, o, orient) {
  * stays as close to its parents as its neighbours allow. Lines: a bus per family between the rows, with
  * separate heights where buses would overlap.
  */
+// the search for an order without crossings takes a moment on big charts: the last few results are kept
+const graphCache = new Map();
+let treeSeen = null, treeGen = 0;
 export function layoutGraph(rootId, o, orient = 'v') {
+  if (S.tree !== treeSeen) { treeSeen = S.tree; treeGen++; graphCache.clear(); }
+  const b = boxSize(o);
+  const key = JSON.stringify([treeGen, rootId, orient, o.up, o.down, o.sibs, o.spTree, spouseMode(o), o.open || [], b.w, b.h, SP_RIGHT, spGap()]);
+  let L = graphCache.get(key);
+  if (!L) {
+    L = layoutGraph0(rootId, o, orient);
+    graphCache.set(key, L);
+    if (graphCache.size > 12) graphCache.delete(graphCache.keys().next().value);
+  }
+  return structuredClone(L);
+}
+function layoutGraph0(rootId, o, orient) {
   const horiz = orient === 'h';
   const { w, h: hh } = boxSize(o);
   const mode = spouseMode(o);
@@ -634,7 +651,8 @@ export function layoutGraph(rootId, o, orient = 'v') {
     const fams = famsOf(id);
     const sps = mode === 'none' ? [] : fams.filter(f => { const s = spouseIn(f, id); return s && row.get(s) === r && !unitOf.has(s); });
     const u = { id, r, fams, sps, members: [id, ...sps.map(f => spouseIn(f, id))] };
-    u.U = horiz ? spouseUnitH(id, fams, sps, mode, w, hh) : spouseUnitV(id, fams, sps, mode, w, hh);
+    u.mk = flip => horiz ? spouseUnitH(id, fams, sps, mode, w, hh, flip) : spouseUnitV(id, fams, sps, mode, w, hh, flip);
+    u.flip = false; u.U = u.mk(false);
     u.len = horiz ? u.U.unitH : u.U.unitW;
     for (const m of u.members) unitOf.set(m, u);
     units.push(u);
@@ -679,6 +697,170 @@ export function layoutGraph(rootId, o, orient = 'v') {
   };
   // first placement: rows in reach order, packed
   for (const r of rowKeys) { let x = 0; for (const u of rows.get(r)) { u.want = x; x += u.len + kgap * 2; } pack(rows.get(r)); }
+  // ---- fewer crossings. Every line runs from a family's exit point (between the couple, or the parent's card)
+  // in one row to the children's cards in the next; two lines of different families cross exactly when their
+  // ends are in opposite order. Only the order matters, so the count works on (unit index, offset in the unit).
+  // Local search: move units within their row and mirror couples (spouse to the other side) while it helps.
+  const endA = n => horiz ? (n.spouse ? n.y + hh - SDY / 2 : n.y + hh / 2) : (n.spouse ? n.x + w - SDX / 2 : n.x + w / 2);
+  const geoCache = new Map();
+  const geo = u => {   // offsets inside the unit: each card's line end, and each family's exit point
+    const key = u.id + (u.flip ? 'f' : '');
+    if (geoCache.has(key)) return geoCache.get(key);
+    const U = u.flip ? (u.Uf ||= u.mk(true)) : u.U, ns = [], ls = [];
+    const fp = U.place(0, 0, ns, ls);
+    const card = new Map([[u.id, horiz ? U.off + hh / 2 : U.off + w / 2]]);
+    for (const n of ns) card.set(n.id, endA(n));
+    const fam = new Map(Object.entries(fp).map(([fid, pt]) => [+fid, horiz ? pt.y : pt.x]));
+    const g = { card, fam }; geoCache.set(key, g); return g;
+  };
+  const famList = [];   // [family, parent row]
+  { const seen = new Set(); for (const id of row.keys()) for (const f of (P(id)?.fc || []).map(F).filter(Boolean)) if (!seen.has(f.id)) { seen.add(f.id); famList.push(f); } }
+  const gapEdges = new Map();   // child row -> [{ f, kids:[id], par:[id] }]
+  for (const f of famList) {
+    const kids = f.c.filter(c => row.has(c));
+    if (!kids.length) continue;
+    const kr = row.get(kids[0]);
+    const par = [f.h, f.w].filter(x => x && row.has(x) && row.get(x) === kr - 1);
+    if (!par.length) continue;
+    if (!gapEdges.has(kr)) gapEdges.set(kr, []);
+    gapEdges.get(kr).push({ f, kids: kids.filter(c => row.get(c) === kr), par });
+  }
+  const BIG = 1e6;
+  const keyCard = id => { const u = unitOf.get(id); return u.ix * BIG + geo(u).card.get(id); };
+  const keyFam = e => {
+    const owner = e.par.map(pid => unitOf.get(pid)).find(u => u.id === e.par.find(pid => unitOf.get(pid).id === pid));
+    if (owner) { const g = geo(owner); if (g.fam.has(e.f.id)) return owner.ix * BIG + g.fam.get(e.f.id); }
+    return keyCard(e.par[0]);
+  };
+  // crossings in one gap = pairs of lines whose ends are in opposite order: sort by the upper end, count the
+  // inversions of the lower ends (merge sort). Lines of one family share their upper end, so they never count.
+  const inv = (b, lo, hi, tmp) => {
+    if (hi - lo < 2) return 0;
+    const mid = (lo + hi) >> 1;
+    let n = inv(b, lo, mid, tmp) + inv(b, mid, hi, tmp), i = lo, j = mid, k = lo;
+    while (i < mid && j < hi) { if (b[j] < b[i]) { n += mid - i; tmp[k++] = b[j++]; } else tmp[k++] = b[i++]; }
+    while (i < mid) tmp[k++] = b[i++]; while (j < hi) tmp[k++] = b[j++];
+    for (k = lo; k < hi; k++) b[k] = tmp[k];
+    return n;
+  };
+  const gapCross = kr => {
+    const es = gapEdges.get(kr); if (!es) return 0;
+    const segs = [];
+    for (const e of es) { const a = keyFam(e); for (const c of e.kids) segs.push([a, keyCard(c)]); }
+    segs.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    const b = segs.map(x => x[1]);
+    return inv(b, 0, b.length, new Array(b.length));
+  };
+  // second measure, only to choose between orders with the same number of crossings: how far the lines run sideways
+  const gapLen = kr => {
+    const es = gapEdges.get(kr); if (!es) return 0;
+    let n = 0;
+    for (const e of es) { const a = keyFam(e); for (const c of e.kids) n += Math.abs(Math.floor(a / BIG) - Math.floor(keyCard(c) / BIG)); }
+    return n;
+  };
+  let deadline = 0;
+  const late = () => performance.now() > deadline;
+  const idxRow = r => rows.get(r).forEach((u, i) => { u.ix = i; });
+  const local = r => gapCross(r) + gapCross(r + 1);
+  const cost = r => local(r) * 1000 + gapLen(r) + gapLen(r + 1);
+  const total = () => rowKeys.reduce((n, r) => n + gapCross(r), 0);
+  const totalLen = () => rowKeys.reduce((n, r) => n + gapLen(r), 0);
+  const near = r => gapCross(r - 1) + gapCross(r) + gapCross(r + 1) + gapCross(r + 2);
+  // sibling blocks: runs of units with the same parents' unit, moved as one
+  const blocksOf = list => { const bs = []; for (const u of list) { const l = bs[bs.length - 1]; if (l && sameFam(l[l.length - 1], u)) l.push(u); else bs.push([u]); } return bs; };
+  const blockPass = (r, costF = cost) => {
+    let improved = false;
+    const list = rows.get(r); if (!list) return false;
+    let bs = blocksOf(list);
+    if (bs.length < 2) return false;
+    let cur = costF(r);
+    for (let i = 0; i < bs.length && !late(); i++) {
+      const blk = bs[i];
+      let best = cur, bestJ = i;
+      const rest = bs.filter((_, k) => k !== i);
+      for (let j = 0; j <= rest.length; j++) {
+        if (j === i) continue;
+        list.splice(0, Infinity, ...[...rest.slice(0, j), blk, ...rest.slice(j)].flat()); idxRow(r);
+        const c = costF(r);
+        if (c < best) { best = c; bestJ = j; }
+      }
+      list.splice(0, Infinity, ...(bestJ === i ? bs.flat() : [...rest.slice(0, bestJ), blk, ...rest.slice(bestJ)].flat())); idxRow(r);
+      if (bestJ !== i) { cur = best; improved = true; bs = blocksOf(list); }
+    }
+    return improved;
+  };
+  const bestInsert = r => {   // one greedy pass over a row: each unit to its best place
+    const list = rows.get(r); if (!list) return;
+    for (let i = 0; i < list.length; i++) {
+      const u = list[i]; let best = local(r), bestJ = i;
+      list.splice(i, 1);
+      for (let j = 0; j <= list.length; j++) { if (j === i) continue; list.splice(j, 0, u); idxRow(r); const c = local(r); if (c < best) { best = c; bestJ = j; } list.splice(j, 1); }
+      list.splice(bestJ, 0, u); idxRow(r);
+    }
+  };
+  // local search: units and sibling blocks to their best place in the row, couples mirrored, while it helps
+  function untangle() {
+    for (const r of rowKeys) idxRow(r);
+    for (let pass = 0; pass < 8 && !late(); pass++) {
+      let better = false;
+      for (const r of [...rowKeys, ...rowKeys.slice().reverse()]) {
+        if (late()) break;
+        const list = rows.get(r);
+        let cur = local(r);
+        if (!cur) continue;
+        if (blockPass(r, local)) { better = true; cur = local(r); }
+        for (const u of list) {
+          if (mode !== 'beside' || !u.sps.length) continue;
+          u.flip = !u.flip; const c = local(r);
+          if (c < cur) { cur = c; better = true; } else u.flip = !u.flip;
+        }
+        for (let i = 0; i < list.length && cur && !late(); i++) {
+          const u = list[i];
+          let best = cur, bestJ = i;
+          list.splice(i, 1);
+          for (let j = 0; j <= list.length; j++) {
+            if (j === i) continue;
+            list.splice(j, 0, u); idxRow(r);
+            const c = local(r);
+            if (c < best) { best = c; bestJ = j; }
+            list.splice(j, 1);
+          }
+          list.splice(bestJ, 0, u); idxRow(r);
+          if (bestJ !== i) { cur = best; better = true; }
+        }
+      }
+      if (!better) break;
+    }
+  }
+  // stuck with crossings left: a move together with re-placing the neighbouring rows (rows that have to
+  // change at once, e.g. a half-sibling's family that belongs on the other side of a couple)
+  function untangleDeep() {
+    let tot = total();
+    for (let pass = 0; pass < 3 && tot && !late(); pass++) {
+      let better = false;
+      for (const r of rowKeys) {
+        if (!local(r) || late()) continue;
+        const list = rows.get(r);
+        for (let i = 0; i < list.length && tot && !late(); i++) {
+          for (let j = 0; j < list.length && tot && !late(); j++) {
+            if (j === i) continue;
+            const before = near(r);
+            const snap = [r - 1, r, r + 1].filter(k => rows.has(k)).map(k => [k, rows.get(k).slice()]);
+            const u = list.splice(i, 1)[0]; list.splice(j, 0, u); idxRow(r);
+            for (const k of [r + 1, r - 1]) if (rows.has(k)) { blockPass(k, local); bestInsert(k); }
+            const after = near(r);
+            if (after < before) { tot -= before - after; better = true; }
+            else for (const [k, l] of snap) { rows.get(k).splice(0, Infinity, ...l); idxRow(k); }
+          }
+        }
+      }
+      if (!better) break;
+    }
+  }
+  // birth order left to right, unless a family's children are better the other way round (dirs: per
+  // parents' unit, -1 = reversed); several starting points, the one with the fewest crossings wins
+  const dirs = new Map();
+  const famDir = u => dirs.get(u.par[0]) ?? 1;
   const sweep = (down, reorder) => {
     const keys = down ? rowKeys : rowKeys.slice().reverse();
     for (const r of keys) {
@@ -689,12 +871,36 @@ export function layoutGraph(rootId, o, orient = 'v') {
       }
       if (reorder) {
         const idx = new Map(list.map((u, i) => [u, i]));
-        list.sort((a, b) => (sameFam(a, b) ? a.bi - b.bi : 0) || (a.want - b.want) || (idx.get(a) - idx.get(b)));
+        list.sort((a, b) => (sameFam(a, b) ? (a.bi - b.bi) * famDir(a) : 0) || (a.want - b.want) || (idx.get(a) - idx.get(b)));
       }
       pack(list);
     }
   };
-  for (let i = 0; i < 4; i++) { sweep(true, true); sweep(false, true); }
+  const T0 = performance.now();
+  const init = new Map(rowKeys.map(r => [r, rows.get(r).slice()]));
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let best = null;
+  for (let k = 0; k < 16; k++) {
+    if (k > 1 && performance.now() - T0 > 160) break;
+    dirs.clear();
+    if (k) for (const u of units) if (u.kids.length > 1) dirs.set(u, k === 1 || rnd() < .5 ? -1 : 1);
+    for (const r of rowKeys) { const l = rows.get(r); l.splice(0, Infinity, ...init.get(r)); let x = 0; for (const u of l) { u.flip = false; u.want = x; x += u.len + kgap * 2; } pack(l); }
+    for (let i = 0; i < 4; i++) { sweep(true, true); sweep(false, true); }
+    deadline = performance.now() + 60;
+    untangle();
+    const sc = total() * 1e6 + totalLen();
+    if (!best || sc < best.sc) best = { sc, rows: new Map(rowKeys.map(r => [r, rows.get(r).slice()])), flips: units.filter(u => u.flip) };
+    if (best.sc < 1e6 && k >= 1) break;
+  }
+  for (const r of rowKeys) rows.get(r).splice(0, Infinity, ...best.rows.get(r));
+  for (const u of units) u.flip = best.flips.includes(u);
+  for (const r of rowKeys) idxRow(r);
+  deadline = T0 + 400;
+  if (total()) untangleDeep();
+  // equal crossings, shorter lines: a last block pass with the length as tie-breaker
+  for (const r of rowKeys) { if (late()) break; blockPass(r); }
+  for (const u of units) if (u.flip) { u.U = u.Uf ||= u.mk(true); }
   sweep(true, false); sweep(false, false); sweep(true, false);
   // ---- place the cards
   const maxSp = mode === 'beside' ? 0 : Math.max(0, ...units.map(u => u.sps.length));
@@ -705,8 +911,8 @@ export function layoutGraph(rootId, o, orient = 'v') {
   for (const u of units) {
     const main = (u.r - r0) * step;
     const x = horiz ? main : u.pos, y = horiz ? u.pos : main;
-    const nx = horiz ? x : x + u.U.off;
-    nodes.push({ id: u.id, x: nx, y, w, h: hh, main: true, root: u.id === rootId, gen: -u.r, open: (o.open || []).includes(u.id) });
+    const nx = horiz ? x : x + u.U.off, ny = horiz ? y + u.U.off : y;
+    nodes.push({ id: u.id, x: nx, y: ny, w, h: hh, main: true, root: u.id === rootId, gen: -u.r, open: (o.open || []).includes(u.id) });
     const n0 = nodes.length;
     const fp = u.U.place(x, y, nodes, links);
     for (let i = n0; i < nodes.length; i++) { nodes[i].gen = -u.r; nodes[i].open = (o.open || []).includes(nodes[i].id); }
@@ -735,16 +941,38 @@ export function layoutGraph(rootId, o, orient = 'v') {
     }
     const ends = kids.filter(c => row.get(c) === kr).map(c => endOf(cardOf.get(c)));
     const childMain = (kr - r0) * step;
-    buses.push({ pt, ends, childMain, a0: Math.min(horiz ? pt.y : pt.x, ...ends.map(e => e.a)), a1: Math.max(horiz ? pt.y : pt.x, ...ends.map(e => e.a)) });
+    const p0 = horiz ? pt.y : pt.x;
+    buses.push({ pt, p0, ends, childMain, a0: Math.min(p0, ...ends.map(e => e.a)), a1: Math.max(p0, ...ends.map(e => e.a)) });
   }
-  // overlapping buses in the same gap get different heights
+  // overlapping buses in the same gap get different heights, chosen so that they don't cross: a bus whose
+  // parent line comes down inside another's span, or whose span covers another's child lines, goes above it
   const byRow = new Map();
   for (const b of buses) { if (!byRow.has(b.childMain)) byRow.set(b.childMain, []); byRow.get(b.childMain).push(b); }
+  const inside = (v, b) => v > b.a0 + 1 && v < b.a1 - 1;
+  const overlap = (a, b) => a.a0 < b.a1 + 4 && b.a0 < a.a1 + 4;   // touching ends count too: one line would look like the other's branch
+  // how many crossings if `a` runs above `b`
+  const costAbove = (a, b) => (inside(b.p0, a) ? 1 : 0) + a.ends.filter(e => inside(e.a, b)).length;
   for (const list of byRow.values()) {
     list.sort((a, b) => a.a0 - b.a0);
-    const ends = [];
-    for (const b of list) { let l = ends.findIndex(e => e < b.a0 - 4); if (l < 0) { l = ends.length; ends.push(0); } ends[l] = b.a1; b.lvl = l; }
-    const L = ends.length;
+    const above = new Map(list.map(b => [b, new Set()]));   // above.get(b): buses that should run above b
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      if (!overlap(a, b)) continue;
+      const ab = costAbove(a, b), ba = costAbove(b, a);
+      if (ab < ba || (ab === ba && (a.a1 - a.a0) >= (b.a1 - b.a0))) above.get(b).add(a); else above.get(a).add(b);
+    }
+    const done = [], todo = new Set(list);
+    while (todo.size) {
+      // next: one with nothing left above it (or, in a cycle, the fewest)
+      let pick = null, best = Infinity;
+      for (const b of todo) { const k = [...above.get(b)].filter(x => todo.has(x)).length; if (k < best || (k === best && b.a0 < pick.a0)) { best = k; pick = b; } }
+      todo.delete(pick);
+      let lvl = 0;
+      for (const x of done) if (above.get(pick).has(x)) lvl = Math.max(lvl, x.lvl + 1);
+      while (done.some(x => x.lvl === lvl && overlap(x, pick))) lvl++;
+      pick.lvl = lvl; done.push(pick);
+    }
+    const L = Math.max(0, ...list.map(b => b.lvl)) + 1;
     for (const b of list) {
       const bm = b.childMain - gapMain / 2 + (b.lvl - (L - 1) / 2) * Math.min(14, (gapMain - 20) / Math.max(1, L - 1));
       let d;
