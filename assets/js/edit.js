@@ -18,13 +18,18 @@ export function editPerson(id, rel = null, detail = null) {
   const sibFam = rel?.type === 'parent' ? (P(rel.of)?.fc || []).map(F).find(f => f && (!!f.h !== !!f.w)) : null;
   // the second parent of someone: the two parents form one family, so they become a couple – say so, and ask for the wedding
   const partnerOf = sibFam ? (sibFam.h || sibFam.w) : null;
-  const partnerBox = partnerOf ? h('div', { class: 'field partner-note' },
-    h('p', { class: 'partner-line' }, icon('rings'), h('span', null, T('{0} házastársaként (párjaként) kerül a fába – ők lesznek {1} közös szülei.', personName(P(partnerOf)), personName(P(rel.of), { short: true })))),
+  const marrBox = h('div', null,
     h('div', { class: 'grid2' }, field(T('Házasságkötés dátuma'), dateInput('marriage_date', '')), field(T('Helye'), h('input', { type: 'text', name: 'marriage_place' }))),
-    h('p', { class: 'hint' }, T('Nem kötelező; ha nem voltak házasok, hagyd üresen.'))) : null;
+    h('p', { class: 'hint' }, T('Nem kötelező; ha nem voltak házasok, hagyd üresen.')));
+  const coupleCb = h('input', { type: 'checkbox', name: 'couple', checked: true, onchange: () => { marrBox.hidden = !coupleCb.checked; } });
+  const partnerBox = partnerOf ? h('div', { class: 'partner-line' }, icon('rings'), h('div', null,
+    h('label', { class: 'check' }, coupleCb, h('span', null, h('b', null, T('{0} házastársa / párja', personName(P(partnerOf)))))),
+    h('p', { class: 'hint' }, T('Így ők ketten lesznek {0} közös szülei, egy családban.', personName(P(rel.of), { short: true }))),
+    marrBox)) : null;
   const sibKids = sibFam ? kidPicker(sibFam.c.filter(c => c !== rel.of), T('A testvéreknek is szülője?'), true, T('Akiket kiveszel, azoknál ez a szülő továbbra is ismeretlen marad.')) : { el: null, get: () => [] };
   const form = h('form', { onsubmit: e => e.preventDefault() },
     modeNote(id ? d.modes?.update : null),
+    partnerBox,
     h('div', { class: 'grid2' },
       field(T('Vezetéknév'), h('input', { type: 'text', name: 'surname', value: p?.s || (rel?.type === 'child' && P(rel.of)?.sx === 'M' ? P(rel.of).s : '') || '' })),
       field(T('Keresztnév(ek)'), h('input', { type: 'text', name: 'given', value: p?.g || '' }))),
@@ -41,7 +46,7 @@ export function editPerson(id, rel = null, detail = null) {
       field(T('Halál dátuma'), dateInput('death_date', p ? findRaw(d, 'DEAT') : '')),
       field(T('Halál helye'), h('input', { type: 'text', name: 'death_place', value: p?.dp || '' }))),
     rel?.type === 'spouse' ? h('div', { class: 'grid2' }, field(T('Házasságkötés dátuma'), dateInput('marriage_date', '')), field(T('Helye'), h('input', { type: 'text', name: 'marriage_place' }))) : null,
-    partnerBox, spouseKids.el, sibKids.el,
+    spouseKids.el, sibKids.el,
     field(T('Életrajz, jegyzetek'), h('textarea', { name: 'notes' }, d.notes || '')),
   );
   const relTitle = rel ? { child: T('Új gyermek'), parent: rel.sex === 'M' ? T('Apa') : rel.sex === 'F' ? T('Anya') : T('Új szülő'), spouse: T('Új házastárs') }[rel.type] + ' – ' + personName(P(rel.of) || (rel.family_id ? P(F(rel.family_id)?.h || F(rel.family_id)?.w) : null), { short: true }) : T('Új személy');
@@ -55,7 +60,7 @@ export function editPerson(id, rel = null, detail = null) {
       const r = await op('person.update', { id, ...v });
       if (opDone(r)) await refresh();
     } else {
-      const payload = { ...v, rel: rel ? { ...rel, marriage_date: v.marriage_date, marriage_place: v.marriage_place, ...(rel.type === 'spouse' ? { children: spouseKids.get() } : {}), ...(sibKids.el ? { siblings: sibKids.get() } : {}) } : null };
+      const payload = { ...v, rel: rel ? { ...rel, marriage_date: v.marriage_date, marriage_place: v.marriage_place, ...(rel.type === 'spouse' ? { children: spouseKids.get() } : {}), ...(sibKids.el ? { siblings: sibKids.get() } : {}), ...(partnerOf ? { couple: coupleCb.checked } : {}) } : null };
       const r = await op('person.create', payload);
       if (!rel) { if (opDone(r, T('Hozzáadva.'))) { await loadTree(true); location.hash = '#/person/' + r.id; } return; }
       // a relative: stay where you are (the next parent / child is added from here too), offer a link to the new one

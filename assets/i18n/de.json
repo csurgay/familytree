@@ -1116,6 +1116,7 @@
 "Fája becsukása": "Ihren Baum schließen",
 "A Családfán a házastárs fája is": "Im Stammbaum auch der Baum des Ehepartners",
 "A házastárs szülei, felmenői és testvérei is látszanak, a házastárs oldalán. A Családfa-böngészőben ki-be kapcsolható.": "Eltern, Vorfahren und Geschwister des Ehepartners erscheinen auch, auf seiner Seite. Im Stammbaum-Browser ein- und ausschaltbar.",
-"{0} házastársaként (párjaként) kerül a fába – ők lesznek {1} közös szülei.": "Wird als Ehepartner (Partner) von {0} eingetragen – beide sind dann die Eltern von {1}.",
-"Nem kötelező; ha nem voltak házasok, hagyd üresen.": "Optional; leer lassen, wenn sie nicht verheiratet waren."
+"Nem kötelező; ha nem voltak házasok, hagyd üresen.": "Optional; leer lassen, wenn sie nicht verheiratet waren.",
+"{0} házastársa / párja": "Ehepartner / Partner von {0}",
+"Így ők ketten lesznek {0} közös szülei, egy családban.": "Beide sind dann die gemeinsamen Eltern von {0}, in einer Familie."
 }

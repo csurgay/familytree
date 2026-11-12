@@ -160,7 +160,7 @@ function ft_ops(): array
                     $fam = App::$db->row('SELECT f.* FROM {families} f JOIN {children} c ON c.family_id = f.id WHERE c.person_id = ? ORDER BY c.id LIMIT 1', [$child]);
                     // siblings in the same one-parent family: only those listed get the new parent too,
                     // the others stay with just the known parent (in a family of their own)
-                    if ($fam && isset($r['siblings']) && is_array($r['siblings']) && (!$fam['husband_id'] || !$fam['wife_id'])) {
+                    if ($fam && isset($r['siblings']) && is_array($r['siblings']) && (!$fam['husband_id'] || !$fam['wife_id']) && !(isset($r['couple']) && !$r['couple'])) {
                         $keep = array_map('intval', $r['siblings']);
                         $known = ft_int($fam['husband_id']) ?: ft_int($fam['wife_id']);
                         $rest = null;
@@ -172,7 +172,13 @@ function ft_ops(): array
                         }
                     }
                     $joined = false;
-                    if ($fam && !$fam[$slot]) { App::$db->update('families', [$slot => $pid], (int)$fam['id']); $joined = true; }
+                    if ($fam && isset($r['couple']) && !$r['couple'] && (!$fam['husband_id'] || !$fam['wife_id'])) {
+                        // a parent who was not the known parent's partner: a family of their own, with this child (and the ticked siblings)
+                        $fid = $sex === 'F' ? ft_new_family(null, $pid) : ft_new_family($pid, null);
+                        ft_add_child($fid, $child);
+                        foreach ((array)($r['siblings'] ?? []) as $sib) if ((int)$sib !== $child) ft_add_child($fid, (int)$sib);
+                    }
+                    elseif ($fam && !$fam[$slot]) { App::$db->update('families', [$slot => $pid], (int)$fam['id']); $joined = true; }
                     elseif ($fam && $fam[$slot] && !$fam[$slot === 'wife_id' ? 'husband_id' : 'wife_id'] && $sex === 'U') { App::$db->update('families', [$slot === 'wife_id' ? 'husband_id' : 'wife_id' => $pid], (int)$fam['id']); $joined = true; }
                     elseif ($fam) throw ft_err('Ennek a személynek már megvan ez a szülője. Új családot a házastárs hozzáadásával lehet kezdeni.');
                     else { $fid = $sex === 'F' ? ft_new_family(null, $pid) : ft_new_family($pid, null); ft_add_child($fid, $child); }
