@@ -54,12 +54,12 @@ function ft_oauth_http(string $method, string $url, array $params = []): array
         if ($method === 'POST') { $opt[CURLOPT_POST] = true; $opt[CURLOPT_POSTFIELDS] = $body; }
         curl_setopt_array($ch, $opt);
         $resp = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch);
-        curl_close($ch);
+        unset($ch);   // curl_close() is a no-op since PHP 8 and deprecated in 8.5
     } else {
         $ctx = stream_context_create(['http' => ['method' => $method, 'header' => "Accept: application/json\r\nContent-Type: application/x-www-form-urlencoded",
             'content' => $body, 'timeout' => 20, 'ignore_errors' => true]]);
         $resp = @file_get_contents($url, false, $ctx); $code = 0; $err = $resp === false ? 'kapcsolódási hiba' : '';
-        foreach ($http_response_header ?? [] as $h) if (preg_match('#^HTTP/\S+\s+(\d+)#', $h, $m)) $code = (int)$m[1];
+        foreach (ft_response_headers(get_defined_vars()) as $h) if (preg_match('#^HTTP/\S+\s+(\d+)#', $h, $m)) $code = (int)$m[1];
     }
     $d = is_string($resp) ? json_decode($resp, true) : null;
     if ($code !== 200 || !is_array($d)) {

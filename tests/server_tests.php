@@ -18,7 +18,7 @@ function t_fresh_db(): DB
     App::$user = null;
     return $db;
 }
-function t_user(DB $db, string $role, string $email = null): array
+function t_user(DB $db, string $role, ?string $email = null): array
 {
     $id = $db->insert('users', ['email' => $email ?: $role . rand(1000, 9999) . '@x.hu', 'name' => ucfirst($role), 'pass_hash' => password_hash('x', PASSWORD_DEFAULT), 'role' => $role, 'active' => 1, 'failed' => 0, 'created' => ft_now()]);
     return $db->row('SELECT * FROM {users} WHERE id = ?', [$id]);

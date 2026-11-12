@@ -90,7 +90,7 @@ function ft_store_image(string $tmp, string $origName = '', bool $group = true):
     $max = (int)($group ? ($s['photo_group_px'] ?? 1600) : ($s['photo_portrait_px'] ?? 800));
     [$w, $h] = ft_save_resized($img, App::$root . "/$sub/$name", max(200, $max), (int)($s['photo_quality'] ?? 80));
     ft_save_resized($img, App::$root . "/$tsub/$name", (int)$s['thumb_px'], 82);
-    imagedestroy($img);
+    unset($img);   // GD images are objects since PHP 8: freed when released (imagedestroy() is deprecated in 8.5)
     return ['file' => "$sub/$name", 'thumb' => "$tsub/$name", 'w' => $w, 'h' => $h];
 }
 
@@ -103,7 +103,7 @@ function ft_save_resized($img, string $path, int $max, int $q): array
     imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255)); // flatten transparency on white
     imagecopyresampled($dst, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
     if (!imagejpeg($dst, $path, $q)) throw ft_err('A kép mentése nem sikerült (írható az uploads mappa?).', 500);
-    imagedestroy($dst);
+    unset($dst);
     return [$nw, $nh];
 }
 

@@ -215,12 +215,12 @@ function ft_translate(array $texts, string $target, ?string $source = null): arr
         $resp = curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err = curl_error($ch);
-        curl_close($ch);
+        unset($ch);
     } else {
         $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => implode("\r\n", $headers), 'content' => $json, 'timeout' => 40, 'ignore_errors' => true]]);
         $resp = @file_get_contents($url, false, $ctx);
         $code = 0;
-        foreach ($http_response_header ?? [] as $h) if (preg_match('#^HTTP/\S+\s+(\d+)#', $h, $m)) $code = (int)$m[1];
+        foreach (ft_response_headers(get_defined_vars()) as $h) if (preg_match('#^HTTP/\S+\s+(\d+)#', $h, $m)) $code = (int)$m[1];
         $err = $resp === false ? 'kapcsolódási hiba' : '';
     }
     if ($resp === false || $code !== 200) {
