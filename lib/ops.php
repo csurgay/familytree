@@ -256,7 +256,7 @@ function ft_ops(): array
             'kind' => 'update',
             'targets' => fn($p) => [[], [(int)$p['id']]],
             'before' => function ($p) { $r = ft_family_row((int)$p['id']); $f = ft_graph()['F'][(int)$p['id']] ?? []; return $r + ['marriage_date' => $f['mdate'] ?? null, 'marriage_place' => $f['mplace'] ?? null, 'divorced' => $f['div'] ?? 0]; },
-            'summary' => fn($p) => 'Család módosítása #' . (int)$p['id'],
+            'summary' => fn($p) => 'Család módosítása: ' . ft_family_name((int)$p['id']),
             'apply' => function ($p) {
                 $id = (int)$p['id']; ft_family_row($id);
                 $d = ['updated' => ft_now()];
@@ -277,7 +277,7 @@ function ft_ops(): array
             'kind' => 'delete',
             'targets' => fn($p) => [[], [(int)$p['id']]],
             'before' => fn($p) => ft_family_row((int)$p['id']),
-            'summary' => fn($p) => 'Család törlése #' . (int)$p['id'] . ' (a személyek megmaradnak)',
+            'summary' => fn($p) => 'Család törlése: ' . ft_family_name((int)$p['id']) . ' (a személyek megmaradnak)',
             'apply' => function ($p) { ft_family_row((int)$p['id']); ft_family_purge((int)$p['id']); return ['id' => (int)$p['id']]; },
         ],
         'family.child_add' => [
@@ -371,6 +371,7 @@ function ft_ops(): array
                 if (array_key_exists('title', $p)) $d['title'] = ft_str($p['title']);
                 if (array_key_exists('descr', $p)) $d['descr'] = ft_str($p['descr'], 20000);
                 if (array_key_exists('date', $p)) { $dt = ft_parse_date($p['date']); $d['date_raw'] = $dt['raw'] ?? null; $d['y'] = $dt['y'] ?? null; }
+                if (array_key_exists('place', $p)) $d['place'] = ft_str($p['place']);
                 if ($d) App::$db->update('photos', $d, $id);
                 if (isset($p['links']) && is_array($p['links'])) ft_photo_set_links($id, $p['links']);
                 return ['id' => $id];
@@ -379,7 +380,7 @@ function ft_ops(): array
         'photo.tag' => [ // add a person/family to a photo, or move the focus point – additive, treated as "create"
             'kind' => 'create',
             'targets' => fn($p) => [array_filter([ft_int($p['person_id'] ?? null)]), array_filter([ft_int($p['family_id'] ?? null)])],
-            'summary' => fn($p) => 'Fotó megjelölése',
+            'summary' => fn($p) => 'Fotó megjelölése: ' . ft_photo_name((int)($p['photo_id'] ?? 0)),
             'apply' => function ($p) {
                 $id = (int)$p['photo_id']; ft_photo_row($id);
                 $pid = ft_int($p['person_id'] ?? null); $fid = ft_int($p['family_id'] ?? null);
@@ -401,7 +402,7 @@ function ft_ops(): array
         'photo.untag' => [
             'kind' => 'update',
             'targets' => fn($p) => [array_filter([ft_int($p['person_id'] ?? null)]), array_filter([ft_int($p['family_id'] ?? null)])],
-            'summary' => fn($p) => 'Jelölés levétele a fotóról #' . (int)$p['photo_id'],
+            'summary' => fn($p) => 'Jelölés levétele a fotóról: ' . ft_photo_name((int)($p['photo_id'] ?? 0)),
             'apply' => function ($p) {
                 $id = (int)$p['photo_id']; $pid = ft_int($p['person_id'] ?? null); $fid = ft_int($p['family_id'] ?? null);
                 if ($pid) { App::$db->q('DELETE FROM {photo_links} WHERE photo_id = ? AND person_id = ?', [$id, $pid]); App::$db->q('UPDATE {persons} SET photo_id = NULL WHERE id = ? AND photo_id = ?', [$pid, $id]); }
@@ -416,7 +417,7 @@ function ft_ops(): array
                 return $cur ? 'update' : 'create';
             },
             'targets' => fn($p) => [array_filter([ft_int($p['person_id'] ?? null)]), array_filter([ft_int($p['family_id'] ?? null)])],
-            'summary' => fn($p) => 'Fő fotó beállítása',
+            'summary' => fn($p) => 'Fő fotó beállítása: ' . ft_photo_name((int)($p['photo_id'] ?? 0)),
             'apply' => function ($p) {
                 $id = (int)$p['photo_id']; ft_photo_row($id);
                 if ($pid = ft_int($p['person_id'] ?? null)) App::$db->update('persons', ['photo_id' => $id], $pid);
@@ -555,19 +556,20 @@ function ft_run_op(string $name, array $payload): array
     $t = ($op['targets'])($payload);
     $mode = ft_mode($kind, $t[0] ?? [], $t[1] ?? [], $t[2] ?? []);
     if ($mode === 'deny') throw ft_err(App::loggedIn() ? 'Ehhez nincs jogosultságod.' : 'Ehhez be kell jelentkezni.', App::loggedIn() ? 403 : 401);
+    $before = isset($op['before']) ? ($op['before'])($payload) : null;
+    $summary = ($op['summary'])($payload);
     if ($mode === 'queue') {
-        $before = isset($op['before']) ? ($op['before'])($payload) : null;
+        $detail = ft_change_detail($name, $payload, $before, $t);
         $cid = App::$db->insert('changes', ['user_id' => App::uid(), 'action' => $name, 'entity' => explode('.', $name)[0],
             'entity_id' => ft_int($payload['id'] ?? $payload['photo_id'] ?? null), 'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
-            'before_json' => $before ? json_encode($before, JSON_UNESCAPED_UNICODE) : null, 'summary' => mb_substr(($op['summary'])($payload), 0, 255),
-            'status' => 'pending', 'created' => ft_now()]);
-        App::audit('queue', $name, $cid, ($op['summary'])($payload));
+            'before_json' => $before ? json_encode($before, JSON_UNESCAPED_UNICODE) : null, 'summary' => mb_substr($summary, 0, 255),
+            'status' => 'pending', 'created' => ft_now(), 'detail' => json_encode($detail, JSON_UNESCAPED_UNICODE)]);
+        App::audit('queue', $name, $cid, $summary, $detail);
         return ['queued' => true, 'change_id' => $cid];
     }
-    $summary = ($op['summary'])($payload);
     $res = App::$db->inTx(fn() => ($op['apply'])($payload));
     App::flush();
-    App::audit($name, explode('.', $name)[0], ft_int($res['id'] ?? null), $summary);
+    App::audit($name, explode('.', $name)[0], ft_int($res['id'] ?? null), $summary, ft_change_detail($name, $payload, $before, $t, ft_int($res['id'] ?? null)));
     return ['queued' => false] + $res;
 }
 
@@ -594,6 +596,74 @@ function ft_change_review(int $cid, bool $approve, string $note = ''): array
     if ($approve && in_array($c['action'], ['story.create', 'story.update'], true) && !empty($res['id'])) ft_story_after_save((int)$res['id']);
     App::$db->update('changes', ['status' => $approve ? 'approved' : 'rejected', 'reviewer_id' => App::uid(), 'review_note' => ft_str($note, 2000), 'reviewed' => ft_now()], $cid);
     App::flush();
-    App::audit($approve ? 'approve' : 'reject', 'change', $cid, $c['summary']);
+    $detail = json_decode((string)($c['detail'] ?? ''), true);
+    if (!$detail) { try { $detail = ft_change_detail($c['action'], $payload, json_decode((string)$c['before_json'], true), ($ops[$c['action']]['targets'] ?? fn() => [[], []])($payload)); } catch (Throwable $e) { $detail = null; } }
+    if ($detail) $detail['by'] = (int)$c['user_id'];
+    App::audit($approve ? 'approve' : 'reject', 'change', $cid, $c['summary'], $detail);
     return ['status' => $approve ? 'approved' : 'rejected', 'result' => $res];
+}
+
+
+/** "Husband és Wife" for summaries. */
+function ft_family_name(int $fid): string
+{
+    $f = App::$db->row('SELECT husband_id, wife_id FROM {families} WHERE id = ?', [$fid]);
+    if (!$f) return '#' . $fid;
+    $n = [];
+    foreach ([$f['husband_id'], $f['wife_id']] as $pid) if ($pid && ($r = App::$db->row('SELECT * FROM {persons} WHERE id = ?', [(int)$pid]))) $n[] = ft_name($r);
+    return $n ? implode(' és ', $n) : '#' . $fid;
+}
+function ft_photo_name(int $id): string
+{
+    $t = App::$db->val('SELECT title FROM {photos} WHERE id = ?', [$id]);
+    return $t ?: '#' . $id;
+}
+
+/** Fields a change shows in the log, and what each was called in the "before" snapshot. */
+const FT_DIFF_SKIP = ['id', 'rel', 'links', 'siblings', 'couple', 'kids', 'spouse_kids', 'photo_id', 'person_id', 'family_id', 'primary', 'fx', 'fy', 'person_ids', 'family_ids', 'cover_photo_id', 'lang', 'children'];
+
+/**
+ * Who a change was about and what it changed: ['who' => [['p'|'f', id, name], …], 'diff' => [[field, old, new], …]].
+ * Names are stored too, so the log still reads well after a person is deleted.
+ */
+function ft_change_detail(string $action, array $p, ?array $before, array $targets, ?int $newId = null): array
+{
+    $who = []; $seen = [];
+    $addP = function ($id, $row = null) use (&$who, &$seen) {
+        $id = (int)$id; if (!$id || isset($seen['p' . $id])) return;
+        $row = $row ?: App::$db->row('SELECT * FROM {persons} WHERE id = ?', [$id]);
+        $seen['p' . $id] = true; $who[] = ['p', $id, $row ? ft_name($row) : '#' . $id];
+    };
+    $addF = function ($id) use (&$who, &$seen) {
+        $id = (int)$id; if (!$id || isset($seen['f' . $id])) return;
+        $seen['f' . $id] = true; $who[] = ['f', $id, ft_family_name($id)];
+    };
+    $ent = explode('.', $action)[0];
+    if ($ent === 'person' && $action !== 'person.create') $addP($p['id'] ?? 0, $before && isset($before['given']) ? $before : null);
+    if ($action === 'person.create' && $newId) $addP($newId);
+    if ($ent === 'family' && !empty($p['id'])) $addF($p['id']);
+    if ($ent === 'event' && $before) { $addP($before['person_id'] ?? 0); $addF($before['family_id'] ?? 0); }
+    foreach ($targets[0] ?? [] as $id) $addP($id);
+    foreach ($targets[1] ?? [] as $id) $addF($id);
+    if (!empty($p['rel']['of'])) $addP($p['rel']['of']);
+
+    $diff = [];
+    if (!str_ends_with($action, '.delete')) {
+        foreach ($p as $k => $v) {
+            if (in_array($k, FT_DIFF_SKIP, true) || is_array($v)) continue;
+            $old = null;
+            if ($before !== null) {
+                $old = $k === 'date' ? ($before['date_raw'] ?? null) : ($before[$k] ?? null);
+                if ((string)($old ?? '') === (string)($v ?? '') || ($k === 'deceased' && (int)(bool)$old === (int)(bool)$v)) continue;
+                if (($k === 'date' || str_ends_with($k, '_date')) && (ft_parse_date($old)['raw'] ?? null) === (ft_parse_date($v)['raw'] ?? null)) continue;
+            } elseif ($v === null || $v === '' || $v === false) continue;
+            $cut = fn($x) => $x === null ? null : (is_bool($x) ? $x : mb_substr((string)$x, 0, 300));
+            $diff[] = [$k, $cut($old), $cut($v)];
+        }
+    } elseif ($before) {
+        foreach (['type', 'date_raw', 'place', 'title'] as $k) if (!empty($before[$k])) $diff[] = [$k === 'date_raw' ? 'date' : $k, $before[$k], null];
+    }
+    $out = ['who' => $who, 'diff' => $diff];
+    if ($ent === 'event' && ($type = $p['type'] ?? ($before['type'] ?? null))) $out['ev'] = FT_EVENT_TYPES[$type] ?? $type;
+    return $out;
 }

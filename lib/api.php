@@ -84,7 +84,8 @@ function ft_event_hidden(array $e, array $g): bool
 function ft_photo_json(array $r, bool $withLinks = true): array
 {
     $o = ['id' => (int)$r['id'], 'file' => $r['file'], 'thumb' => $r['thumb'], 'w' => (int)$r['w'], 'h' => (int)$r['h'], 'title' => $r['title'],
-        'descr' => $r['descr'], 'raw' => $r['date_raw'], 'date' => ft_format_date($r['date_raw']), 'status' => $r['status'], 'uploaded_by' => ft_int($r['uploaded_by']),
+        'descr' => $r['descr'], 'raw' => $r['date_raw'], 'date' => ft_format_date($r['date_raw']), 'y' => ft_int($r['y'] ?? null), 'place' => $r['place'] ?? null,
+        'status' => $r['status'], 'uploaded_by' => ft_int($r['uploaded_by']),
         '_tr' => [['title', 'photo', (int)$r['id']], ['descr', 'photo', (int)$r['id']]]];
     if ($withLinks) $o['links'] = array_map(fn($l) => ['person_id' => ft_int($l['person_id']), 'family_id' => ft_int($l['family_id']), 'story_id' => ft_int($l['story_id']),
         'fx' => (float)($l['fx'] ?? .5), 'fy' => (float)($l['fy'] ?? .35)], App::$db->all('SELECT * FROM {photo_links} WHERE photo_id = ?', [(int)$r['id']]));
@@ -513,10 +514,15 @@ function ft_handlers(): array
             $args = [];
             if ($type && isset(FT_EVENT_TYPES[$type])) { $sql .= ' AND type = ?'; $args[] = $type; }
             if (!empty($in['year'])) { $sql .= ' AND y = ?'; $args[] = (int)$in['year']; }
-            $sql .= ' ORDER BY sort DESC LIMIT 2000';
+            $sql .= ' ORDER BY sort DESC LIMIT 6000';
             return array_values(array_map(fn($e) => ft_event_json($e, $g), array_filter(App::$db->all($sql, $args), fn($e) => !ft_event_hidden($e, $g))));
         },
 
+        // every place name with its map position (unknown ones absent), for the map view
+        'places' => fn($in) => ft_places_known((array)($in['names'] ?? [])),
+        'admin.places' => function () { ft_require_admin(); return ft_places_status(); },
+        'admin.geocode_step' => function () { ft_require_admin(); @set_time_limit(60); return ft_geocode_step(); },
+        'admin.place_set' => function ($in) { ft_require_admin(); return ft_place_set((string)($in['name'] ?? ''), $in['lat'] ?? null, $in['lon'] ?? null, (string)($in['search'] ?? '')); },
         'photos' => function ($in) {
             $g = ft_graph();
             $sql = 'SELECT * FROM {photos} p'; $args = []; $w = [];
@@ -643,6 +649,7 @@ function ft_handlers(): array
             foreach ($rows as &$r) {
                 $r['payload'] = json_decode($r['payload'] ?? 'null', true);
                 $r['before'] = json_decode($r['before_json'] ?? 'null', true);
+                $r['detail'] = json_decode($r['detail'] ?? 'null', true);
                 unset($r['before_json']);
                 if ($r['action'] === 'photo.publish' || $r['entity'] === 'photo') {
                     $r['photo'] = App::$db->row('SELECT thumb, file, title FROM {photos} WHERE id = ?', [(int)$r['entity_id']]);
@@ -761,7 +768,14 @@ function ft_handlers(): array
         'admin.branch.delete' => function ($in) { ft_require_admin(); App::$db->delete('branches', (int)$in['id']); return ['ok' => true]; },
         'admin.audit' => function ($in) {
             ft_require_admin();
-            return App::$db->all('SELECT a.*, u.name AS user_name FROM {audit} a LEFT JOIN {users} u ON u.id = a.user_id ORDER BY a.id DESC LIMIT ' . max(10, min(2000, (int)($in['limit'] ?? 300))));
+            $rows = App::$db->all('SELECT a.*, u.name AS user_name FROM {audit} a LEFT JOIN {users} u ON u.id = a.user_id ORDER BY a.id DESC LIMIT ' . max(10, min(2000, (int)($in['limit'] ?? 300))));
+            $names = [];
+            foreach ($rows as &$r) {
+                $r['detail'] = json_decode($r['detail'] ?? 'null', true);
+                // approvals: also say whose request it was
+                if (!empty($r['detail']['by'])) $r['detail']['by_name'] = $names[$r['detail']['by']] ??= (string)App::$db->val('SELECT name FROM {users} WHERE id = ?', [(int)$r['detail']['by']]);
+            }
+            return $rows;
         },
         'admin.import' => function ($in) {
             ft_require_admin();

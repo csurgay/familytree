@@ -174,17 +174,141 @@ function storyTeaser(s, pinned = false, exclude = []) {
 }
 
 // ======================================================================= EVENTS
+// ======================================================================= EVENTS: timeline + map
+/** Leaflet, fetched the first time a map is shown. */
+let leafletP = null;
+function leaflet() {
+  return leafletP ||= new Promise((ok, bad) => {
+    const css = h('link', { rel: 'stylesheet', href: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css' });
+    const js = h('script', { src: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js' });
+    js.onload = () => ok(window.L); js.onerror = () => { leafletP = null; bad(new Error(T('A térkép nem tölthető be (nincs internetkapcsolat?).'))); };
+    document.head.append(css, js);
+  });
+}
+const placeKey = s => norm(String(s || '').trim());
+function photoNames(ph) {
+  return (ph.links || []).map(l => l.person_id && P(l.person_id) ? personName(P(l.person_id)) : l.family_id && F(l.family_id) ? familyLabel(F(l.family_id)) : '').filter(Boolean);
+}
+function evNames(e) {
+  if (e.person_id) return P(e.person_id) ? [personName(P(e.person_id))] : [];
+  const f = e.family_id ? F(e.family_id) : null;
+  return f ? [familyLabel(f)] : [];
+}
+
 export async function viewEvents(qs) {
-  setTitle(T('Események'));
+  setTitle(T('Idővonal és térkép'));
   await loadTree();
-  const type = qs.get('type') || '';
-  const evs = await api('events', null, { query: type ? { type } : {} });
-  const sel = h('select', { style: 'width:auto', onchange: e => go('#/events' + (e.target.value ? '?type=' + e.target.value : '')) },
-    h('option', { value: '' }, T('Minden esemény')), Object.entries(S.boot.eventTypes).map(([k, l]) => h('option', { value: k, selected: k === type }, T(l))));
-  const byDecade = {};
-  for (const e of evs) (byDecade[Math.floor((e.y || 0) / 10) * 10] ||= []).push(e);
-  return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Események')), h('p', null, T("{0} dátummal ellátott esemény, a legfrissebbtől visszafelé.", evs.length))), sel),
-    Object.keys(byDecade).sort((a, b) => b - a).map(d => h('section', { class: 'section' }, h('h2', null, d + T('-as évek')), timeline(byDecade[d]))));
+  const st = { type: qs.get('type') || '', from: qs.get('from') || '', to: qs.get('to') || '', place: qs.get('place') || '', q: qs.get('q') || '',
+    photos: qs.get('photos') !== '0', view: qs.get('view') === 'map' ? 'map' : 'list' };
+  const url = (patch = {}) => { const o = { ...st, ...patch }, u = new URLSearchParams();
+    for (const k of ['type', 'from', 'to', 'place', 'q']) if (o[k]) u.set(k, o[k]);
+    if (!o.photos) u.set('photos', '0'); if (o.view === 'map') u.set('view', 'map');
+    const s = u.toString(); return '#/events' + (s ? '?' + s : ''); };
+  const [evs, phs] = await Promise.all([api('events'), st.photos && st.type === '' || st.type === 'PHOTO' ? api('photos') : Promise.resolve([])]);
+
+  // ---- filters
+  const yFrom = +st.from || null, yTo = +st.to || null, pw = norm(st.place).split(/\s+/).filter(Boolean), qw = norm(st.q).split(/\s+/).filter(Boolean);
+  const okYear = y => (!yFrom || (y && y >= yFrom)) && (!yTo || (y && y <= yTo));
+  const okPlace = pl => !pw.length || (pl && pw.every(w => norm(pl).includes(w)));
+  const okName = names => !qw.length || names.some(n => qw.every(w => norm(n).includes(w)));
+  const items = [];
+  if (st.type !== 'PHOTO') for (const e of evs) if ((!st.type || e.type === st.type) && okYear(e.y) && okPlace(e.place) && okName(evNames(e))) items.push({ kind: 'ev', e, y: e.y, sort: e.sort, place: e.place });
+  for (const ph of phs) if (ph.status === 'ok' && okYear(ph.y) && okPlace(ph.place) && okName(photoNames(ph)) && (ph.y || ph.place))
+    items.push({ kind: 'ph', ph, y: ph.y, sort: (ph.y || 0) * 10000, place: ph.place });
+
+  // ---- filter bar
+  const inp = (name, ph, w, val) => h('input', { type: name === 'from' || name === 'to' ? 'number' : 'search', name, placeholder: ph, value: val, style: `width:${w}`, inputmode: name === 'from' || name === 'to' ? 'numeric' : null });
+  const form = h('form', { class: 'ev-filters', onsubmit: e => { e.preventDefault(); const f = formData(form); go(url({ type: f.type, from: f.from, to: f.to, place: f.place, q: f.q, photos: !!f.photos })); } },
+    h('select', { name: 'type', style: 'width:auto' }, h('option', { value: '' }, T('Minden esemény')),
+      Object.entries(S.boot.eventTypes).map(([k, l]) => h('option', { value: k, selected: k === st.type }, T(l))), h('option', { value: 'PHOTO', selected: st.type === 'PHOTO' }, T('Csak fotók'))),
+    h('span', { class: 'yr' }, inp('from', T('évtől'), '6.5em', st.from), '–', inp('to', T('évig'), '6.5em', st.to)),
+    inp('place', T('Helyszín'), '11em', st.place), inp('q', T('Név'), '10em', st.q),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'photos', checked: st.photos }), T('fotókkal')),
+    h('button', { class: 'btn btn-primary btn-sm' }, T('Szűrés')),
+    (st.type || st.from || st.to || st.place || st.q) ? h('a', { class: 'btn btn-sm btn-ghost', href: url({ type: '', from: '', to: '', place: '', q: '' }) }, T('Mindet mutasd')) : null);
+  const modes = h('div', { class: 'seg' }, h('a', { class: st.view === 'list' ? 'on' : '', href: url({ view: 'list' }) }, icon('clock'), T('Idővonal')),
+    h('a', { class: st.view === 'map' ? 'on' : '', href: url({ view: 'map' }) }, icon('map'), T('Térkép')));
+  const nEv = items.filter(i => i.kind === 'ev').length, nPh = items.length - nEv;
+  const head = h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Idővonal és térkép')),
+    h('p', null, T('{0} esemény', nEv), nPh ? T(' és {0} fotó', nPh) : '', st.place ? T(' · hely: „{0}”', st.place) : '', st.from || st.to ? ` · ${st.from || '…'}–${st.to || '…'}` : '')), modes);
+  const body = st.view === 'map' ? await eventsMap(items, url) : eventsList(items, url);
+  return h('div', { class: 'events-page' }, head, form, body);
+}
+
+function placeLink(place, url) { return place ? h('a', { class: 'plc', href: url({ place, view: 'list' }), title: T('Minden esemény ezen a helyen') }, place) : null; }
+
+function phItem(ph, list, url) {
+  const names = photoNames(ph);
+  return h('li', { class: 'ph' }, whenCell({ raw: ph.raw, date: ph.date }), h('span', { class: 'ico PHOTO' }, icon('photo')),
+    h('div', { class: 'what' },
+      h('a', { class: 'tl-ph', href: '#', onclick: e => { e.preventDefault(); photoViewer(list, list.indexOf(ph)); } }, h('img', { src: ph.thumb, alt: '', loading: 'lazy' }),
+        h('span', null, h('span', { class: 't' }, ph.title ? tx(ph, 'title') : T('Fotó')), names.length ? h('span', { class: 's' }, names.slice(0, 4).join(', ') + (names.length > 4 ? '…' : '')) : null)),
+      ph.place ? h('div', { class: 's' }, placeLink(ph.place, url)) : null),
+    h('div', { class: 'tl-act' }));
+}
+
+function eventsList(items, url) {
+  const dated = items.filter(i => i.y).sort((a, b) => (b.sort || 0) - (a.sort || 0));
+  if (!dated.length) return h('p', { class: 'empty' }, T('Nincs a szűrésnek megfelelő, dátummal ellátott esemény.'));
+  const phList = dated.filter(i => i.kind === 'ph').map(i => i.ph);
+  const byDecade = new Map();
+  for (const i of dated) { const d = Math.floor(i.y / 10) * 10; (byDecade.get(d) || byDecade.set(d, []).get(d)).push(i); }
+  return h('div', null, [...byDecade].map(([d, list]) => h('section', { class: 'section' }, h('h2', null, d + T('-as évek')),
+    h('ul', { class: 'timeline' }, list.map(i => i.kind === 'ev' ? evItem(i.e, url) : phItem(i.ph, phList, url))))));
+}
+function evItem(e, url) {
+  const li = timeline([e]).firstChild;
+  const s = li.querySelector('.what .s');
+  if (e.place && s) { const t = s.lastChild; if (t && t.nodeType === 3 && t.textContent === e.place) t.replaceWith(placeLink(e.place, url)); }
+  return li;
+}
+
+async function eventsMap(items, url) {
+  const box = h('div', { class: 'ev-map' }), note = h('div', { class: 'ev-map-note' });
+  const names = [...new Set(items.map(i => (i.place || '').trim()).filter(Boolean))];
+  const wrap = h('div', null, box, note);
+  if (!names.length) { note.append(h('p', { class: 'empty' }, T('A szűrt eseményeknél nincs megadva helyszín.'))); return wrap; }
+  let L, pos;
+  try { [L, pos] = await Promise.all([leaflet(), api('places', { names })]); }
+  catch (e) { note.append(h('p', { class: 'empty' }, e.message)); return wrap; }
+  // one marker per spot: places with the same coordinates (e.g. "Csepel" and "Budapest-Csepel") share it
+  const spots = new Map();
+  for (const i of items) {
+    const n = (i.place || '').trim(), c = pos[n]; if (!c) continue;
+    const k = c.join(','); const sp = spots.get(k) || spots.set(k, { c, names: new Set(), items: [] }).get(k);
+    sp.names.add(n); sp.items.push(i);
+  }
+  const missing = names.filter(n => !pos[n]);
+  const phList = items.filter(i => i.kind === 'ph').map(i => i.ph);
+  setTimeout(() => {
+    const map = L.map(box, { scrollWheelZoom: true, worldCopyJump: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    const bounds = [];
+    for (const sp of spots.values()) {
+      const n = sp.items.length, r = Math.min(26, 6 + Math.sqrt(n) * 3.2);
+      const hasPh = sp.items.some(i => i.kind === 'ph');
+      const m = L.circleMarker(sp.c, { radius: r, weight: 2, color: '#7a4f12', fillColor: hasPh ? '#c9902f' : '#b5651d', fillOpacity: .55 }).addTo(map);
+      m.bindTooltip([...sp.names].join(' / ') + ` (${n})`);
+      m.bindPopup(() => spotPopup(sp, phList, url), { maxWidth: 340, minWidth: 240 });
+      bounds.push(sp.c);
+    }
+    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 11 }); else map.setView([47.4, 19.05], 6);
+  }, 0);
+  if (missing.length) {
+    const admin = S.user?.role === 'admin';
+    note.append(h('p', { class: 'hint' }, T('{0} helyszín még nincs a térképen: ', missing.length), missing.slice(0, 12).join(', '), missing.length > 12 ? '…' : '',
+      admin ? [' · ', h('a', { href: '#/admin/places' }, T('Helyszínek keresése és javítása'))] : ''));
+  }
+  return wrap;
+}
+function spotPopup(sp, phList, url) {
+  const evs = sp.items.filter(i => i.kind === 'ev').sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  const phs = sp.items.filter(i => i.kind === 'ph').map(i => i.ph);
+  return h('div', { class: 'spot' }, h('h3', null, [...sp.names].join(' / ')),
+    evs.length ? h('ul', null, evs.slice(0, 25).map(({ e }) => h('li', null, h('b', null, e.y || '?'), ' ', evSubject(e), ' ', evVerb(e)))) : null,
+    evs.length > 25 ? h('p', { class: 'hint' }, T('…és még {0}', evs.length - 25)) : null,
+    phs.length ? h('div', { class: 'spot-ph' }, phs.slice(0, 12).map(ph => h('a', { href: '#', title: ph.title || '', onclick: ev => { ev.preventDefault(); photoViewer(phList, phList.indexOf(ph)); } }, h('img', { src: ph.thumb, alt: '' })))) : null,
+    h('p', null, h('a', { href: url({ place: [...sp.names][0], view: 'list' }) }, T('Idővonal ezen a helyen →'))));
 }
 
 // ======================================================================= PERSON

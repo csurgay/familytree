@@ -317,6 +317,23 @@ function ft_server_tests(): array
             ft_change_review($d['change_id'], false, 'nem');
             t_ok($db->val('SELECT id FROM {persons} WHERE id = ?', [$ids['I5']]), 'elutasított törlés után megmarad');
         },
+        'Napló: kinél és mit változtatott (régi → új érték)' => function () {
+            $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));
+            ft_run_op('person.update', ['id' => $ids['I5'], 'given' => 'Anna Mária', 'surname' => ft_person_row($ids['I5'])['surname'], 'birth_date' => '2001. 03. 04.']);
+            $a = $db->row('SELECT * FROM {audit} ORDER BY id DESC LIMIT 1');
+            $d = json_decode($a['detail'], true);
+            t_eq($d['who'][0][1], $ids['I5'], 'kinél');
+            $diff = []; foreach ($d['diff'] as [$k, $o, $n]) $diff[$k] = [$o, $n];
+            t_eq($diff['given'], ['Anna', 'Anna Mária'], 'régi és új keresztnév');
+            t_ok(!isset($diff['surname']), 'változatlan mező nincs a listában');
+            t_ok(isset($diff['birth_date']), 'születési dátum változása');
+            $ev = (int)$db->val("SELECT id FROM {events} WHERE person_id = ? AND type = 'BIRT'", [$ids['I5']]);
+            ft_run_op('event.update', ['id' => $ev, 'type' => 'BIRT', 'date' => '2001. 03. 04.', 'place' => 'Csepel']);
+            $d = json_decode($db->val('SELECT detail FROM {audit} ORDER BY id DESC LIMIT 1'), true);
+            t_eq($d['who'][0][1], $ids['I5'], 'az esemény gazdája');
+            t_eq($d['ev'], 'Születés');
+            t_eq(array_column($d['diff'], 0), ['place'], 'csak a hely változott (a dátum ugyanaz, más írásmóddal)');
+        },
         'Műveletek: törlés minden kapcsolatot takarít' => function () {
             $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));
             ft_run_op('person.delete', ['id' => $ids['I4']]);

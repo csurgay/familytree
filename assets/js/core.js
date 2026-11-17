@@ -115,6 +115,8 @@ const ICONS = {
   fan: '<path d="M3 19a9 9 0 0118 0M7 19a5 5 0 0110 0M12 10v-6M5.6 12.6L2.4 9.4M18.4 12.6l3.2-3.2"/><circle cx="12" cy="19" r="1.5"/>',
   family: '<circle cx="7" cy="6" r="2.2"/><circle cx="17" cy="6" r="2.2"/><path d="M9.5 6h5M12 6v6M6 18h12M6 18v-4M12 12v6M18 18v-4"/><circle cx="6" cy="21" r="1.3"/><circle cx="12" cy="21" r="1.3"/><circle cx="18" cy="21" r="1.3"/>',
   relation: '<circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="M6.5 6.5l3 3M11 11h2M14.5 14.5l3 3"/><circle cx="12" cy="12" r="1.5"/>',
+  map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>',
   quiz: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 2-2.5 2-2.5 4M12 17h0"/>',
   silhouette: '<circle cx="12" cy="8.5" r="4.2"/><path d="M3.5 22c.8-5 4.1-7.5 8.5-7.5s7.7 2.5 8.5 7.5z"/>',

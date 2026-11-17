@@ -1,9 +1,9 @@
 // Admin area behind the gear: settings, users, branch heads, approvals, import/export, log, self-tests.
-import { S, T, P, h, api, icon, setTitle, loadTree, personName, personPicker, field, toast, fail, modal, formData, confirmBox, go, render, chip, years, familyLabel, F, parentsOf } from './core.js';
+import { S, T, P, h, api, icon, setTitle, loadTree, personName, personPicker, field, toast, fail, modal, formData, confirmBox, go, render, chip, years, familyLabel, F, parentsOf, norm } from './core.js';
 import { runClientTests } from './tests.js';
 import { uploadPhotos, photoViewer } from './edit.js';
 
-const TABS = [['settings', 'Beállítások'], ['changes', 'Jóváhagyások'], ['users', 'Felhasználók'], ['branches', 'Családfők és ágak'], ['nophoto', 'Fénykép nélkül'], ['import', 'Import / export'], ['log', 'Napló'], ['tests', 'Autotesztek'], ['system', 'Rendszer']];
+const TABS = [['settings', 'Beállítások'], ['changes', 'Jóváhagyások'], ['users', 'Felhasználók'], ['branches', 'Családfők és ágak'], ['nophoto', 'Fénykép nélkül'], ['import', 'Import / export'], ['places', 'Helyszínek'], ['log', 'Napló'], ['tests', 'Autotesztek'], ['system', 'Rendszer']];
 
 export async function viewAdmin(tab = 'settings', qs) {
   if (S.user?.role !== 'admin') { go('#/login'); return null; }
@@ -13,7 +13,7 @@ export async function viewAdmin(tab = 'settings', qs) {
     k === 'changes' && S.boot.pendingChanges ? h('span', { class: 'badge pend' }, S.boot.pendingChanges) : null,
     k === 'users' && S.boot.pendingUsers ? h('span', { class: 'badge pend' }, S.boot.pendingUsers) : null)));
   const body = h('div');
-  const fn = { settings: settingsTab, users: usersTab, branches: branchesTab, changes: changesTab, nophoto: noPhotoTab, import: importTab, log: logTab, tests: testsTab, system: systemTab }[tab] || settingsTab;
+  const fn = { settings: settingsTab, users: usersTab, branches: branchesTab, changes: changesTab, nophoto: noPhotoTab, import: importTab, places: placesTab, log: logTab, tests: testsTab, system: systemTab }[tab] || settingsTab;
   body.append(await fn(qs));
   return h('div', { class: 'admin' }, nav, body);
 }
@@ -150,6 +150,22 @@ function fmtVal(k, v) {
   if (k === 'sex') return { M: T('férfi'), F: T('nő'), U: T('ismeretlen') }[v] || v;
   const s = String(v); return s.length > 160 ? s.slice(0, 160) + '…' : s;
 }
+/** The people / families a change was about, as links (names kept in the log even after a deletion). */
+function whoLinks(d) {
+  if (!d?.who?.length) return null;
+  return h('span', { class: 'who' }, d.who.map(([k, id, name], i) => [i ? ', ' : '',
+    k === 'p' ? (P(id) ? h('a', { href: '#/person/' + id }, personName(P(id))) : h('span', { class: 'muted' }, name))
+      : (F(id) ? h('a', { href: '#/family/' + id }, familyLabel(F(id))) : h('span', { class: 'muted' }, name))]));
+}
+/** What changed: field · old → new. */
+function diffView(d, { compact = false } = {}) {
+  const rows = (d?.diff || []).filter(([k]) => k !== 'id');
+  if (!rows.length) return null;
+  if (compact) return h('div', { class: 'diff-c' }, rows.map(([k, o, n]) => h('div', null, h('span', { class: 'k' }, T(FIELD_L[k === 'title' ? 'title_' : k] || k) + ': '),
+    o != null ? [h('span', { class: 'old' }, fmtVal(k, o)), ' → '] : null, n == null ? h('span', { class: 'muted' }, T('(törölve)')) : h('span', { class: 'new' }, fmtVal(k, n)))));
+  return h('div', { class: 'diff' }, rows.flatMap(([k, o, n]) => [h('span', { class: 'k' }, T(FIELD_L[k === 'title' ? 'title_' : k] || k)),
+    h('span', { class: o == null ? 'muted' : 'old' }, o == null ? '' : fmtVal(k, o)), h('span', { class: n == null ? 'muted' : 'new' }, n == null ? T('(törölve)') : fmtVal(k, n))]));
+}
 async function changesTab(qs) {
   const status = qs?.get('status') || 'pending';
   const rows = await api('admin.changes', null, { query: { status } });
@@ -158,13 +174,13 @@ async function changesTab(qs) {
     const note = h('input', { type: 'text', placeholder: T('Megjegyzés a beküldőnek (nem kötelező)') });
     const p = c.payload || {}, b = c.before || {};
     const keys = Object.keys(p).filter(k => !['id', 'rel', 'links', 'family_ids'].includes(k));
-    const diff = keys.length && c.status === 'pending' ? h('div', { class: 'diff' }, keys.flatMap(k => {
+    const diff = c.detail ? diffView(c.detail) : keys.length && c.status === 'pending' ? h('div', { class: 'diff' }, keys.flatMap(k => {
       const ov = k === 'date' ? b.date_raw : b[k];
       const changed = c.before ? String(ov ?? '') !== String(p[k] ?? '') : true;
       if (!changed) return [];
       return [h('span', { class: 'k' }, T(FIELD_L[k] || k)), h('span', { class: c.before ? 'old' : 'muted' }, c.before ? fmtVal(k, ov) : ''), h('span', { class: 'new' }, fmtVal(k, p[k]))];
     })) : null;
-    const target = c.entity === 'person' && c.entity_id && P(c.entity_id) ? h('a', { href: '#/person/' + c.entity_id }, personName(P(c.entity_id))) : null;
+    const target = c.detail ? whoLinks(c.detail) : c.entity === 'person' && c.entity_id && P(c.entity_id) ? h('a', { href: '#/person/' + c.entity_id }, personName(P(c.entity_id))) : null;
     return h('div', { class: 'change' },
       h('div', { class: 'hd' }, h('b', null, c.summary), target, h('span', { class: 'hint' }, `${c.user_name || '?'} · ${c.created?.slice(0, 16)}`)),
       c.photo ? h('img', { src: c.photo.thumb, alt: '', style: 'max-height:160px;border-radius:6px;margin:10px 0' }) : null,
@@ -462,12 +478,67 @@ async function importTab() {
       } }, T('Fotók importálása'))), zipOut));
 }
 
+// ------------------------------------------------------------------ places on the map
+const PL_ST = { new: 'még nem kerestük', ok: 'megtalálva', manual: 'kézzel javítva', none: 'nem található' };
+async function placesTab() {
+  const out = h('div');
+  const draw = async () => {
+    const r = await api('admin.places');
+    const prog = h('span', { class: 'hint' });
+    const start = h('button', { class: 'btn btn-primary', disabled: !r.left, onclick: async () => {
+      start.disabled = true; let tot = 0;
+      try {
+        for (;;) { const x = await api('admin.geocode_step', {}); tot += x.done; prog.textContent = T('{0} hely megkeresve, még {1}…', tot, x.left); if (!x.left || !x.done) break; }
+        toast(T('Kész: {0} helyszín megkeresve.', tot));
+      } catch (e) { fail(e); }
+      await draw();
+    } }, icon('map'), T('Új helyszínek keresése ({0})', r.left));
+    const row = p => {
+      const inp = h('input', { type: 'text', placeholder: T('jobb keresőszó vagy „47.42, 19.07”'), style: 'min-width:220px' });
+      const save = h('button', { class: 'btn btn-sm', onclick: async () => {
+        const v = inp.value.trim(), m = v.match(/^(-?\d+(?:[.,]\d+)?)\s*[;,\s]\s*(-?\d+(?:[.,]\d+)?)$/);
+        try { await api('admin.place_set', m ? { name: p.name, lat: m[1], lon: m[2] } : { name: p.name, search: v }); toast(T('Mentve.')); await draw(); } catch (e) { fail(e); }
+      } }, T('Újrakeresés / mentés'));
+      return h('tr', null, h('td', null, h('a', { href: '#/events?view=map&place=' + encodeURIComponent(p.name) }, p.name)), h('td', null, p.count),
+        h('td', null, h('span', { class: 'badge ' + (p.status === 'none' ? 'bad' : p.status === 'new' ? 'pend' : 'ok') }, T(PL_ST[p.status] || p.status)),
+          p.found ? h('div', { class: 'hint', style: 'max-width:340px' }, p.found) : null,
+          p.lat != null ? h('div', { class: 'hint' }, `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`) : null),
+        h('td', null, h('div', { class: 'row', style: 'flex-wrap:nowrap' }, inp, save)));
+    };
+    out.replaceChildren(
+      h('div', { class: 'row', style: 'margin-bottom:12px' }, start, prog),
+      h('p', { class: 'hint' }, T('A helyneveket az OpenStreetMap helykeresője (Nominatim) helyezi el a térképen, másodpercenként egyet. Ha egy hely rossz helyre került (pl. régi magyar név), írj be jobb keresőszót (pl. „Timișoara, Románia”) vagy koordinátát, és mentsd.')),
+      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('tr', null, [T('Helyszín'), T('Előfordul'), T('Állapot'), T('Javítás')].map(t => h('th', null, t))), r.places.map(row))));
+  };
+  await draw();
+  return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Helyszínek')), h('p', null, T('Az eseményekben és a fotókon szereplő helyek a térképhez.')))), out);
+}
+
 // ------------------------------------------------------------------ log
-async function logTab() {
-  const rows = await api('admin.audit', null, { query: { limit: 400 } });
-  return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Napló')), h('p', null, T('Az utolsó 400 művelet: ki, mikor, mit változtatott.')))),
-    h('table', { class: 'tbl' }, h('tr', null, [T('Időpont'), 'Ki', T('Művelet'), T('Részletek')].map(t => h('th', null, t))),
-      rows.map(r => h('tr', null, h('td', { style: 'white-space:nowrap' }, r.created?.slice(0, 16)), h('td', null, r.user_name || '—'), h('td', null, r.action), h('td', null, String(r.summary || '').slice(0, 200))))));
+const ACT_L = { queue: 'Jóváhagyásra küldve', approve: 'Elfogadva', reject: 'Elutasítva', 'login.password': 'Belépés', register: 'Regisztráció', settings: 'Beállítások',
+  'user.save': 'Felhasználó mentése', 'user.approve': 'Felhasználó jóváhagyása', 'user.branches': 'Családfő ágai', 'user.delete': 'Felhasználó törlése', 'branch.add': 'Ág hozzárendelése',
+  'chart.save': 'Diagram mentése', pin: 'Kitűzés a kezdőlapra', 'pwreset.request': 'Jelszó-visszaállítás kérése', pwreset: 'Jelszó-visszaállítás', 'comment.story': 'Hozzászólás történetként',
+  'photo.import': 'Fotócsomag import', 'backup.upload': 'Mentés feltöltése', 'backup.delete': 'Mentés törlése', 'oauth.link': 'Fiók összekapcsolása', 'oauth.unlink': 'Fiók leválasztása',
+  'place.set': 'Helyszín javítása', 'comment.add': 'Hozzászólás', 'comment.delete': 'Hozzászólás törlése', 'photo.upload': 'Fotó feltöltése', backup: 'Mentés', 'backup.restore': 'Visszaállítás', 'gedcom.import': 'GEDCOM import' };
+async function logTab(qs) {
+  const limit = +(qs?.get('limit') || 400);
+  const rows = await api('admin.audit', null, { query: { limit } });
+  const q = h('input', { type: 'search', placeholder: T('Szűrés: név, művelet, mező, érték…'), style: 'max-width:340px' });
+  const tr = rows.map(r => {
+    const d = r.detail;
+    const row = h('tr', null,
+      h('td', { style: 'white-space:nowrap' }, r.created?.slice(0, 16)),
+      h('td', null, r.user_name || '—', d?.by_name ? h('div', { class: 'hint' }, T('kérte: {0}', d.by_name)) : null),
+      h('td', null, h('div', null, T(ACT_L[r.action] || '') || null), h('div', { class: ACT_L[r.action] ? 'hint' : '' }, String(r.summary || '').slice(0, 200))),
+      h('td', null, whoLinks(d) || '—'),
+      h('td', null, diffView(d, { compact: true })));
+    row.dataset.q = norm(row.textContent);
+    return row;
+  });
+  q.oninput = () => { const w = norm(q.value).split(/\s+/).filter(Boolean); for (const r of tr) r.hidden = !w.every(x => r.dataset.q.includes(x)); };
+  return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Napló')), h('p', null, T('Az utolsó {0} művelet: ki, mikor, kinél, mit változtatott.', rows.length))),
+      h('div', { class: 'row' }, q, rows.length >= limit ? h('a', { class: 'btn btn-sm', href: '#/admin/log?limit=' + Math.min(2000, limit * 2) }, T('Régebbiek is')) : null)),
+    h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl log' }, h('tr', null, [T('Időpont'), T('Ki'), T('Mit'), T('Kinél'), T('Változás')].map(t => h('th', null, t))), tr)));
 }
 
 // ------------------------------------------------------------------ tests

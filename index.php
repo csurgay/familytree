@@ -53,12 +53,13 @@ foreach (glob(__DIR__ . '/assets/js/*.js') ?: [] as $f) $importMap['./assets/js/
     <a href="#/tree" data-nav="tree">Családfa</a>
     <a href="#/people" data-nav="people">Arcképcsarnok</a>
     <a href="#/stories" data-nav="stories">Történetek</a>
+    <a href="#/events" data-nav="events">Idővonal</a>
     <a href="#/charts" data-nav="charts">Diagramok</a>
     <a href="#/quiz" data-nav="quiz">Kvíz</a>
   </nav>
   <div class="topbar-right">
     <div class="search" role="search">
-      <input id="q" type="search" placeholder="Keresés névre…" autocomplete="off" aria-label="Keresés a családtagok között">
+      <input id="q" type="search" placeholder="Név, év, hely…" autocomplete="off" aria-label="Keresés a családtagok között">
       <div class="search-results" id="qres" role="listbox" hidden></div>
     </div>
     <div id="userbox" class="userbox"></div>

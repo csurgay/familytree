@@ -418,7 +418,7 @@ export async function photoViewer(list, index = 0) {
     side.replaceChildren(
       ph.title ? trText(ph, 'title', 'h2') : h('h2', null, T('Fotó')),
       ph.status === 'pending' ? h('p', null, h('span', { class: 'badge pend' }, T('Jóváhagyásra vár'))) : null,
-      ph.date ? h('p', { class: 'muted' }, ph.date) : null,
+      ph.date || ph.place ? h('p', { class: 'muted' }, [ph.date, ph.place ? h('a', { href: '#/events?place=' + encodeURIComponent(ph.place), style: 'color:inherit' }, ph.place) : null].filter(Boolean).flatMap((x, i) => i ? [' · ', x] : [x])) : null,
       ph.descr ? trText(ph, 'descr', 'p', { style: 'white-space:pre-wrap' }) : null,
       h('h4', { style: 'margin-top:18px' }, T('A képen')),
       people.length ? h('div', null, people.map(l => h('div', { class: 'tagged' }, chip(l.person_id),
@@ -448,7 +448,7 @@ function editPhoto(ph, after) {
   const form = h('form', { onsubmit: e => e.preventDefault() },
     modeNote(ph.modes?.update),
     field(T('Cím'), h('input', { type: 'text', name: 'title', value: ph.title || '' })),
-    field(T('Dátum'), dateInput('date', ph.raw || '')),
+    h('div', { class: 'grid2' }, field(T('Dátum'), dateInput('date', ph.raw || '')), field(T('Helyszín'), h('input', { type: 'text', name: 'place', value: ph.place || '', placeholder: T('pl. Csepel, Balatonfüred') }))),
     field(T('Leírás'), h('textarea', { name: 'descr' }, ph.descr || '')));
   modal({ title: T('Fotó adatai'), body: form, actions: [{ label: T('Mégse') }, { label: T('Mentés'), cls: 'btn-primary', onClick: async () => { if (opDone(await op('photo.update', { id: ph.id, ...formData(form) }))) after && after(); } }] });
 }

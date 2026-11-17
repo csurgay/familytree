@@ -18,6 +18,7 @@ require_once __DIR__ . '/texttr.php';
 require_once __DIR__ . '/comments.php';
 require_once __DIR__ . '/backup.php';
 require_once __DIR__ . '/oauth.php';
+require_once __DIR__ . '/places.php';
 
 const FT_VERSION = '1.0.0';
 
@@ -153,9 +154,11 @@ final class App
     public static function isAdmin(): bool { return self::role() === 'admin'; }
     public static function loggedIn(): bool { return self::$user !== null; }
 
-    public static function audit(string $action, string $entity, ?int $id, $summary): void
+    /** $detail: who the change was about and what changed (ft_change_detail), shown in the admin log. */
+    public static function audit(string $action, string $entity, ?int $id, $summary, ?array $detail = null): void
     {
         self::$db->insert('audit', ['user_id' => self::uid(), 'action' => $action, 'entity' => $entity, 'entity_id' => $id,
-            'summary' => is_string($summary) ? $summary : json_encode($summary, JSON_UNESCAPED_UNICODE), 'created' => ft_now()]);
+            'summary' => is_string($summary) ? $summary : json_encode($summary, JSON_UNESCAPED_UNICODE),
+            'detail' => $detail ? json_encode($detail, JSON_UNESCAPED_UNICODE) : null, 'created' => ft_now()]);
     }
 }

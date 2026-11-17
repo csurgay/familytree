@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 10;
+const FT_SCHEMA_VERSION = 11;
 
 function ft_schema(): array
 {
@@ -32,7 +32,10 @@ function ft_schema(): array
         'photos' => ['cols' => [
             'id' => 'id', 'file' => 'str190', 'thumb' => 'str190', 'w' => 'int', 'h' => 'int', 'title' => 'str255',
             'descr' => 'text', 'date_raw' => 'str80', 'y' => 'int', 'status' => 'str16', 'uploaded_by' => 'int', 'created' => 'datetime',
-            'source' => 'str60'], 'idx' => ['src' => ['source']]],
+            'source' => 'str60', 'place' => 'str255'], 'idx' => ['src' => ['source']]],
+        // where each place name is on the map: looked up once (OpenStreetMap Nominatim) or set by hand
+        'places' => ['cols' => ['id' => 'id', 'name' => 'str255', 'lat' => 'float', 'lon' => 'float', 'status' => 'str16',
+            'found' => 'str255', 'updated' => 'datetime'], 'idx' => ['n' => ['name']]],
         'photo_links' => ['cols' => [
             'id' => 'id', 'photo_id' => 'int', 'person_id' => 'int', 'family_id' => 'int', 'story_id' => 'int',
             'fx' => 'float', 'fy' => 'float'],
@@ -55,7 +58,7 @@ function ft_schema(): array
         'changes' => ['cols' => [
             'id' => 'id', 'user_id' => 'int', 'action' => 'str40', 'entity' => 'str20', 'entity_id' => 'int',
             'payload' => 'text', 'before_json' => 'text', 'summary' => 'str255', 'status' => 'str16',
-            'reviewer_id' => 'int', 'review_note' => 'text', 'created' => 'datetime', 'reviewed' => 'datetime'],
+            'reviewer_id' => 'int', 'review_note' => 'text', 'created' => 'datetime', 'reviewed' => 'datetime', 'detail' => 'text'],
             'idx' => ['st' => ['status']]],
         'pins' => ['cols' => ['id' => 'id', 'kind' => 'str16', 'ref_id' => 'int', 'params' => 'text', 'caption' => 'str255',
             'sort' => 'int', 'created_by' => 'int', 'created' => 'datetime']],
@@ -70,6 +73,6 @@ function ft_schema(): array
             'name' => 'str120', 'created' => 'datetime', 'last_used' => 'datetime'],
             'idx' => ['u_ps' => ['provider', 'subject'], 'u' => ['user_id']]],
         'audit' => ['cols' => ['id' => 'id', 'user_id' => 'int', 'action' => 'str40', 'entity' => 'str20', 'entity_id' => 'int',
-            'summary' => 'text', 'created' => 'datetime'], 'idx' => ['c' => ['created']]],
+            'summary' => 'text', 'detail' => 'text', 'created' => 'datetime'], 'idx' => ['c' => ['created']]],
     ];
 }

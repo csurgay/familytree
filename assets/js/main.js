@@ -39,7 +39,7 @@ async function boot() {
   route('/person/:id', gate(viewPerson), { nav: 'people' });
   route('/family/:id', gate(viewFamily), { nav: 'people' });
   route('/people', gate(qs => viewPeople(qs)), { nav: 'people' });
-  route('/events', gate(qs => viewEvents(qs)), { nav: 'home' });
+  route('/events', gate(qs => viewEvents(qs)), { nav: 'events' });
   route('/surname/:name', gate(viewSurname), { nav: 'people' });
   route('/stories', gate(viewStories), { nav: 'stories' });
   route('/story/:id', gate(viewStory), { nav: 'stories' });
@@ -92,8 +92,13 @@ function setupSearch() {
     const words = v.split(' ');
     items = [...S.tree.P.values()].filter(p => { const t = norm(personName(p) + ' ' + (p.n || '') + ' ' + (p.b || '')); return words.every(w => t.includes(w)); })
       .sort((a, b) => (b.ph ? 1 : 0) - (a.ph ? 1 : 0) || (a.b || 9999) - (b.b || 9999)).slice(0, 12);
+    // a year or a place name: offer the timeline filtered to it
+    const raw = q.value.trim(), yr = /^\d{4}$/.test(raw) && +raw > 1000 && +raw < 2200 ? +raw : null;
+    const extra = [
+      yr ? h('a', { href: `#/events?from=${yr}&to=${yr}`, role: 'option', class: 'q-extra', onclick: e => { e.preventDefault(); openRes(e.currentTarget); } }, icon('clock'), h('span', null, T('Események {0}-ban', yr))) : null,
+      !yr && raw.length >= 3 && !items.length ? h('a', { href: '#/events?place=' + encodeURIComponent(raw), role: 'option', class: 'q-extra', onclick: e => { e.preventDefault(); openRes(e.currentTarget); } }, icon('map'), h('span', null, T('Helyszínként: „{0}”', raw))) : null].filter(Boolean);
     res.replaceChildren(...(items.length ? items.map((p, i) => h('a', { href: '#/person/' + p.id, role: 'option', onclick: e => { e.preventDefault(); openRes(e.currentTarget); } }, avatar(p, 32), h('span', null, personName(p), h('div', { class: 'hint' }, years(p) || '—'))))
-      : [h('div', { class: 'hint', style: 'padding:8px' }, T('Nincs ilyen nevű családtag.'))]));
+      : extra.length ? [] : [h('div', { class: 'hint', style: 'padding:8px' }, T('Nincs ilyen nevű családtag.'))]), ...extra);
     res.hidden = false; sel = -1;
   });
   q.addEventListener('keydown', e => {

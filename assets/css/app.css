@@ -425,6 +425,16 @@ input[type=color] { width: 54px; height: 36px; padding: 2px; border: 1px solid v
 .diff .k { color: var(--muted); }
 .diff .old { color: var(--bad); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 50%, transparent); }
 .diff .new { color: var(--ok); }
+.diff-c { font-size: .86rem; line-height: 1.45; }
+.diff-c .k { color: var(--muted); }
+.diff-c .old { color: var(--bad); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+.diff-c .new { color: var(--ok); }
+.diff .old:empty::before, .diff .muted:empty::before { content: '—'; color: var(--muted); text-decoration: none; }
+.change .hd .who { font-size: .92rem; }
+.tbl-wrap { overflow-x: auto; }
+.tbl.log td:nth-child(3) { max-width: 300px; }
+.tbl.log td:nth-child(4) { min-width: 150px; }
+.tbl.log td:nth-child(5) { min-width: 260px; }
 .test-sum { display: flex; gap: 22px; align-items: baseline; margin: 10px 0 16px; font-size: 1.05rem; }
 .test-sum b { font-family: var(--serif); font-size: 2rem; }
 .test-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line-2); font-size: .94rem; }
@@ -526,6 +536,7 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
   .quiz-setup { grid-template-columns: 1fr; }
 }
 @media (max-width: 1400px) { .search input { width: 170px; } .mainnav a { padding: 7px 8px; } }
+@media (max-width: 1360px) { .search input { width: 128px; } .mainnav a { padding: 7px 6px; font-size: .95rem; } .topbar-right { gap: 6px; } }
 @media (max-width: 1240px) {
   .mainnav { display: none; position: absolute; left: 0; right: 0; top: 100%; background: var(--cover); flex-direction: column; padding: 8px 16px 14px; z-index: 50; }
   .mainnav.open { display: flex; }
@@ -705,3 +716,29 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 }
 .partner-line { display: flex; gap: 8px; align-items: flex-start; font-size: .92rem; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line)); padding: 8px 10px; border-radius: 6px; margin: 4px 0 10px; }
 .partner-line svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--accent); margin-top: 1px; }
+
+/* ---- timeline & map */
+.seg a { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; padding: 7px 12px; color: var(--muted); text-decoration: none; }
+.seg a + a { border-left: 1px solid var(--line); }
+.seg a.on { background: var(--cover); color: var(--cover-ink); }
+.seg a svg { width: 16px; height: 16px; }
+.ev-filters { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 0 0 18px; }
+.ev-filters input, .ev-filters select { margin: 0; }
+.ev-filters .yr { display: inline-flex; align-items: center; gap: 4px; }
+.ev-filters .check { display: inline-flex; align-items: center; gap: 6px; font-size: .92rem; }
+.timeline .ico.PHOTO { color: var(--accent); }
+.timeline a.plc { color: inherit; text-decoration: underline dotted; text-underline-offset: 2px; }
+.tl-ph { display: flex; gap: 10px; align-items: center; color: inherit; text-decoration: none; }
+.tl-ph img { width: 64px; height: 48px; object-fit: cover; border-radius: 4px; flex: 0 0 auto; }
+.tl-ph > span { display: flex; flex-direction: column; min-width: 0; }
+.tl-ph .s { color: var(--muted); font-size: .88rem; }
+.ev-map { height: min(68vh, 640px); min-height: 360px; border: 1px solid var(--line); border-radius: 8px; z-index: 0; }
+.ev-map-note { margin-top: 8px; }
+.spot h3 { margin: 0 0 6px; font-size: 1rem; }
+.spot ul { list-style: none; margin: 0 0 6px; padding: 0; max-height: 220px; overflow: auto; font-size: .88rem; }
+.spot li { padding: 2px 0; }
+.spot-ph { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0; }
+.spot-ph img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 3px; display: block; }
+@media (max-width: 640px) {
+  .ev-filters input[name=place], .ev-filters input[name=q] { width: calc(50% - 6px) !important; }
+}
