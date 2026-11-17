@@ -1,4 +1,4 @@
-import { S, T, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail, setLang } from './core.js';
+import { S, T, api, h, $, icon, route, render, go, loadTree, personName, years, avatar, norm, fail, setLang, autoSortableTables } from './core.js';
 import { viewHome, viewPerson, viewFamily, viewPeople, viewStories, viewStory, viewTree, viewCharts, viewLogin, viewInstall, viewAccount, viewEvents, viewRegister, viewSurname, viewForgot, viewReset } from './views.js';
 import { viewQuiz } from './quiz.js';
 import { viewAdmin } from './admin.js';
@@ -21,6 +21,7 @@ async function upgradeToHttps() {
 
 async function boot() {
   if (await upgradeToHttps()) return;
+  autoSortableTables();
   let b;
   try { b = await api('boot'); }
   catch (e) { $('#main').replaceChildren(h('div', { class: 'empty' }, h('h2', null, T('A szerver nem érhető el')), h('p', null, e.message))); return; }

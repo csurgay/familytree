@@ -386,7 +386,7 @@ function backupSection() {
             h('td', null, (m?.created || b.mtime).replace('T', ' ').slice(0, 16), h('div', { class: 'hint' }, b.uploaded ? T('feltöltött') : T('itt készült'), m?.source && b.uploaded ? ' · ' + m.source.replace(/^https?:\/\//, '') : '')),
             h('td', null, b.error ? h('span', { class: 'bad' }, T(b.error)) : T('{0} személy, {1} fotó, {2} felhasználó', t.persons ?? 0, t.photos ?? 0, t.users ?? 0),
               b.problems?.length ? h('div', { class: 'hint bad' }, '⚠ ', b.problems.map(T).join(' ')) : null),
-            h('td', { style: 'white-space:nowrap' }, fmtBytes(b.size)),
+            h('td', { style: 'white-space:nowrap', 'data-sort': String(b.size).padStart(14, '0') }, fmtBytes(b.size)),
             h('td', { class: 'bk-act' },
               h('a', { class: 'btn btn-sm', href: 'api.php?a=backup.download&name=' + encodeURIComponent(b.name), download: b.name }, icon('download'), T('Letöltés')),
               b.error ? null : h('button', { class: 'btn btn-sm', onclick: () => restore(b).catch(fail) }, T('Visszaállítás')),

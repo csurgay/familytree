@@ -488,3 +488,40 @@ export async function render() {
 export function setTitle(t) { document.title = (t ? t + ' – ' : '') + (S.settings.site_title || T('Családfa')); }
 
 export const can = { edit: () => !!S.user, admin: () => S.user?.role === 'admin' };
+
+
+// ------------------------------------------------------------------ sortable tables
+/* Every data table (table.tbl with a header row) can be sorted by any column: click (or Enter on) a header,
+ * again to reverse. A cell sorts by its data-sort value when it has one (sizes, dates), else by its text,
+ * Hungarian alphabetical order with numbers compared as numbers; empty cells always go last. */
+const sortColl = new Intl.Collator('hu', { numeric: true, sensitivity: 'base' });
+const sortKey = td => { if (!td) return ''; const v = td.dataset.sort ?? td.textContent; const t = String(v).trim(); return t === '—' ? '' : t; };
+export function makeSortable(t) {
+  if (t.dataset.sortable) return;
+  t.dataset.sortable = '1';
+  const head = [...t.rows].find(r => r.cells.length && [...r.cells].every(c => c.tagName === 'TH'));
+  if (!head) return;
+  [...head.cells].forEach((th, col) => {
+    if (!th.textContent.trim()) return;
+    const cells = [...t.rows].filter(r => r !== head).map(r => r.cells[col]).filter(Boolean);
+    if (cells.length && cells.every(c => c.querySelector('input, select, textarea, button'))) return;   // a column of controls
+    th.classList.add('sortable'); th.tabIndex = 0; th.setAttribute('aria-sort', 'none');
+    const sort = () => {
+      const dir = th.getAttribute('aria-sort') === 'ascending' ? -1 : 1;
+      for (const o of head.cells) { o.setAttribute('aria-sort', 'none'); o.classList.remove('asc', 'desc'); }
+      th.setAttribute('aria-sort', dir > 0 ? 'ascending' : 'descending'); th.classList.add(dir > 0 ? 'asc' : 'desc');
+      const rows = [...t.rows].filter(r => r !== head && r.cells.length > col);
+      const keyed = rows.map((r, i) => ({ r, i, k: sortKey(r.cells[col]) }));
+      keyed.sort((a, b) => (!a.k) - (!b.k) || dir * sortColl.compare(a.k, b.k) || a.i - b.i);
+      for (const { r } of keyed) r.parentNode.append(r);
+    };
+    th.addEventListener('click', sort);
+    th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
+  });
+}
+/** Watch the page: any data table that appears becomes sortable. */
+export function autoSortableTables(root = document.body) {
+  const scan = n => { if (n.nodeType !== 1) return; if (n.matches('table.tbl')) makeSortable(n); n.querySelectorAll?.('table.tbl').forEach(makeSortable); };
+  scan(root);
+  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(scan); }).observe(root, { childList: true, subtree: true });
+}

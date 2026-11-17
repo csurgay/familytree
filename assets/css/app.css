@@ -742,3 +742,10 @@ blockquote.intro { margin: 8px 0 16px; padding: 8px 12px; border-left: 3px solid
 @media (max-width: 640px) {
   .ev-filters input[name=place], .ev-filters input[name=q] { width: calc(50% - 6px) !important; }
 }
+
+/* ---- sortable tables */
+.tbl th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.tbl th.sortable:hover, .tbl th.sortable:focus-visible { color: var(--ink); }
+.tbl th.sortable::after { content: '↕'; opacity: .3; margin-left: 4px; font-size: .8em; }
+.tbl th.sortable.asc::after { content: '▲'; opacity: .8; }
+.tbl th.sortable.desc::after { content: '▼'; opacity: .8; }
