@@ -650,6 +650,10 @@ function ft_handlers(): array
                 $r['payload'] = json_decode($r['payload'] ?? 'null', true);
                 $r['before'] = json_decode($r['before_json'] ?? 'null', true);
                 $r['detail'] = json_decode($r['detail'] ?? 'null', true);
+                if (!$r['detail'] && ($d = ft_audit_detail_guess(['action' => 'queue', 'entity' => $r['action'], 'entity_id' => $r['id']]))) {
+                    $r['detail'] = $d;
+                    App::$db->update('changes', ['detail' => json_encode($d, JSON_UNESCAPED_UNICODE)], (int)$r['id']);   // requests sent before the log kept details
+                }
                 unset($r['before_json']);
                 if ($r['action'] === 'photo.publish' || $r['entity'] === 'photo') {
                     $r['photo'] = App::$db->row('SELECT thumb, file, title FROM {photos} WHERE id = ?', [(int)$r['entity_id']]);
@@ -772,6 +776,10 @@ function ft_handlers(): array
             $names = [];
             foreach ($rows as &$r) {
                 $r['detail'] = json_decode($r['detail'] ?? 'null', true);
+                if (!$r['detail'] && ($d = ft_audit_detail_guess($r))) {
+                    $r['detail'] = $d;
+                    App::$db->update('audit', ['detail' => json_encode($d, JSON_UNESCAPED_UNICODE)], (int)$r['id']);   // worked out once
+                }
                 // approvals: also say whose request it was
                 if (!empty($r['detail']['by'])) $r['detail']['by_name'] = $names[$r['detail']['by']] ??= (string)App::$db->val('SELECT name FROM {users} WHERE id = ?', [(int)$r['detail']['by']]);
             }

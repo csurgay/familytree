@@ -667,3 +667,54 @@ function ft_change_detail(string $action, array $p, ?array $before, array $targe
     if ($ent === 'event' && ($type = $p['type'] ?? ($before['type'] ?? null))) $out['ev'] = FT_EVENT_TYPES[$type] ?? $type;
     return $out;
 }
+
+
+/**
+ * Log rows written before the log kept details: work out what we still can. A request sent for approval
+ * (and its approval) still has its payload and "before" snapshot in {changes}; for a direct change at least
+ * the person / family it touched is found from the record's id.
+ */
+function ft_audit_detail_guess(array $a): ?array
+{
+    try {
+        $ops = ft_ops();
+        if (in_array($a['action'], ['queue', 'approve', 'reject'], true) && $a['entity_id']) {
+            $c = App::$db->row('SELECT * FROM {changes} WHERE id = ?', [(int)$a['entity_id']]);
+            if (!$c) return null;
+            $d = json_decode((string)($c['detail'] ?? ''), true);
+            if (!$d) {
+                $p = json_decode((string)$c['payload'], true) ?: [];
+                $before = json_decode((string)$c['before_json'], true);
+                $t = [[], []];
+                try { if (isset($ops[$c['action']])) $t = ($ops[$c['action']]['targets'])($p); } catch (Throwable $e) {}
+                if (!$t[0] && !$t[1] && $before) $t = [array_filter([ft_int($before['person_id'] ?? null)]), array_filter([ft_int($before['family_id'] ?? null)])];
+                $d = ft_change_detail($c['action'], $p, $before, $t);
+            }
+            if ($a['action'] !== 'queue') $d['by'] = (int)$c['user_id'];
+            return $d;
+        }
+        if (!$a['entity_id'] || !isset($ops[$a['action']])) return null;
+        $id = (int)$a['entity_id'];
+        $who = [];
+        $p = fn($pid) => ($r = App::$db->row('SELECT * FROM {persons} WHERE id = ?', [(int)$pid])) ? ['p', (int)$pid, ft_name($r)] : null;
+        switch ($a['entity']) {
+            case 'person': $who[] = $p($id); break;
+            case 'family': if (App::$db->val('SELECT id FROM {families} WHERE id = ?', [$id])) $who[] = ['f', $id, ft_family_name($id)]; break;
+            case 'event':
+                $e = App::$db->row('SELECT person_id, family_id, type FROM {events} WHERE id = ?', [$id]);
+                if ($e && $e['person_id']) $who[] = $p($e['person_id']);
+                if ($e && $e['family_id']) $who[] = ['f', (int)$e['family_id'], ft_family_name((int)$e['family_id'])];
+                break;
+            case 'photo':
+                foreach (App::$db->all('SELECT person_id, family_id FROM {photo_links} WHERE photo_id = ?', [$id]) as $l) {
+                    if ($l['person_id']) $who[] = $p($l['person_id']);
+                    elseif ($l['family_id']) $who[] = ['f', (int)$l['family_id'], ft_family_name((int)$l['family_id'])];
+                }
+                break;
+        }
+        $who = array_values(array_filter($who));
+        return $who ? ['who' => $who, 'diff' => []] : null;
+    } catch (Throwable $e) {
+        return null;
+    }
+}
