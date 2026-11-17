@@ -282,7 +282,10 @@ async function eventsMap(items, url) {
   const phList = items.filter(i => i.kind === 'ph').map(i => i.ph);
   setTimeout(() => {
     const map = L.map(box, { scrollWheelZoom: true, worldCopyJump: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    // OpenStreetMap's tile servers refuse requests without a Referer, and the site sends none to other hosts
+    // (Referrer-Policy: same-origin) – the map tiles get the bare origin (https://csurgay.com/) only
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
     const bounds = [];
     for (const sp of spots.values()) {
       const n = sp.items.length, r = Math.min(26, 6 + Math.sqrt(n) * 3.2);
