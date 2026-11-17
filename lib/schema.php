@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 11;
+const FT_SCHEMA_VERSION = 12;
 
 function ft_schema(): array
 {

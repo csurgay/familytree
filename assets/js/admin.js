@@ -483,7 +483,7 @@ const PL_ST = { new: 'még nem kerestük', ok: 'megtalálva', manual: 'kézzel j
 async function placesTab() {
   const out = h('div');
   const draw = async () => {
-    const r = await api('admin.places');
+    const r = await api('admin.places', {});
     const prog = h('span', { class: 'hint' });
     const start = h('button', { class: 'btn btn-primary', disabled: !r.left, onclick: async () => {
       start.disabled = true; let tot = 0;
