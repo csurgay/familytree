@@ -384,10 +384,12 @@ function ft_ops(): array
             'apply' => function ($p) {
                 $id = (int)$p['photo_id']; ft_photo_row($id);
                 $pid = ft_int($p['person_id'] ?? null); $fid = ft_int($p['family_id'] ?? null);
+                if (!$pid && !$fid) throw ft_err('Kit jelölsz meg? Válassz személyt vagy családot.');
+                if ($pid) ft_person_row($pid); else ft_family_row($fid);
                 $l = App::$db->row('SELECT * FROM {photo_links} WHERE photo_id = ? AND ' . ($pid ? 'person_id = ?' : 'family_id = ?'), [$id, $pid ?: $fid]);
                 $fx = isset($p['fx']) ? max(0, min(1, (float)$p['fx'])) : 0.5; $fy = isset($p['fy']) ? max(0, min(1, (float)$p['fy'])) : 0.35;
                 if ($l) App::$db->update('photo_links', ['fx' => $fx, 'fy' => $fy], (int)$l['id']);
-                else App::$db->insert('photo_links', ['photo_id' => $id, 'person_id' => $pid, 'family_id' => $fid, 'fx' => $fx, 'fy' => $fy]);
+                else App::$db->insert('photo_links', ['photo_id' => $id, 'person_id' => $pid, 'family_id' => $fid, 'fx' => $fx, 'fy' => $fy, 'added_by' => App::uid()]);
                 if (!empty($p['primary'])) {
                     if ($pid) App::$db->update('persons', ['photo_id' => $id], $pid);
                     if ($fid) App::$db->update('families', ['photo_id' => $id], $fid);
@@ -555,6 +557,7 @@ function ft_run_op(string $name, array $payload): array
     $kind = is_callable($op['kind']) ? ($op['kind'])($payload) : $op['kind'];
     $t = ($op['targets'])($payload);
     $mode = ft_mode($kind, $t[0] ?? [], $t[1] ?? [], $t[2] ?? []);
+    if ($mode !== 'direct' && in_array($name, FT_PHOTO_NEWS, true) && ft_photo_quick($name, $payload)) $mode = 'direct';
     if ($mode === 'deny') throw ft_err(App::loggedIn() ? 'Ehhez nincs jogosultságod.' : 'Ehhez be kell jelentkezni.', App::loggedIn() ? 403 : 401);
     $before = isset($op['before']) ? ($op['before'])($payload) : null;
     $summary = ($op['summary'])($payload);
@@ -570,6 +573,7 @@ function ft_run_op(string $name, array $payload): array
     $res = App::$db->inTx(fn() => ($op['apply'])($payload));
     App::flush();
     App::audit($name, explode('.', $name)[0], ft_int($res['id'] ?? null), $summary, ft_change_detail($name, $payload, $before, $t, ft_int($res['id'] ?? null)));
+    if (in_array($name, FT_PHOTO_NEWS, true)) ft_photo_news_mail();
     return ['queued' => false] + $res;
 }
 

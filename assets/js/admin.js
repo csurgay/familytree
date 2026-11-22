@@ -1,21 +1,22 @@
 // Admin area behind the gear: settings, users, branch heads, approvals, import/export, log, self-tests.
-import { S, T, P, h, api, icon, setTitle, loadTree, personName, personPicker, field, toast, fail, modal, formData, confirmBox, go, render, chip, years, familyLabel, F, parentsOf, norm } from './core.js';
+import { S, T, P, h, api, op, icon, setTitle, loadTree, personName, personPicker, field, toast, fail, modal, formData, confirmBox, go, render, chip, years, familyLabel, F, parentsOf, norm } from './core.js';
 import { runClientTests } from './tests.js';
 import { uploadPhotos, photoViewer } from './edit.js';
 
-const TABS = [['settings', 'Beállítások'], ['changes', 'Jóváhagyások'], ['users', 'Felhasználók'], ['branches', 'Családfők és ágak'], ['nophoto', 'Fénykép nélkül'], ['import', 'Import / export'], ['places', 'Helyszínek'], ['log', 'Napló'], ['tests', 'Autotesztek'], ['system', 'Rendszer']];
+const TABS = [['settings', 'Beállítások'], ['changes', 'Jóváhagyások'], ['photos', 'Friss fotók'], ['users', 'Felhasználók'], ['branches', 'Családfők és ágak'], ['nophoto', 'Fénykép nélkül'], ['import', 'Import / export'], ['places', 'Helyszínek'], ['log', 'Napló'], ['tests', 'Autotesztek'], ['system', 'Rendszer']];
 
 export async function viewAdmin(tab = 'settings', qs) {
   if (S.user?.role !== 'admin') { go('#/login'); return null; }
   await loadTree();
   setTitle(T('Admin'));
-  const nav = h('nav', { class: 'admin-nav', 'aria-label': T('Admin') }, TABS.map(([k, l]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'active' : '' }, T(l),
+  const nav = () => h('nav', { class: 'admin-nav', 'aria-label': T('Admin') }, TABS.map(([k, l]) => h('a', { href: '#/admin/' + k, class: k === tab ? 'active' : '' }, T(l),
     k === 'changes' && S.boot.pendingChanges ? h('span', { class: 'badge pend' }, S.boot.pendingChanges) : null,
+    k === 'photos' && S.boot.photoNews ? h('span', { class: 'badge pend' }, S.boot.photoNews) : null,
     k === 'users' && S.boot.pendingUsers ? h('span', { class: 'badge pend' }, S.boot.pendingUsers) : null)));
   const body = h('div');
-  const fn = { settings: settingsTab, users: usersTab, branches: branchesTab, changes: changesTab, nophoto: noPhotoTab, import: importTab, places: placesTab, log: logTab, tests: testsTab, system: systemTab }[tab] || settingsTab;
-  body.append(await fn(qs));
-  return h('div', { class: 'admin' }, nav, body);
+  const fn0 = { settings: settingsTab, users: usersTab, branches: branchesTab, changes: changesTab, photos: photoNewsTab, nophoto: noPhotoTab, import: importTab, places: placesTab, log: logTab, tests: testsTab, system: systemTab }[tab] || settingsTab;
+  body.append(await fn0(qs));   // first: a tab may change the counters shown in the menu
+  return h('div', { class: 'admin' }, nav(), body);
 }
 
 // ------------------------------------------------------------------ settings
@@ -514,12 +515,50 @@ async function placesTab() {
   return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Helyszínek')), h('p', null, T('Az eseményekben és a fotókon szereplő helyek a térképhez.')))), out);
 }
 
+// ------------------------------------------------------------------ new photos and tags (live without approval)
+const PN_L = { 'photo.upload': 'Új fotó', 'photo.tag': 'Megjelölés', 'photo.untag': 'Jelölés levétele', 'photo.update': 'Saját fotó adatai' };
+async function photoNewsTab() {
+  const r = await api('admin.photo_news', { mark: 1 });
+  const before = S.boot.photoNews || 0;
+  S.boot.photoNews = 0;
+  const gearDot = document.querySelector('.gear .dot');
+  if (gearDot) { if (S.boot.pending) { gearDot.textContent = S.boot.pending; gearDot.title = ''; } else gearDot.remove(); }
+  const undoBtn = (label, fn) => { const b = h('button', { class: 'btn btn-sm btn-danger' }, label); b.onclick = async () => { b.disabled = true; try { if (await fn() === false) { b.disabled = false; return; } toast(T('Visszavonva.')); await loadTree(true); render(); } catch (e) { fail(e); b.disabled = false; } }; return b; };
+  const card = x => {
+    const ph = x.photo;
+    const acts = [];
+    if (ph && x.action === 'photo.tag') x.who.forEach(([k, id, name], i) => {
+      if (x.tagged[i]) acts.push(undoBtn(T('Jelölés levétele: {0}', name), () => op('photo.untag', { photo_id: ph.id, [k === 'p' ? 'person_id' : 'family_id']: id })));
+    });
+    if (ph && x.action === 'photo.upload') acts.push(undoBtn(T('Fotó törlése'), async () => {
+      if (!await confirmBox(T('Fotó törlése'), T('Biztosan törlöd ezt a fotót? Ez nem vonható vissza.'))) return false;
+      await op('photo.delete', { id: ph.id });
+    }));
+    return h('div', { class: 'change pn' + (x.new ? ' pn-new' : '') },
+      ph ? h('a', { class: 'pn-ph', href: '#', title: T('Megnyitás'), onclick: e => { e.preventDefault(); photoViewer([ph], 0); } }, h('img', { src: ph.thumb, alt: ph.title || '', loading: 'lazy' }))
+        : h('div', { class: 'pn-ph pn-gone' }, T('törölve')),
+      h('div', { class: 'grow' },
+        h('div', null, h('b', null, T(PN_L[x.action] || x.action)), x.new ? h('span', { class: 'badge pend', style: 'margin-left:6px' }, T('új')) : null,
+          ' · ', x.user, ' · ', h('span', { class: 'hint' }, (x.created || '').slice(0, 16))),
+        ph?.title ? h('div', null, ph.title) : null,
+        x.who?.length ? h('div', null, T('Kinél: '), whoLinks(x), x.action === 'photo.tag' && ph && !x.tagged.some(Boolean) ? h('span', { class: 'hint' }, ' · ' + T('azóta levéve')) : null) : null,
+        x.action === 'photo.update' ? diffView(x, { compact: true }) : null,
+        acts.length ? h('div', { class: 'row', style: 'margin-top:8px' }, acts) : null));
+  };
+  return h('div', null,
+    h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Friss fotók')),
+      h('p', null, T('A családtagok fotói és jelölései jóváhagyás nélkül, azonnal megjelennek. Itt látod mindet; ha valami nem odavaló, innen visszavonhatod.')))),
+    before ? h('p', null, T('{0} új azóta, hogy legutóbb itt jártál.', before)) : null,
+    r.rows.length ? r.rows.map(card) : h('p', { class: 'empty' }, T('Még nem töltött fel és nem jelölt meg senki fotót.')),
+    S.boot.settings?.photo_direct === false ? h('p', { class: 'hint' }, T('Most a beállításokban ki van kapcsolva: a fotók és jelölések jóváhagyásra várnak.')) : null);
+}
+
 // ------------------------------------------------------------------ log
 const ACT_L = { queue: 'Jóváhagyásra küldve', approve: 'Elfogadva', reject: 'Elutasítva', 'login.password': 'Belépés', register: 'Regisztráció', settings: 'Beállítások',
   'user.save': 'Felhasználó mentése', 'user.approve': 'Felhasználó jóváhagyása', 'user.branches': 'Családfő ágai', 'user.delete': 'Felhasználó törlése', 'branch.add': 'Ág hozzárendelése',
   'chart.save': 'Diagram mentése', pin: 'Kitűzés a kezdőlapra', 'pwreset.request': 'Jelszó-visszaállítás kérése', pwreset: 'Jelszó-visszaállítás', 'comment.story': 'Hozzászólás történetként',
   'photo.import': 'Fotócsomag import', 'backup.upload': 'Mentés feltöltése', 'backup.delete': 'Mentés törlése', 'oauth.link': 'Fiók összekapcsolása', 'oauth.unlink': 'Fiók leválasztása',
-  'place.set': 'Helyszín javítása', 'comment.add': 'Hozzászólás', 'comment.delete': 'Hozzászólás törlése', 'photo.upload': 'Fotó feltöltése', backup: 'Mentés', 'backup.restore': 'Visszaállítás', 'gedcom.import': 'GEDCOM import' };
+  'place.set': 'Helyszín javítása', 'comment.add': 'Hozzászólás', 'comment.delete': 'Hozzászólás törlése', 'photo.upload': 'Fotó feltöltése', 'photo.tag': 'Fotó megjelölése', 'photo.untag': 'Jelölés levétele', backup: 'Mentés', 'backup.restore': 'Visszaállítás', 'gedcom.import': 'GEDCOM import' };
 async function logTab(qs) {
   const limit = +(qs?.get('limit') || 400);
   const rows = await api('admin.audit', null, { query: { limit } });

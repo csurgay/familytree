@@ -31,6 +31,8 @@ function ft_settings_def(): array
         ['Szerkesztés', 'head_above_create', 'bool', true, 'A családfő a gyökere fölé is felvehet új személyt és adatot', 'Szülők, nagyszülők, testvérek, nagynénik… és hozzájuk esemény, fotó, sztori. A gyökér fölött már meglévő adatot (a saját korábbi felvitelét is) csak admin-jóváhagyással módosíthatja vagy törölheti.'],
         ['Szerkesztés', 'branch_spouses', 'bool', true, 'A házastársak is a családfő ágához tartoznak', ''],
         ['Szerkesztés', 'member_suggest', 'bool', true, 'Családtagok (és családfők a saját águkon kívül) javaslatot tehetnek', 'A javaslatok a jóváhagyási sorba kerülnek.'],
+        ['Szerkesztés', 'photo_direct', 'bool', true, 'Fotót feltölteni és személyeket megjelölni jóváhagyás nélkül lehet', 'Minden bejelentkezett családtag feltöltése és jelölése azonnal látszik. A saját feltöltött fotója adatait és a saját jelöléseit is rögtön javíthatja; más fotóján a fő fotó cseréje, a jelölés levétele és a törlés továbbra is jóváhagyással megy. Az admin a Friss fotók lapon mindet látja, és ott egy kattintással vissza is vonhatja.'],
+        ['Szerkesztés', 'photo_notify_mail', 'bool', true, 'E-mail az adminoknak új fotóról és jelölésről', 'Legfeljebb óránként egy levél; a részletek a Friss fotók lapon.'],
         ['Szerkesztés', 'story_author_edit', 'bool', true, 'A sztori szerzője jóváhagyás nélkül javíthatja a saját sztoriját', ''],
 
         ['Hozzáférés', 'backup_keep', 'int', 5, 'Ennyi saját teljes mentést őriz meg a szerveren', 'A data/backups mappában; a régebbiek automatikusan törlődnek. A feltöltött mentéseket nem törli.', [1, 50]],

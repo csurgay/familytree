@@ -121,6 +121,8 @@ function ft_photo_upload(array $file, array $meta): array
     if ($sid) { $st = ft_story_row($sid); $opts['own'] = (int)$st['created_by'] === App::uid(); }
     if (!$pid && !$fid) $opts['free'] = true;
     $mode = ft_mode('create', array_filter([$pid]), array_filter([$fid]), $opts);
+    $quick = $mode !== 'direct' && ft_photo_direct();   // goes live at once, the admin is told
+    if ($quick) $mode = 'direct';
     if ($mode === 'deny') throw ft_err('Ehhez nincs jogosultságod.', 403);
     // group photo unless it is uploaded to a single person (or the uploader said otherwise)
     $group = isset($meta['group']) ? !empty($meta['group']) : !$pid;
@@ -129,17 +131,80 @@ function ft_photo_upload(array $file, array $meta): array
     $id = App::$db->insert('photos', $stored + ['title' => ft_str($meta['title'] ?? null), 'descr' => ft_str($meta['descr'] ?? null, 20000),
         'date_raw' => $dt['raw'] ?? null, 'y' => $dt['y'] ?? null, 'status' => $mode === 'direct' ? 'ok' : 'pending',
         'uploaded_by' => App::uid(), 'created' => ft_now()]);
-    if ($pid || $fid || $sid) App::$db->insert('photo_links', ['photo_id' => $id, 'person_id' => $pid, 'family_id' => $fid, 'story_id' => $sid, 'fx' => 0.5, 'fy' => 0.35]);
+    if ($pid || $fid || $sid) App::$db->insert('photo_links', ['photo_id' => $id, 'person_id' => $pid, 'family_id' => $fid, 'story_id' => $sid, 'fx' => 0.5, 'fy' => 0.35, 'added_by' => App::uid()]);
     if ($mode === 'direct') {
-        if (!empty($meta['primary']) && $pid) App::$db->update('persons', ['photo_id' => $id], $pid);
+        if (!empty($meta['primary']) && $pid && !$quick) App::$db->update('persons', ['photo_id' => $id], $pid);
         ft_photo_autoprimary($id);
-        App::audit('photo.upload', 'photo', $id, $stored['file']);
+        App::audit('photo.upload', 'photo', $id, ft_str($meta['title'] ?? null) ?? $stored['file'], ['who' => ft_change_detail('photo.upload', [], null, [array_filter([$pid]), array_filter([$fid])])['who'], 'diff' => []]);
         App::flush();
+        ft_photo_news_mail();
         return ['id' => $id, 'queued' => false];
     }
     $cid = App::$db->insert('changes', ['user_id' => App::uid(), 'action' => 'photo.publish', 'entity' => 'photo', 'entity_id' => $id,
         'payload' => json_encode(['id' => $id]), 'summary' => 'Új fotó közzététele' . (!empty($meta['title']) ? ': ' . $meta['title'] : ''), 'status' => 'pending', 'created' => ft_now()]);
     return ['id' => $id, 'queued' => true, 'change_id' => $cid];
+}
+
+// ------------------------------------------------------------------ photos without approval
+/** Photo actions that a signed-in member may do at once (setting photo_direct) and that the admin is told about. */
+const FT_PHOTO_NEWS = ['photo.upload', 'photo.tag', 'photo.untag', 'photo.update'];
+
+function ft_photo_direct(): bool { return App::loggedIn() && !App::isAdmin() && !empty(App::$s['photo_direct']); }
+
+function ft_photo_mine(int $id): bool
+{
+    return App::uid() && (int)App::$db->val('SELECT uploaded_by FROM {photos} WHERE id = ?', [$id]) === App::uid();
+}
+
+/** May this op skip the approval queue as a quick photo action? */
+function ft_photo_quick(string $op, array $p): bool
+{
+    if (!ft_photo_direct()) return false;
+    $ph = (int)($p['photo_id'] ?? $p['id'] ?? 0);
+    $pid = ft_int($p['person_id'] ?? null); $fid = ft_int($p['family_id'] ?? null);
+    switch ($op) {
+        case 'photo.tag':     // a new tag or the face position; making it someone's main photo over an existing one still needs approval
+            if (empty($p['primary'])) return true;
+            return !($pid ? App::$db->val('SELECT photo_id FROM {persons} WHERE id = ?', [$pid]) : App::$db->val('SELECT photo_id FROM {families} WHERE id = ?', [(int)$fid]));
+        case 'photo.untag':   // only a tag of one's own (or on one's own photo)
+            if (ft_photo_mine($ph)) return true;
+            return (int)App::$db->val('SELECT added_by FROM {photo_links} WHERE photo_id = ? AND ' . ($pid ? 'person_id = ?' : 'family_id = ?'), [$ph, $pid ?: $fid]) === App::uid();
+        case 'photo.update':  // title, date, place… of one's own upload
+            return ft_photo_mine($ph);
+    }
+    return false;
+}
+
+/** Modes of a photo for the UI, with the quick photo actions taken into account. */
+function ft_photo_modes(int $id, array $t): array
+{
+    $m = ft_modes($t[0], $t[1], $t[2]);
+    if (ft_photo_direct()) {
+        $m['create'] = 'direct';
+        if (ft_photo_mine($id)) $m['update'] = 'direct';
+    }
+    return $m;
+}
+
+/** Tell the admins by mail (at most once an hour) that there are new photos or tags. */
+function ft_photo_news_mail(): void
+{
+    if (App::isAdmin() || empty(App::$s['photo_notify_mail'])) return;
+    $last = App::$s['_photo_mail_at'] ?? null;
+    if ($last && strtotime((string)$last) > time() - 3600) return;
+    ft_setting_set(App::$db, '_photo_mail_at', ft_now());
+    App::$s['_photo_mail_at'] = ft_now();
+    $name = (string)(App::$user['name'] ?? '');
+    foreach (App::$db->col("SELECT email FROM {users} WHERE role = 'admin' AND active = 1") as $to)
+        ft_mail($to, 'Új fotók a családfán', "$name új fotót töltött fel vagy személyt jelölt meg egy fotón.\n\nMinden friss fotó és jelölés, visszavonási lehetőséggel:\n" . ft_base_url() . "/#/admin/photos\n\n(Egy órán belül az újabbakról nem jön külön levél, de a lapon mind ott lesz.)");
+}
+
+/** Count of photo actions by others that this admin has not looked at yet. */
+function ft_photo_news_count(): int
+{
+    $seen = (int)App::$db->val('SELECT photos_seen FROM {users} WHERE id = ?', [App::uid()]);
+    $in = "'" . implode("','", FT_PHOTO_NEWS) . "'";
+    return (int)App::$db->val("SELECT COUNT(*) FROM {audit} a JOIN {users} u ON u.id = a.user_id WHERE a.action IN ($in) AND u.role <> 'admin' AND a.id > ?", [$seen]);
 }
 
 function ft_photo_url(?string $rel): ?string { return $rel ?: null; }

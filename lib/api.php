@@ -210,6 +210,7 @@ function ft_handlers(): array
                 $out['pendingUsers'] = (int)$db->val("SELECT COUNT(*) FROM {users} WHERE status = 'pending'");
                 $out['pending'] = (int)$db->val("SELECT COUNT(*) FROM {changes} WHERE status = 'pending'") + $out['pendingUsers'];
                 $out['pendingChanges'] = $out['pending'] - $out['pendingUsers'];
+                $out['photoNews'] = ft_photo_news_count();
                 $out['translator'] = ft_translator_ready();
             }
             if (App::loggedIn()) {
@@ -538,7 +539,7 @@ function ft_handlers(): array
             $j = ft_photo_json(ft_photo_row((int)($in['id'] ?? 0)));
             if (!ft_photo_visible($j, ft_graph())) throw ft_err('Ez a fotó nem nyilvános.', 403);
             $t = ft_photo_targets(['id' => $j['id']]);
-            $j['modes'] = ft_modes($t[0], $t[1], $t[2]);
+            $j['modes'] = ft_photo_modes($j['id'], $t);
             $j['uploader'] = $j['uploaded_by'] ? App::$db->val('SELECT name FROM {users} WHERE id = ?', [$j['uploaded_by']]) : null;
             return $j;
         },
@@ -770,6 +771,28 @@ function ft_handlers(): array
             return ['id' => $id];
         },
         'admin.branch.delete' => function ($in) { ft_require_admin(); App::$db->delete('branches', (int)$in['id']); return ['ok' => true]; },
+        // new photos and tags by family members (they go live without approval); opening the list marks them seen
+        'admin.photo_news' => function ($in) {
+            ft_require_admin();
+            $db = App::$db;
+            $seen = (int)$db->val('SELECT photos_seen FROM {users} WHERE id = ?', [App::uid()]);
+            $in_ = "'" . implode("','", FT_PHOTO_NEWS) . "'";
+            $rows = $db->all("SELECT a.*, u.name AS user_name FROM {audit} a JOIN {users} u ON u.id = a.user_id WHERE a.action IN ($in_) AND u.role <> 'admin' ORDER BY a.id DESC LIMIT " . max(10, min(1000, (int)($in['limit'] ?? 150))));
+            $out = [];
+            foreach ($rows as $r) {
+                $ph = $db->row('SELECT * FROM {photos} WHERE id = ?', [(int)$r['entity_id']]);
+                $d = json_decode($r['detail'] ?? 'null', true) ?: [];
+                $who = $d['who'] ?? [];
+                $tagged = [];   // is the tag still there (so it can be taken off)?
+                if ($ph) foreach ($who as $w) $tagged[] = (bool)$db->val('SELECT id FROM {photo_links} WHERE photo_id = ? AND ' . ($w[0] === 'p' ? 'person_id' : 'family_id') . ' = ?', [(int)$ph['id'], (int)$w[1]]);
+                $out[] = ['id' => (int)$r['id'], 'action' => $r['action'], 'created' => $r['created'], 'user' => $r['user_name'], 'summary' => $r['summary'],
+                    'new' => (int)$r['id'] > $seen, 'who' => $who, 'tagged' => $tagged, 'diff' => $d['diff'] ?? [],
+                    'photo' => $ph ? ['id' => (int)$ph['id'], 'thumb' => $ph['thumb'], 'title' => $ph['title']] : null];
+            }
+            $max = (int)$db->val("SELECT MAX(a.id) FROM {audit} a JOIN {users} u ON u.id = a.user_id WHERE a.action IN ($in_) AND u.role <> 'admin'");
+            if (!empty($in['mark']) && $max > $seen) $db->update('users', ['photos_seen' => $max], App::uid());
+            return ['rows' => $out, 'seen' => $seen];
+        },
         'admin.audit' => function ($in) {
             ft_require_admin();
             $rows = App::$db->all('SELECT a.*, u.name AS user_name FROM {audit} a LEFT JOIN {users} u ON u.id = a.user_id ORDER BY a.id DESC LIMIT ' . max(10, min(2000, (int)($in['limit'] ?? 300))));

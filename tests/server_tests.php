@@ -334,6 +334,48 @@ function ft_server_tests(): array
             t_eq($d['ev'], 'Születés');
             t_eq(array_column($d['diff'], 0), ['place'], 'csak a hely változott (a dátum ugyanaz, más írásmóddal)');
         },
+        'Fotók jóváhagyás nélkül: feltöltés, jelölés azonnal; admin értesül' => function () {
+            if (!function_exists('imagecreatetruecolor')) return 'skip';
+            $db = t_fresh_db(); $ids = t_import($db); $admin = t_user($db, 'admin', 'adm@x.hu'); $mem = t_user($db, 'member'); $mem2 = t_user($db, 'member');
+            $oldRoot = App::$root; $GLOBALS['ft_mail_sink'] = [];
+            App::$root = sys_get_temp_dir() . '/ftimg' . bin2hex(random_bytes(4)); @mkdir(App::$root);
+            try {
+                $im = imagecreatetruecolor(400, 300); $tmp = App::$root . '/in.png'; imagepng($im, $tmp);
+                t_as($mem);
+                $r = ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp, 'name' => 'x.png'], ['person_id' => $ids['I5'], 'title' => 'Nyaralás']);
+                t_eq($r['queued'], false, 'a feltöltés azonnal él');
+                t_eq($db->val('SELECT status FROM {photos} WHERE id = ?', [$r['id']]), 'ok');
+                t_eq((int)$db->val("SELECT COUNT(*) FROM {changes} WHERE status = 'pending'"), 0, 'nincs jóváhagyási kérés');
+                t_eq(count($GLOBALS['ft_mail_sink']), 1, 'az admin levelet kapott');
+                t_eq($GLOBALS['ft_mail_sink'][0]['to'], 'adm@x.hu');
+                $t = ft_run_op('photo.tag', ['photo_id' => $r['id'], 'person_id' => $ids['I1'], 'fx' => .3, 'fy' => .3]);
+                t_eq($t['queued'], false, 'a jelölés azonnal él');
+                t_eq(count($GLOBALS['ft_mail_sink']), 1, 'egy órán belül nem jön újabb levél');
+                t_eq(ft_run_op('photo.update', ['id' => $r['id'], 'title' => 'Balaton 1975'])['queued'], false, 'saját fotó adatai azonnal');
+                t_eq(ft_run_op('photo.untag', ['photo_id' => $r['id'], 'person_id' => $ids['I1']])['queued'], false, 'saját jelölés levétele azonnal');
+                // someone else's photo
+                t_as($mem2);
+                t_eq(ft_run_op('photo.tag', ['photo_id' => $r['id'], 'person_id' => $ids['I4']])['queued'], false, 'más fotóján is jelölhet');
+                t_eq(ft_run_op('photo.untag', ['photo_id' => $r['id'], 'person_id' => $ids['I4']])['queued'], false, 'a maga tette jelölést leveheti');
+                t_eq(ft_run_op('photo.untag', ['photo_id' => $r['id'], 'person_id' => $ids['I5']])['queued'], true, 'más jelölésének levétele jóváhagyásra vár');
+                t_eq(ft_run_op('photo.update', ['id' => $r['id'], 'title' => 'x'])['queued'], true, 'más fotójának adatai jóváhagyásra várnak');
+                t_eq(ft_run_op('photo.tag', ['photo_id' => $r['id'], 'person_id' => $ids['I5'], 'primary' => 1])['queued'], true, 'meglévő fő fotó cseréje jóváhagyásra vár');
+                // the admin sees them, and opening the list marks them seen
+                t_as($admin);
+                t_ok(ft_photo_news_count() >= 5, 'számláló az adminnak');
+                $H = ft_handlers();
+                $n = $H['admin.photo_news'](['mark' => 1]);
+                t_eq($n['rows'][count($n['rows']) - 1]['action'], 'photo.upload');
+                t_eq($n['rows'][count($n['rows']) - 1]['who'][0][1], $ids['I5'], 'kinél');
+                t_ok($n['rows'][0]['new'], 'újként jelölve');
+                t_eq(ft_photo_news_count(), 0, 'megnézve lenullázódik');
+                // switched off: back to the approval queue
+                App::$s['photo_direct'] = false; t_as($mem);
+                t_eq(ft_photo_upload(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmp, 'name' => 'x.png'], ['person_id' => $ids['I5']])['queued'], true, 'kikapcsolva jóváhagyásra vár');
+            } finally {
+                App::$root = $oldRoot; unset($GLOBALS['ft_mail_sink']); App::$s['photo_direct'] = true;
+            }
+        },
         'Műveletek: törlés minden kapcsolatot takarít' => function () {
             $db = t_fresh_db(); $ids = t_import($db); t_as(t_user($db, 'admin'));
             ft_run_op('person.delete', ['id' => $ids['I4']]);

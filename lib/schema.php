@@ -1,5 +1,5 @@
 <?php
-const FT_SCHEMA_VERSION = 12;
+const FT_SCHEMA_VERSION = 13;
 
 function ft_schema(): array
 {
@@ -11,7 +11,7 @@ function ft_schema(): array
             'person_id' => 'int', 'active' => 'bool', 'failed' => 'int', 'locked_until' => 'datetime',
             'created' => 'datetime', 'last_login' => 'datetime',
             'status' => 'str16', 'intro' => 'text', 'lang' => 'str5',
-            'reset_hash' => 'str64', 'reset_until' => 'datetime', 'reset_sent' => 'datetime'],
+            'reset_hash' => 'str64', 'reset_until' => 'datetime', 'reset_sent' => 'datetime', 'photos_seen' => 'int'],
             'idx' => ['u_email' => ['email']]],
         'persons' => ['cols' => [
             'id' => 'id', 'xref' => 'str20', 'given' => 'str120', 'surname' => 'str120', 'title' => 'str40',
@@ -38,7 +38,7 @@ function ft_schema(): array
             'found' => 'str255', 'updated' => 'datetime'], 'idx' => ['n' => ['name']]],
         'photo_links' => ['cols' => [
             'id' => 'id', 'photo_id' => 'int', 'person_id' => 'int', 'family_id' => 'int', 'story_id' => 'int',
-            'fx' => 'float', 'fy' => 'float'],
+            'fx' => 'float', 'fy' => 'float', 'added_by' => 'int'],
             'idx' => ['ph' => ['photo_id'], 'p' => ['person_id'], 'f' => ['family_id'], 's' => ['story_id']]],
         'stories' => ['cols' => [
             'id' => 'id', 'title' => 'str255', 'body' => 'text', 'date_raw' => 'str80', 'y' => 'int',

@@ -75,7 +75,7 @@ function langSelect() {
 function drawUserbox() {
   const box = $('#userbox');
   if (!S.user) { box.replaceChildren(langSelect(), h('a', { class: 'btn btn-sm btn-ghost', href: '#/login' }, T('Belépés'))); return; }
-  const gear = S.user.role === 'admin' ? h('a', { class: 'gear', href: '#/admin', title: T('Admin beállítások'), 'aria-label': T('Admin beállítások') }, icon('gear'), S.boot.pending ? h('span', { class: 'dot' }, S.boot.pending) : null) : null;
+  const gear = S.user.role === 'admin' ? h('a', { class: 'gear', href: '#/admin', title: T('Admin beállítások'), 'aria-label': T('Admin beállítások') }, icon('gear'), (S.boot.pending || S.boot.photoNews) ? h('span', { class: 'dot', title: S.boot.photoNews ? T('{0} friss fotó vagy jelölés', S.boot.photoNews) : null }, (S.boot.pending || 0) + (S.boot.photoNews || 0)) : null) : null;
   box.replaceChildren(langSelect(), gear, h('a', { class: 'gear', href: '#/account', title: S.user.name + T(' – fiókom'), 'aria-label': T('Fiókom') }, icon('user'), S.boot.myPending ? h('span', { class: 'dot' }, S.boot.myPending) : null));
 }
 
