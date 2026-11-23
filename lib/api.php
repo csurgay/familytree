@@ -684,6 +684,10 @@ function ft_handlers(): array
             foreach ($rows as &$r) {
                 $r['branches'] = array_map('intval', App::$db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [(int)$r['id']]));
                 $r['logins'] = App::$db->col('SELECT provider FROM {user_identities} WHERE user_id = ? ORDER BY provider', [(int)$r['id']]);
+                if (!$r['last_seen']) {   // not seen since this was first recorded: best guess from the last login and the last logged action
+                    $guess = max((string)$r['last_login'], (string)App::$db->val('SELECT MAX(created) FROM {audit} WHERE user_id = ?', [(int)$r['id']]));
+                    if ($guess !== '') { $r['last_seen'] = $guess; $r['seen_guess'] = true; }
+                }
                 $r['seen_ago'] = $r['last_seen'] ? max(0, time() - strtotime((string)$r['last_seen'])) : null;   // seconds, in the server's own clock
             }
             return $rows;

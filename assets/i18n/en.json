@@ -1211,5 +1211,7 @@
 "{0} perce": "{0} min ago",
 "{0} órája": "{0} h ago",
 "tegnap": "yesterday",
-"{0} napja": "{0} days ago"
+"{0} napja": "{0} days ago",
+"Legalább ekkor itt járt (a belépésből és a naplóból; a pontos látogatás figyelése ezután indult): {0}": "Here at least then (from the login and the log; exact visit tracking started later): {0}",
+"(legalább)": "(at least)"
 }

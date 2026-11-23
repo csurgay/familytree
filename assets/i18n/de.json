@@ -1211,5 +1211,7 @@
 "{0} perce": "vor {0} Min.",
 "{0} órája": "vor {0} Std.",
 "tegnap": "gestern",
-"{0} napja": "vor {0} Tagen"
+"{0} napja": "vor {0} Tagen",
+"Legalább ekkor itt járt (a belépésből és a naplóból; a pontos látogatás figyelése ezután indult): {0}": "Mindestens damals hier (aus Anmeldung und Protokoll; die genaue Besuchserfassung begann später): {0}",
+"(legalább)": "(mindestens)"
 }

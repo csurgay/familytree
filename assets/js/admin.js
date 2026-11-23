@@ -119,7 +119,7 @@ async function usersTab() {
       others.map(u => h('tr', null, h('td', null, u.name, +u.active ? null : h('span', { class: 'badge bad', style: 'margin-left:6px' }, T('tiltva'))), h('td', null, u.email, (u.logins || []).map(p => h('span', { class: 'badge', style: 'margin-left:6px', title: T('Ezzel is be tud lépni') }, p === 'google' ? 'Google' : 'Facebook'))), h('td', null, roleL[u.role] || u.role),
         h('td', null, u.person_id && P(u.person_id) ? h('a', { href: '#/person/' + u.person_id }, personName(P(u.person_id))) : '—'),
         h('td', null, u.branches?.length ? u.branches.map(id => personName(P(id), { short: true })).join(', ') : '—'),
-        h('td', { title: u.last_seen || '', 'data-sort': u.last_seen || '' }, ago(u.last_seen, u.seen_ago)), h('td', null, u.last_login?.slice(0, 16) || '—'), h('td', null, h('button', { class: 'btn btn-sm', onclick: () => edit(u) }, T('Szerkesztés')))))));
+        h('td', { title: u.seen_guess ? T('Legalább ekkor itt járt (a belépésből és a naplóból; a pontos látogatás figyelése ezután indult): {0}', u.last_seen) : (u.last_seen || ''), 'data-sort': u.last_seen || '' }, ago(u.last_seen, u.seen_ago), u.seen_guess ? h('span', { class: 'hint' }, ' ' + T('(legalább)')) : null), h('td', null, u.last_login?.slice(0, 16) || '—'), h('td', null, h('button', { class: 'btn btn-sm', onclick: () => edit(u) }, T('Szerkesztés')))))));
 }
 
 // ------------------------------------------------------------------ branches
