@@ -266,7 +266,7 @@ function ft_handlers(): array
                 throw ft_err('Hibás e-mail cím vagy jelszó.', 401);
             }
             if (password_needs_rehash($u['pass_hash'], PASSWORD_DEFAULT)) $db->update('users', ['pass_hash' => password_hash((string)$in['password'], PASSWORD_DEFAULT)], (int)$u['id']);
-            $db->update('users', ['failed' => 0, 'locked_until' => null, 'last_login' => ft_now()], (int)$u['id']);
+            $db->update('users', ['failed' => 0, 'locked_until' => null, 'last_login' => ft_now(), 'last_seen' => ft_now()], (int)$u['id']);
             session_regenerate_id(true);
             $_SESSION['uid'] = (int)$u['id'];
             $_SESSION['ep'] = (string)(App::$s['session_epoch'] ?? '');
@@ -347,7 +347,7 @@ function ft_handlers(): array
             $pass = (string)($in['password'] ?? '');
             if (mb_strlen($pass) < 8) throw ft_err('A jelszó legalább 8 karakter legyen.');
             $db->update('users', ['pass_hash' => password_hash($pass, PASSWORD_DEFAULT), 'reset_hash' => null, 'reset_until' => null,
-                'failed' => 0, 'locked_until' => null, 'last_login' => ft_now()], (int)$u['id']);
+                'failed' => 0, 'locked_until' => null, 'last_login' => ft_now(), 'last_seen' => ft_now()], (int)$u['id']);
             App::audit('pwreset', 'user', (int)$u['id'], $u['email']);
             if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
             $_SESSION['uid'] = (int)$u['id'];
@@ -680,10 +680,11 @@ function ft_handlers(): array
         },
         'admin.users' => function () {
             ft_require_admin();
-            $rows = App::$db->all('SELECT id, email, name, role, person_id, active, status, intro, created, last_login FROM {users} ORDER BY name');
+            $rows = App::$db->all('SELECT id, email, name, role, person_id, active, status, intro, created, last_login, last_seen FROM {users} ORDER BY name');
             foreach ($rows as &$r) {
                 $r['branches'] = array_map('intval', App::$db->col('SELECT person_id FROM {branches} WHERE user_id = ?', [(int)$r['id']]));
                 $r['logins'] = App::$db->col('SELECT provider FROM {user_identities} WHERE user_id = ? ORDER BY provider', [(int)$r['id']]);
+                $r['seen_ago'] = $r['last_seen'] ? max(0, time() - strtotime((string)$r['last_seen'])) : null;   // seconds, in the server's own clock
             }
             return $rows;
         },

@@ -139,6 +139,9 @@ final class App
             $u = self::$db->row('SELECT * FROM {users} WHERE id = ? AND active = 1', [(int)$_SESSION['uid']]);
             self::$user = $u ?: null;
             if (!$u) unset($_SESSION['uid']);
+            elseif (empty($u['last_seen']) || strtotime((string)$u['last_seen']) < time() - 300) {   // last visit, at most one write per 5 minutes
+                try { self::$db->update('users', ['last_seen' => ft_now()], (int)$u['id']); } catch (Throwable $e) { /* before the schema is up to date */ }
+            }
         }
     }
 

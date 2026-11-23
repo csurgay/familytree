@@ -115,11 +115,11 @@ async function usersTab() {
         h('div', { class: 'hd' }, h('b', null, u.name), h('span', null, u.email), (u.logins || []).map(p => h('span', { class: 'badge' }, p === 'google' ? 'Google' : 'Facebook')), h('span', { class: 'hint' }, T('regisztrált: ') + (u.created || '').slice(0, 16))),
         u.intro ? h('p', { style: 'margin:8px 0 0;white-space:pre-wrap' }, u.intro) : null,
         h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn btn-danger', onclick: () => reject(u) }, T('Elutasítás')), h('button', { class: 'btn btn-primary', onclick: () => approve(u) }, icon('check'), T('Jóváhagyás…')))))) : null,
-    h('table', { class: 'tbl' }, h('tr', null, [T('Név'), T('E-mail'), T('Szerep'), T('Ő a fában'), T('Ágak'), T('Utolsó belépés'), ''].map(t => h('th', null, t))),
+    h('table', { class: 'tbl' }, h('tr', null, [T('Név'), T('E-mail'), T('Szerep'), T('Ő a fában'), T('Ágak'), T('Utoljára itt'), T('Utolsó belépés'), ''].map(t => h('th', null, t))),
       others.map(u => h('tr', null, h('td', null, u.name, +u.active ? null : h('span', { class: 'badge bad', style: 'margin-left:6px' }, T('tiltva'))), h('td', null, u.email, (u.logins || []).map(p => h('span', { class: 'badge', style: 'margin-left:6px', title: T('Ezzel is be tud lépni') }, p === 'google' ? 'Google' : 'Facebook'))), h('td', null, roleL[u.role] || u.role),
         h('td', null, u.person_id && P(u.person_id) ? h('a', { href: '#/person/' + u.person_id }, personName(P(u.person_id))) : '—'),
         h('td', null, u.branches?.length ? u.branches.map(id => personName(P(id), { short: true })).join(', ') : '—'),
-        h('td', null, u.last_login?.slice(0, 16) || '—'), h('td', null, h('button', { class: 'btn btn-sm', onclick: () => edit(u) }, T('Szerkesztés')))))));
+        h('td', { title: u.last_seen || '', 'data-sort': u.last_seen || '' }, ago(u.last_seen, u.seen_ago)), h('td', null, u.last_login?.slice(0, 16) || '—'), h('td', null, h('button', { class: 'btn btn-sm', onclick: () => edit(u) }, T('Szerkesztés')))))));
 }
 
 // ------------------------------------------------------------------ branches
@@ -513,6 +513,20 @@ async function placesTab() {
   };
   await draw();
   return h('div', null, h('div', { class: 'page-head' }, h('div', null, h('h1', null, T('Helyszínek')), h('p', null, T('Az eseményekben és a fotókon szereplő helyek a térképhez.')))), out);
+}
+
+/** "5 perce", "tegnap", "3 napja", or the date (the cell itself sorts by the timestamp). */
+function ago(ts, secs) {
+  if (!ts || secs == null) return '—';
+  const m = Math.round(secs / 60);
+  let t;
+  if (m < 10) t = T('épp most');
+  else if (m < 60) t = T('{0} perce', m);
+  else if (m < 24 * 60) t = T('{0} órája', Math.round(m / 60));
+  else if (m < 48 * 60) t = T('tegnap');
+  else if (m < 30 * 24 * 60) t = T('{0} napja', Math.round(m / 1440));
+  else t = ts.slice(0, 10);
+  return t;
 }
 
 // ------------------------------------------------------------------ new photos and tags (live without approval)

@@ -1205,5 +1205,11 @@
 "Megjelölés": "Tag",
 "Saját fotó adatai": "Own photo details",
 "Fotó megjelölése": "Photo tagged",
-"azóta levéve": "since removed"
+"azóta levéve": "since removed",
+"Utoljára itt": "Last seen",
+"épp most": "just now",
+"{0} perce": "{0} min ago",
+"{0} órája": "{0} h ago",
+"tegnap": "yesterday",
+"{0} napja": "{0} days ago"
 }

@@ -1205,5 +1205,11 @@
 "Megjelölés": "Markierung",
 "Saját fotó adatai": "Angaben zum eigenen Foto",
 "Fotó megjelölése": "Foto markiert",
-"azóta levéve": "inzwischen entfernt"
+"azóta levéve": "inzwischen entfernt",
+"Utoljára itt": "Zuletzt da",
+"épp most": "gerade eben",
+"{0} perce": "vor {0} Min.",
+"{0} órája": "vor {0} Std.",
+"tegnap": "gestern",
+"{0} napja": "vor {0} Tagen"
 }

@@ -143,7 +143,7 @@ function ft_oauth_login(array $u, string $p, string $next): string
         throw ft_err('Ez a fiók le van tiltva. Keresd az admint.', 403);
     }
     $db = App::$db;
-    $db->update('users', ['failed' => 0, 'locked_until' => null, 'last_login' => ft_now()], (int)$u['id']);
+    $db->update('users', ['failed' => 0, 'locked_until' => null, 'last_login' => ft_now(), 'last_seen' => ft_now()], (int)$u['id']);
     if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
     $_SESSION['uid'] = (int)$u['id'];
     $_SESSION['ep'] = (string)(App::$s['session_epoch'] ?? '');
